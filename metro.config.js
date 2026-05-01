@@ -3,7 +3,7 @@ const path = require('node:path');
 const { getDefaultConfig } = require('expo/metro-config');
 
 const projectRoot = __dirname;
-const workspaceRoot = path.resolve(projectRoot, '..');
+const workspaceRoot = projectRoot;
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(projectRoot);
@@ -16,7 +16,6 @@ config.resolver.nodeModulesPaths = [
 
 // Resolve .ts/.tsx sources in workspace packages that use ESM .js import specifiers
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  // Rewrite `.js` → `.ts` for workspace packages (e.g. gateway-sse-client)
   if (moduleName.endsWith('.js') && !moduleName.includes('node_modules')) {
     const tsName = moduleName.replace(/\.js$/, '.ts');
     try {

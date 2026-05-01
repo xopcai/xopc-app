@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "xopc-app",
+    "slug": "xopc-app",
     "scheme": "xopc-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
