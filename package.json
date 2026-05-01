@@ -1,0 +1,18 @@
+{
+  "name": "xopc-app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Mobile client (Expo) for xopc gateway",
+  "scripts": {
+    "dev:mobile": "pnpm -C mobile run start",
+    "mobile:lint": "pnpm -C mobile run lint",
+    "mobile:typecheck": "pnpm -C mobile run typecheck",
+    "lint": "pnpm -C mobile run lint",
+    "typecheck": "pnpm -C mobile run typecheck && pnpm -C packages/gateway-sse-client run typecheck",
+    "test:gateway-sse-client": "vitest run packages/gateway-sse-client"
+  },
+  "devDependencies": {
+    "vitest": "4.1.5"
+  },
+  "packageManager": "pnpm@9.15.9"
+}
