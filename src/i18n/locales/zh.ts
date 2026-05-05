@@ -23,6 +23,12 @@ export const zh: MessageBundle = {
     chats: '对话',
     channelsTab: '消息通道',
     brandDescription: '语言、主题与字号',
+    historyTitle: '历史会话',
+    sectionThisWeek: '本周',
+    sectionThisYear: '本年',
+    sectionEarlier: '更早',
+    profileFallbackName: 'XOPC',
+    search: '搜索',
   },
 
   // ── 侧边栏设置弹出菜单 ─────────────────────────────────
@@ -105,7 +111,7 @@ export const zh: MessageBundle = {
   // ── 聊天界面 ────────────────────────────────────────────
   chat: {
     missingKey: '缺少会话密钥。',
-    inputPlaceholder: '输入消息…',
+    inputPlaceholder: '尽管问，带图也行',
     send: '发送',
     stop: '停止',
     thinking: '思考中…',
@@ -116,6 +122,20 @@ export const zh: MessageBundle = {
     resumeButton: '恢复流',
     dismiss: '关闭',
     failedToRename: '重命名失败',
+    welcomeTitle: '今天想做点什么？',
+    welcomeSubtitle: '点击下方示例，或直接输入你的问题。',
+    suggestion1: '介绍一下当前网关会话能做什么',
+    suggestion2: '说明智能体和技能是如何协作的',
+    suggestion3: '帮我排查一下接口连接问题',
+    aiDisclaimer: '内容由 AI 生成',
+    holdToSpeak: '按住说话',
+    voiceReleaseSwipeHint: '松开发送，上滑取消',
+    voiceCancelZoneHint: '松开手指，取消发送',
+    voicePermissionDenied: '需要麦克风权限才能使用语音输入。',
+    voiceWebUnsupported: '按住说话请在 iOS/Android 客户端中使用。',
+    voiceTooShort: '录音时间太短。',
+    voiceCapturedNoStt: '已录制语音（暂未接入语音识别）。请改用键盘输入或粘贴文字。',
+    voiceRecordingFailed: '录音结束失败，请重试。',
   },
 
   // ── 设置界面 ────────────────────────────────────────────
@@ -130,6 +150,8 @@ export const zh: MessageBundle = {
     token: 'Bearer 令牌（可选）',
     thinkingLevel: '思考级别（可选）',
     save: '保存',
+    gatewayFeatures: '网关功能',
+    gatewayFeaturesHint: '智能体、通道、定时与任务等在独立页面中打开。',
     // 外观
     appearance: '外观',
     language: '语言',
@@ -180,6 +202,31 @@ export const zh: MessageBundle = {
     sourceGlobal: '全局',
     sourceExtra: '扩展',
     managed: '托管',
+  },
+
+  schedulesPage: {
+    title: '定时安排',
+    subtitle: '网关返回的 Cron 任务（此处只读）。新建或编辑请在桌面控制台操作。',
+    empty: '暂无定时任务。',
+    loadFailed: '加载定时任务失败。',
+    schedule: '表达式',
+    nextRun: '下次运行',
+    prompt: '指令摘要',
+    openDocs: 'Cron 文档',
+  },
+
+  tasksPage: {
+    title: '任务',
+    subtitle: '近期 Cron 执行记录（/api/cron/runs/history）。',
+    empty: '暂无运行记录。',
+    loadFailed: '加载运行历史失败。',
+    job: '任务',
+    started: '开始时间',
+    statusRunning: '运行中',
+    statusSuccess: '成功',
+    statusFailed: '失败',
+    statusCancelled: '已取消',
+    openDocs: 'Cron 文档',
   },
 
   // ── 通用 ────────────────────────────────────────────────

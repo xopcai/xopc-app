@@ -1,35 +1,34 @@
 /**
- * Custom drawer sidebar content.
- *
- * Layout (from top to bottom):
- * 1. "+ New chat" button
- * 2. Navigation menu items (Agents, Skills, Cron, Channels)
- * 3. "Conversations" section label + tab strip (Chats / Channels) — placeholder
- * 4. Scrollable session list (active session highlighted)
- * 5. Bottom bar: XOPC brand + settings gear
+ * Drawer sidebar — Kimi-style profile card, tools menu, searchable grouped history.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DrawerContentComponentProps } from '@react-navigation/drawer';
-import { useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { DrawerActions } from '@react-navigation/native';
+import type { DrawerContentComponentProps } from '@react-navigation/drawer';
+import Constants from 'expo-constants';
+import { useGlobalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  FlatList,
   Linking,
   Pressable,
+  ScrollView,
   StyleSheet,
   useColorScheme,
   View,
 } from 'react-native';
 import {
+  ActivityIndicator,
   Divider,
   Icon,
   IconButton,
   Menu,
+  Searchbar,
   Text,
   TouchableRipple,
 } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useMessages } from '../i18n/messages';
+import { useMessages, t } from '../i18n/messages';
+import { fetchChatAgents } from '../query/agents';
 import { queryKeys } from '../query/keys';
 import {
   createSession,
@@ -40,30 +39,52 @@ import type { SessionListItem } from '../query/sessions';
 import { usePreferencesStore } from '../stores/preferences-store';
 import type { Language, ThemePreference } from '../stores/preferences-store';
 
-/** Navigation menu items — functional placeholders (non-navigable for now). */
-const NAV_ITEMS = [
-  { id: 'agents', icon: 'account-group-outline', labelKey: 'agents' as const },
-  { id: 'skills', icon: 'layers-outline', labelKey: 'skills' as const },
-  { id: 'cron', icon: 'clock-outline', labelKey: 'cron' as const },
-  { id: 'channels', icon: 'swap-horizontal', labelKey: 'channels' as const },
-] as const;
+function groupSessions(
+  items: SessionListItem[],
+  labels: { sectionThisWeek: string; sectionThisYear: string; sectionEarlier: string },
+): { title: string; data: SessionListItem[] }[] {
+  const now = Date.now();
+  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+  const yearStart = new Date(new Date().getFullYear(), 0, 1).getTime();
 
-/** Tab options for the conversation section. */
-const TABS = ['chats', 'channels'] as const;
-type Tab = (typeof TABS)[number];
+  const thisWeek: SessionListItem[] = [];
+  const thisYear: SessionListItem[] = [];
+  const earlier: SessionListItem[] = [];
 
-export function DrawerContent(_props: DrawerContentComponentProps) {
+  for (const s of items) {
+    const time = new Date(s.updatedAt).getTime();
+    if (Number.isNaN(time)) {
+      earlier.push(s);
+      continue;
+    }
+    if (time >= weekAgo) thisWeek.push(s);
+    else if (time >= yearStart) thisYear.push(s);
+    else earlier.push(s);
+  }
+
+  const out: { title: string; data: SessionListItem[] }[] = [];
+  if (thisWeek.length) out.push({ title: labels.sectionThisWeek, data: thisWeek });
+  if (thisYear.length) out.push({ title: labels.sectionThisYear, data: thisYear });
+  if (earlier.length) out.push({ title: labels.sectionEarlier, data: earlier });
+  return out;
+}
+
+export function DrawerContent({ navigation }: DrawerContentComponentProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
   const isDark = useColorScheme() === 'dark';
   const configured = useGatewayConfigured();
   const m = useMessages();
   const dm = m.drawer;
   const sm = m.drawerMenu;
 
-  const [activeTab, setActiveTab] = useState<Tab>('chats');
+  const params = useGlobalSearchParams<{ k?: string }>();
+  const rawK = params.k;
+  const activeKey = typeof rawK === 'string' ? rawK : Array.isArray(rawK) ? rawK[0] : '';
 
-  // ── Settings popup menu state ────────────────────────────
+  const [searchQuery, setSearchQuery] = useState('');
+
   const [menuVisible, setMenuVisible] = useState(false);
   const [langSubVisible, setLangSubVisible] = useState(false);
   const [themeSubVisible, setThemeSubVisible] = useState(false);
@@ -74,23 +95,52 @@ export function DrawerContent(_props: DrawerContentComponentProps) {
   const setLanguage = usePreferencesStore((s) => s.setLanguage);
   const setThemePreference = usePreferencesStore((s) => s.setThemePreference);
 
-  // ── Data ─────────────────────────────────────────────────
   const sessionsQuery = useQuery({
     queryKey: queryKeys.sessions,
     queryFn: fetchSessionsList,
     enabled: configured,
   });
 
-  const sessions = sessionsQuery.data ?? [];
+  const agentsQuery = useQuery({
+    queryKey: queryKeys.agents,
+    queryFn: fetchChatAgents,
+    enabled: configured,
+  });
 
-  // ── New session ──────────────────────────────────────────
+  const sessions = sessionsQuery.data ?? [];
+  const defaultAgentId = agentsQuery.data?.defaultId ?? 'main';
+  const defaultAgentName =
+    agentsQuery.data?.items.find((a) => a.id === defaultAgentId)?.name?.trim() || defaultAgentId;
+
+  const filteredSessions = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return sessions;
+    return sessions.filter(
+      (s) =>
+        (s.name ?? '').toLowerCase().includes(q) ||
+        s.key.toLowerCase().includes(q),
+    );
+  }, [sessions, searchQuery]);
+
+  const sections = useMemo(
+    () =>
+      groupSessions(filteredSessions, {
+        sectionThisWeek: dm.sectionThisWeek,
+        sectionThisYear: dm.sectionThisYear,
+        sectionEarlier: dm.sectionEarlier,
+      }),
+    [filteredSessions, dm.sectionThisWeek, dm.sectionThisYear, dm.sectionEarlier],
+  );
+
+  const appVersion = Constants.expoConfig?.version ?? '1.0.0';
+
   const createMut = useMutation({
     mutationFn: (_agentId?: string) => createSession(_agentId),
     onSuccess: (key) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
       router.setParams({ k: key });
-      // Close the drawer by navigating
       router.navigate({ pathname: '/', params: { k: key } });
+      navigation.dispatch(DrawerActions.closeDrawer());
     },
   });
 
@@ -98,420 +148,387 @@ export function DrawerContent(_props: DrawerContentComponentProps) {
     createMut.mutate(undefined);
   }, [createMut]);
 
-  // ── Session tap ──────────────────────────────────────────
   const handleSessionTap = useCallback(
     (session: SessionListItem) => {
       router.navigate({ pathname: '/', params: { k: session.key } });
+      navigation.dispatch(DrawerActions.closeDrawer());
     },
-    [router],
+    [navigation, router],
   );
 
-  // ── Colors ───────────────────────────────────────────────
   const colors = {
-    bg: isDark ? '#0F1A12' : '#E8F5E9',
-    surface: isDark ? '#1A2E1E' : '#F1F8E9',
-    activeBg: isDark ? '#2E5233' : '#C8E6C9',
-    text: isDark ? '#C8E6C9' : '#1B5E20',
-    textMuted: isDark ? '#81C784' : '#388E3C',
-    textSubtle: isDark ? '#4CAF50' : '#66BB6A',
-    border: isDark ? '#2E7D32' : '#A5D6A7',
-    brandBg: isDark ? '#1A2E1E' : '#E0F2E0',
+    pageBg: isDark ? '#000000' : '#F2F2F7',
+    card: isDark ? '#1C1C1E' : '#FFFFFF',
+    text: isDark ? '#F5F5F7' : '#1C1C1E',
+    textMuted: isDark ? '#8E8E93' : '#6D6D70',
+    border: isDark ? '#38383A' : '#E5E5EA',
+    accent: '#007AFF',
+    activeRow: isDark ? 'rgba(0,122,255,0.18)' : 'rgba(0,122,255,0.10)',
+    blueAvatar: '#007AFF',
+    menuSurface: isDark ? '#1C1C1E' : '#FFFFFF',
+    menuBorder: isDark ? '#38383A' : '#E5E5EA',
   };
 
-  // ── Render session item ──────────────────────────────────
-  const renderSession = useCallback(
-    ({ item }: { item: SessionListItem }) => {
+  const renderSessionRow = useCallback(
+    (item: SessionListItem) => {
       const label = item.name?.trim() || item.key.slice(-24);
+      const active = item.key === activeKey;
       return (
         <TouchableRipple
           key={item.key}
-          style={[styles.sessionItem]}
+          style={[styles.sessionRow, active && { backgroundColor: colors.activeRow }]}
           onPress={() => handleSessionTap(item)}
-          rippleColor={colors.activeBg}
+          rippleColor={colors.activeRow}
         >
-          <Text
-            numberOfLines={1}
-            style={[styles.sessionLabel, { color: colors.text }]}
-          >
-            {label}
-          </Text>
+          <View style={styles.sessionRowInner}>
+            <Icon source="chat-outline" size={18} color={colors.textMuted} />
+            <Text numberOfLines={1} style={[styles.sessionLabel, { color: colors.text }]}>
+              {label}
+            </Text>
+          </View>
         </TouchableRipple>
       );
     },
-    [handleSessionTap, colors],
+    [activeKey, colors.activeRow, colors.text, colors.textMuted, handleSessionTap],
   );
 
-  return (
-    <View style={[styles.container, { backgroundColor: colors.bg }]}>
-      {/* ── New chat button ──────────────────────────── */}
-      <Pressable
-        style={[styles.newChatButton, { backgroundColor: colors.surface }]}
-        onPress={handleNewChat}
-      >
-        <Icon source="plus" size={18} color={colors.text} />
-        <Text style={[styles.newChatLabel, { color: colors.text }]}>
-          {dm.newChat}
+  if (!configured) {
+    return (
+      <View style={[styles.fallback, { paddingTop: insets.top + 24, backgroundColor: colors.pageBg }]}>
+        <Text style={[styles.fallbackText, { color: colors.text }]}>{m.sessions.gatewayNotConfigured}</Text>
+        <Pressable
+          style={[styles.newChatCta, { backgroundColor: colors.accent, marginTop: 16 }]}
+          onPress={() => router.push('/settings')}
+        >
+          <Text style={styles.newChatCtaLabel}>{m.sessions.openSettings}</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (sessionsQuery.isLoading) {
+    return (
+      <View style={[styles.fallback, { paddingTop: insets.top + 48, backgroundColor: colors.pageBg }]}>
+        <ActivityIndicator color={colors.accent} />
+      </View>
+    );
+  }
+
+  const listEmpty =
+    filteredSessions.length === 0 ? (
+      <View style={styles.emptyWrap}>
+        <Text style={{ color: colors.textMuted, textAlign: 'center' }}>
+          {sessions.length === 0
+            ? m.sessions.empty
+            : t(m.sessions.noResultsHint, { query: searchQuery.trim() || '…' })}
         </Text>
-      </Pressable>
-
-      {/* ── Nav menu ─────────────────────────────────── */}
-      <View style={styles.navSection}>
-        {NAV_ITEMS.map((item) => (
-          <TouchableRipple
-            key={item.id}
-            style={styles.navItem}
-            onPress={() => {
-              if (item.id === 'agents') {
-                router.push('/agents');
-              } else if (item.id === 'skills') {
-                router.push('/skills');
-              } else if (item.id === 'channels') {
-                router.push('/channels');
-              }
-            }}
-            rippleColor={colors.activeBg}
-          >
-            <View style={styles.navItemRow}>
-              <Icon source={item.icon} size={20} color={colors.textMuted} />
-              <Text style={[styles.navLabel, { color: colors.text }]}>
-                {dm[item.labelKey]}
-              </Text>
-            </View>
-          </TouchableRipple>
-        ))}
-
       </View>
+    ) : null;
 
-      <Divider style={{ backgroundColor: colors.border }} />
-
-      {/* ── Conversations section ────────────────────── */}
-      <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>
-        {dm.conversations}
-      </Text>
-
-      {/* Tab strip */}
-      <View style={[styles.tabStrip, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        {TABS.map((tab) => {
-          const active = tab === activeTab;
-          return (
-            <Pressable
-              key={tab}
-              style={[
-                styles.tab,
-                active && { backgroundColor: colors.bg },
-              ]}
-              onPress={() => setActiveTab(tab)}
-            >
-              <Icon
-                source={tab === 'chats' ? 'chat-outline' : 'message-outline'}
-                size={14}
-                color={active ? colors.text : colors.textSubtle}
-              />
-              <Text
-                style={[
-                  styles.tabLabel,
-                  { color: active ? colors.text : colors.textSubtle },
-                  active && styles.tabLabelActive,
-                ]}
-              >
-                {tab === 'chats' ? dm.chats : dm.channelsTab}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {/* ── Session list ─────────────────────────────── */}
-      <FlatList
-        data={sessions}
-        keyExtractor={(item) => item.key}
-        renderItem={renderSession}
-        contentContainerStyle={styles.sessionList}
+  return (
+    <View style={[styles.root, { backgroundColor: colors.pageBg, paddingTop: insets.top }]}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
-        style={styles.sessionListFlex}
-      />
+        contentContainerStyle={styles.listContent}
+      >
+        {/* Profile + actions */}
+        <View style={[styles.card, { backgroundColor: colors.card, marginTop: 8 }]}>
+          <View style={styles.profileRow}>
+            <View style={styles.profileLeft}>
+              <View style={[styles.avatar, { backgroundColor: colors.blueAvatar }]}>
+                <Icon source="robot-outline" size={26} color="#FFFFFF" />
+              </View>
+              <View style={styles.profileText}>
+                <Text style={[styles.profileName, { color: colors.text }]}>{dm.profileFallbackName}</Text>
+                <View style={[styles.badge, { backgroundColor: isDark ? '#3A3A3C' : '#F2F2F7' }]}>
+                  <Text style={[styles.badgeText, { color: colors.textMuted }]} numberOfLines={1}>
+                    {defaultAgentName}
+                  </Text>
+                </View>
+              </View>
+            </View>
+            <Menu
+              visible={menuVisible}
+              onDismiss={() => {
+                setMenuVisible(false);
+                setLangSubVisible(false);
+                setThemeSubVisible(false);
+              }}
+              anchor={
+                <View ref={gearRef}>
+                  <IconButton
+                    icon="cog-outline"
+                    size={22}
+                    iconColor={colors.textMuted}
+                    onPress={() => setMenuVisible(true)}
+                  />
+                </View>
+              }
+              anchorPosition="top"
+              contentStyle={[
+                styles.menuContent,
+                { backgroundColor: colors.menuSurface, borderColor: colors.menuBorder },
+              ]}
+            >
+              <Menu.Item
+                leadingIcon="web"
+                title={sm.language}
+                trailingIcon={langSubVisible ? 'chevron-up' : 'chevron-right'}
+                onPress={() => {
+                  setLangSubVisible(!langSubVisible);
+                  setThemeSubVisible(false);
+                }}
+                titleStyle={{ color: colors.text }}
+              />
+              {langSubVisible ? (
+                <View style={styles.subMenu}>
+                  {(['en', 'zh'] as Language[]).map((lang) => (
+                    <Menu.Item
+                      key={lang}
+                      title={lang === 'en' ? 'English' : '中文'}
+                      onPress={() => {
+                        setLanguage(lang);
+                        setLangSubVisible(false);
+                        setMenuVisible(false);
+                      }}
+                      titleStyle={{
+                        color: language === lang ? colors.accent : colors.text,
+                        fontWeight: language === lang ? '700' : '400',
+                      }}
+                      style={styles.subMenuItem}
+                    />
+                  ))}
+                </View>
+              ) : null}
 
-      <Divider style={{ backgroundColor: colors.border }} />
+              <Menu.Item
+                leadingIcon="theme-light-dark"
+                title={sm.theme}
+                trailingIcon={themeSubVisible ? 'chevron-up' : 'chevron-right'}
+                onPress={() => {
+                  setThemeSubVisible(!themeSubVisible);
+                  setLangSubVisible(false);
+                }}
+                titleStyle={{ color: colors.text }}
+              />
+              {themeSubVisible ? (
+                <View style={styles.subMenu}>
+                  {(['light', 'dark', 'system'] as ThemePreference[]).map((pref) => {
+                    const labelMap = { light: sm.themeLight, dark: sm.themeDark, system: sm.themeSystem };
+                    return (
+                      <Menu.Item
+                        key={pref}
+                        title={labelMap[pref]}
+                        onPress={() => {
+                          setThemePreference(pref);
+                          setThemeSubVisible(false);
+                          setMenuVisible(false);
+                        }}
+                        titleStyle={{
+                          color: themePreference === pref ? colors.accent : colors.text,
+                          fontWeight: themePreference === pref ? '700' : '400',
+                        }}
+                        style={styles.subMenuItem}
+                      />
+                    );
+                  })}
+                </View>
+              ) : null}
 
-      {/* ── Bottom bar ───────────────────────────────── */}
-      <View style={[styles.bottomBar, { backgroundColor: colors.brandBg }]}>
-        <View style={styles.bottomBrand}>
-          <View style={[styles.logoCircle, { borderColor: colors.textMuted }]}>
-            <Text style={[styles.logoText, { color: colors.textMuted }]}>X</Text>
+              <Menu.Item
+                leadingIcon="format-size"
+                title={sm.fontSize}
+                trailingIcon="chevron-right"
+                onPress={() => {}}
+                titleStyle={{ color: colors.text }}
+              />
+
+              <Divider style={{ backgroundColor: colors.border, marginVertical: 4 }} />
+
+              <Menu.Item
+                leadingIcon="information-outline"
+                title={sm.about}
+                onPress={() => setMenuVisible(false)}
+                titleStyle={{ color: colors.text }}
+              />
+
+              <Menu.Item
+                leadingIcon="book-open-variant"
+                title={sm.helpDocs}
+                trailingIcon="open-in-new"
+                onPress={() => {
+                  setMenuVisible(false);
+                  void Linking.openURL('https://github.com/nicepkg/xopc');
+                }}
+                titleStyle={{ color: colors.text }}
+              />
+
+              <Menu.Item
+                leadingIcon="cog-outline"
+                title={sm.openAllSettings}
+                onPress={() => {
+                  setMenuVisible(false);
+                  router.push('/settings');
+                }}
+                titleStyle={{ color: colors.text }}
+              />
+            </Menu>
           </View>
-          <View style={styles.bottomBrandText}>
-            <Text style={[styles.brandName, { color: colors.text }]}>XOPC</Text>
-            <Text style={[styles.brandDesc, { color: colors.textSubtle }]}>
-              {dm.brandDescription}
-            </Text>
-          </View>
+
+          <Text style={[styles.versionHint, { color: colors.textMuted }]}>v{appVersion}</Text>
+
+          <Pressable
+            style={[styles.newChatCta, { backgroundColor: colors.accent }]}
+            onPress={handleNewChat}
+            disabled={createMut.isPending}
+          >
+            <Icon source="plus" size={20} color="#FFFFFF" />
+            <Text style={styles.newChatCtaLabel}>{dm.newChat}</Text>
+          </Pressable>
         </View>
 
-        {/* Settings gear — opens popup menu */}
-        <Menu
-          visible={menuVisible}
-          onDismiss={() => {
-            setMenuVisible(false);
-            setLangSubVisible(false);
-            setThemeSubVisible(false);
-          }}
-          anchor={
-            <View ref={gearRef}>
-              <IconButton
-                icon="cog-outline"
-                size={20}
-                iconColor={colors.textMuted}
-                onPress={() => setMenuVisible(true)}
-              />
-            </View>
-          }
-          anchorPosition="top"
-          contentStyle={[
-            styles.menuContent,
-            { backgroundColor: colors.bg, borderColor: colors.border },
-          ]}
-        >
-          {/* ── Language sub-menu ───────────── */}
-          <Menu.Item
-            leadingIcon="web"
-            title={sm.language}
-            trailingIcon={langSubVisible ? 'chevron-up' : 'chevron-right'}
-            onPress={() => {
-              setLangSubVisible(!langSubVisible);
-              setThemeSubVisible(false);
-            }}
-            titleStyle={{ color: colors.text }}
-          />
-          {langSubVisible ? (
-            <View style={styles.subMenu}>
-              {(['en', 'zh'] as Language[]).map((lang) => (
-                <Menu.Item
-                  key={lang}
-                  title={lang === 'en' ? 'English' : '中文'}
-                  onPress={() => {
-                    setLanguage(lang);
-                    setLangSubVisible(false);
-                    setMenuVisible(false);
-                  }}
-                  titleStyle={{
-                    color: language === lang ? colors.textMuted : colors.text,
-                    fontWeight: language === lang ? '700' : '400',
-                  }}
-                  style={styles.subMenuItem}
-                />
-              ))}
-            </View>
-          ) : null}
+        {/* History */}
+        <View style={[styles.card, styles.historyCard, { backgroundColor: colors.card }]}>
+          <View style={styles.historyTitleRow}>
+            <Text style={[styles.historyTitle, { color: colors.text }]}>{dm.historyTitle}</Text>
+            <Searchbar
+              placeholder={dm.search}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              style={[styles.searchBar, { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}
+              inputStyle={{ fontSize: 14, minHeight: 0 }}
+              iconColor={colors.textMuted}
+              placeholderTextColor={colors.textMuted}
+              elevation={0}
+            />
+          </View>
 
-          {/* ── Theme sub-menu ─────────────── */}
-          <Menu.Item
-            leadingIcon="theme-light-dark"
-            title={sm.theme}
-            trailingIcon={themeSubVisible ? 'chevron-up' : 'chevron-right'}
-            onPress={() => {
-              setThemeSubVisible(!themeSubVisible);
-              setLangSubVisible(false);
-            }}
-            titleStyle={{ color: colors.text }}
-          />
-          {themeSubVisible ? (
-            <View style={styles.subMenu}>
-              {(['light', 'dark', 'system'] as ThemePreference[]).map((pref) => {
-                const labelMap = { light: sm.themeLight, dark: sm.themeDark, system: sm.themeSystem };
-                return (
-                  <Menu.Item
-                    key={pref}
-                    title={labelMap[pref]}
-                    onPress={() => {
-                      setThemePreference(pref);
-                      setThemeSubVisible(false);
-                      setMenuVisible(false);
-                    }}
-                    titleStyle={{
-                      color: themePreference === pref ? colors.textMuted : colors.text,
-                      fontWeight: themePreference === pref ? '700' : '400',
-                    }}
-                    style={styles.subMenuItem}
-                  />
-                );
-              })}
-            </View>
-          ) : null}
-
-          {/* ── Font size (placeholder) ────── */}
-          <Menu.Item
-            leadingIcon="format-size"
-            title={sm.fontSize}
-            trailingIcon="chevron-right"
-            onPress={() => {}}
-            titleStyle={{ color: colors.text }}
-          />
-
-          <Divider style={{ backgroundColor: colors.border, marginVertical: 4 }} />
-
-          {/* ── About ──────────────────────── */}
-          <Menu.Item
-            leadingIcon="information-outline"
-            title={sm.about}
-            onPress={() => {
-              setMenuVisible(false);
-            }}
-            titleStyle={{ color: colors.text }}
-          />
-
-          {/* ── Help docs ──────────────────── */}
-          <Menu.Item
-            leadingIcon="book-open-variant"
-            title={sm.helpDocs}
-            trailingIcon="open-in-new"
-            onPress={() => {
-              setMenuVisible(false);
-              void Linking.openURL('https://github.com/nicepkg/xopc');
-            }}
-            titleStyle={{ color: colors.text }}
-          />
-
-          {/* ── Open all settings ──────────── */}
-          <Menu.Item
-            leadingIcon="cog-outline"
-            title={sm.openAllSettings}
-            onPress={() => {
-              setMenuVisible(false);
-              router.push('/settings');
-            }}
-            titleStyle={{ color: colors.text }}
-          />
-        </Menu>
-      </View>
+          {sections.length === 0 ? (
+            listEmpty
+          ) : (
+            sections.map((section) => (
+              <View key={section.title}>
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>{section.title}</Text>
+                {section.data.map((item) => renderSessionRow(item))}
+              </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    paddingTop: 56,
   },
-  // ── New chat ──
-  newChatButton: {
+  listContent: {
+    paddingHorizontal: 12,
+    paddingBottom: 24,
+  },
+  card: {
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+  },
+  historyCard: {
+    paddingBottom: 10,
+  },
+  profileRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 12,
-    marginBottom: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    gap: 10,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
   },
-  newChatLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  // ── Nav ──
-  navSection: {
-    paddingVertical: 4,
-  },
-  navItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  navItemRow: {
+  profileLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1,
+    minWidth: 0,
   },
-  navLabel: {
-    fontSize: 14,
-    fontWeight: '500',
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  // ── Section title ──
-  sectionTitle: {
+  profileText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  profileName: {
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  badge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    maxWidth: '100%',
+  },
+  badgeText: {
     fontSize: 12,
     fontWeight: '600',
-    marginTop: 12,
-    marginBottom: 6,
-    marginHorizontal: 16,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
-  // ── Tab strip ──
-  tabStrip: {
-    flexDirection: 'row',
-    marginHorizontal: 12,
-    marginBottom: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 2,
+  versionHint: {
+    fontSize: 11,
+    marginTop: 6,
+    marginBottom: 12,
   },
-  tab: {
-    flex: 1,
+  newChatCta: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 5,
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 22,
   },
-  tabLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  tabLabelActive: {
+  newChatCtaLabel: {
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: '600',
   },
-  // ── Session list ──
-  sessionListFlex: {
-    flex: 1,
+  historyTitleRow: {
+    gap: 10,
+    marginBottom: 8,
   },
-  sessionList: {
-    paddingHorizontal: 12,
-    paddingBottom: 8,
+  historyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
   },
-  sessionItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
+  searchBar: {
+    borderRadius: 14,
+    height: 40,
+    marginHorizontal: 0,
+    elevation: 0,
+  },
+  sectionHeader: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 10,
+    marginBottom: 6,
+    marginLeft: 4,
+  },
+  sessionRow: {
+    borderRadius: 12,
     marginBottom: 2,
   },
-  sessionLabel: {
-    fontSize: 14,
-  },
-  // ── Bottom bar ──
-  bottomBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  bottomBrand: {
+  sessionRowInner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
   },
-  logoCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoText: {
+  sessionLabel: {
     fontSize: 14,
-    fontWeight: '700',
+    flex: 1,
   },
-  bottomBrandText: {
-    gap: 1,
-  },
-  brandName: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  brandDesc: {
-    fontSize: 11,
-  },
-  // ── Settings popup menu ──
   menuContent: {
     borderRadius: 14,
     borderWidth: 1,
@@ -523,5 +540,19 @@ const styles = StyleSheet.create({
   },
   subMenuItem: {
     height: 40,
+  },
+  emptyWrap: {
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
+  fallback: {
+    flex: 1,
+    paddingHorizontal: 24,
+    justifyContent: 'center',
+  },
+  fallbackText: {
+    textAlign: 'center',
+    fontSize: 15,
+    opacity: 0.85,
   },
 });

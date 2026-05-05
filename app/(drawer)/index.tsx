@@ -11,7 +11,7 @@ import { DrawerActions } from '@react-navigation/native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
-import { Banner, Icon, IconButton, Snackbar, Text } from 'react-native-paper';
+import { Banner, IconButton, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AgentMessageSender, type MessagingCallbacks } from '../../src/api/agent-client';
@@ -304,6 +304,7 @@ export default function ChatScreen() {
   const [renameVisible, setRenameVisible] = useState(false);
   const [renameLoading, setRenameLoading] = useState(false);
   const [snackMsg, setSnackMsg] = useState('');
+  const [composerSuggestion, setComposerSuggestion] = useState<string | undefined>(undefined);
 
   // ── Header: hide default, use custom ─────────────────────
   useLayoutEffect(() => {
@@ -517,63 +518,68 @@ export default function ChatScreen() {
     navigation.dispatch(DrawerActions.openDrawer());
   }, [navigation]);
 
-  // ── Header colors ────────────────────────────────────────
-  const headerBg = isDark ? '#111827' : '#FFFFFF';
-  const headerBorder = isDark ? '#1F2937' : '#E5E7EB';
-  const pillBg = isDark ? '#1A2E1E' : '#F1F8E9';
-  const pillBorder = isDark ? '#2E7D32' : '#A5D6A7';
-  const pillText = isDark ? '#A5D6A7' : '#2E7D32';
+  // ── Header / chrome colors (Kimi-like neutral + blue accent) ──
+  const headerBg = isDark ? '#000000' : '#FFFFFF';
+  const headerBorder = isDark ? '#38383A' : '#E5E5EA';
+  const canvasBg = isDark ? '#000000' : '#F5F5F7';
+  const pillText = isDark ? '#F5F5F7' : '#1C1C1E';
+  const pillMuted = isDark ? '#8E8E93' : '#8E8E93';
+
+  const chatSuggestions = useMemo(
+    () => [m.chat.suggestion1, m.chat.suggestion2, m.chat.suggestion3],
+    [m.chat.suggestion1, m.chat.suggestion2, m.chat.suggestion3],
+  );
+
+  const openAgentsPicker = useCallback(() => {
+    router.push('/agents');
+  }, [router]);
 
   // ── Render: no session key → prompt ──────────────────────
   if (!sessionKey) {
     return (
-      <View style={[styles.screen, { backgroundColor: headerBg }]}>
-        {/* Header */}
+      <View style={[styles.screen, { backgroundColor: canvasBg }]}>
         <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: headerBorder, paddingTop: insets.top + 8 }]}>
           <View style={styles.headerLeft}>
             <IconButton icon="menu" size={22} onPress={openDrawer} />
-            <IconButton icon="plus" size={22} onPress={handleNewChat} />
           </View>
-          <Pressable style={[styles.modelPill, { backgroundColor: pillBg, borderColor: pillBorder }]}>
-            <Text style={[styles.modelPillText, { color: pillText }]} numberOfLines={1}>
+          <Pressable style={styles.headerTitleArea} onPress={openAgentsPicker}>
+            <Text style={[styles.headerTitleText, { color: pillText }]} numberOfLines={1}>
               {modelName}
             </Text>
-            <Icon source="chevron-down" size={16} color={pillText} />
+            <Text style={[styles.headerChevron, { color: pillMuted }]}>›</Text>
           </Pressable>
           <View style={styles.headerRight}>
-            <IconButton icon="calendar-outline" size={22} onPress={() => {}} />
+            <IconButton icon="plus" size={22} onPress={handleNewChat} />
           </View>
         </View>
         <View style={styles.emptyContainer}>
-          <Text variant="bodyLarge" style={{ opacity: 0.6 }}>{m.sessions.empty}</Text>
-          <Text variant="bodySmall" style={{ opacity: 0.4, marginTop: 8 }}>{m.sessions.emptyHint}</Text>
+          <Text variant="bodyLarge" style={{ opacity: 0.65 }}>{m.sessions.empty}</Text>
+          <Text variant="bodySmall" style={{ opacity: 0.45, marginTop: 8, textAlign: 'center' }}>{m.sessions.emptyHint}</Text>
         </View>
       </View>
     );
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: headerBg }]}>
-      {/* ── Custom header ────────────────────────────── */}
+    <View style={[styles.screen, { backgroundColor: canvasBg }]}>
       <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: headerBorder, paddingTop: insets.top + 8 }]}>
         <View style={styles.headerLeft}>
           <IconButton icon="menu" size={22} onPress={openDrawer} />
-          <IconButton icon="plus" size={22} onPress={handleNewChat} />
         </View>
-        <Pressable style={[styles.modelPill, { backgroundColor: pillBg, borderColor: pillBorder }]}>
-          <Text style={[styles.modelPillText, { color: pillText }]} numberOfLines={1}>
+        <Pressable style={styles.headerTitleArea} onPress={openAgentsPicker}>
+          <Text style={[styles.headerTitleText, { color: pillText }]} numberOfLines={1}>
             {modelName}
           </Text>
-          <Icon source="chevron-down" size={16} color={pillText} />
+          <Text style={[styles.headerChevron, { color: pillMuted }]}>›</Text>
         </Pressable>
         <View style={styles.headerRight}>
-          <IconButton icon="calendar-outline" size={22} onPress={() => setRenameVisible(true)} />
+          <IconButton icon="pencil-outline" size={22} onPress={() => setRenameVisible(true)} />
+          <IconButton icon="plus" size={22} onPress={handleNewChat} />
         </View>
       </View>
 
-      {/* ── Chat body ────────────────────────────────── */}
       <KeyboardAvoidingView
-        style={styles.chatBody}
+        style={[styles.chatBody, { backgroundColor: canvasBg }]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={0}
       >
@@ -598,6 +604,10 @@ export default function ChatScreen() {
           progress={progress}
           loading={sessionQuery.isLoading}
           sessionKey={sessionKey}
+          welcomeTitle={m.chat.welcomeTitle}
+          welcomeSubtitle={m.chat.welcomeSubtitle}
+          suggestions={chatSuggestions}
+          onSuggestionPress={(text) => setComposerSuggestion(text)}
         />
 
         <ChatComposer
@@ -605,7 +615,11 @@ export default function ChatScreen() {
           streaming={streaming}
           onSend={(text) => void send(text)}
           onAbort={abort}
+          placeholder={m.chat.inputPlaceholder}
+          suggestionDraft={composerSuggestion}
+          onConsumeSuggestionDraft={() => setComposerSuggestion(undefined)}
         />
+        <Text style={[styles.aiDisclaimer, { color: pillMuted }]}>{m.chat.aiDisclaimer}</Text>
       </KeyboardAvoidingView>
 
       {/* ── Dialogs ──────────────────────────────────── */}
@@ -636,34 +650,41 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    // paddingTop is set dynamically via useSafeAreaInsets() — see inline style
     paddingBottom: 8,
-    paddingHorizontal: 2,
+    paddingHorizontal: 4,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerLeft: {
+    width: 84,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   headerRight: {
+    width: 96,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
   },
-  modelPill: {
+  headerTitleArea: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
+    justifyContent: 'center',
     gap: 4,
-    maxWidth: 220,
+    paddingHorizontal: 6,
+    minWidth: 0,
   },
-  modelPillText: {
-    fontSize: 13,
+  headerTitleText: {
+    fontSize: 17,
     fontWeight: '600',
     flexShrink: 1,
+    textAlign: 'center',
+  },
+  headerChevron: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: -2,
   },
   // ── Chat body ──
   chatBody: {
@@ -674,5 +695,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
+  },
+  aiDisclaimer: {
+    fontSize: 11,
+    textAlign: 'center',
+    paddingBottom: 10,
+    paddingHorizontal: 16,
   },
 });

@@ -8,7 +8,7 @@
  */
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { ActivityIndicator, Text } from 'react-native-paper';
 
 import { MessageBubble } from './MessageBubble';
@@ -26,6 +26,10 @@ export const MessageList = memo(function MessageList({
   progress,
   loading,
   sessionKey,
+  welcomeTitle,
+  welcomeSubtitle,
+  suggestions,
+  onSuggestionPress,
 }: {
   messages: Message[];
   streaming: boolean;
@@ -33,7 +37,13 @@ export const MessageList = memo(function MessageList({
   loading: boolean;
   /** Pass the current session key so we can reset scroll state on session switch. */
   sessionKey?: string;
+  welcomeTitle?: string;
+  welcomeSubtitle?: string;
+  suggestions?: string[];
+  onSuggestionPress?: (text: string) => void;
 }) {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
   const listRef = useRef<FlashListRef<Message>>(null);
   const isAtBottomRef = useRef(true);
   const prevLengthRef = useRef(messages.length);
@@ -110,15 +120,43 @@ export const MessageList = memo(function MessageList({
   }
 
   if (messages.length === 0 && !streaming) {
+    const chips = suggestions?.filter(Boolean) ?? [];
     return (
       <View style={styles.center}>
-        <Text style={styles.emptyIcon}>🤖</Text>
+        <View style={styles.botAvatar}>
+          <View style={styles.botEyeRow}>
+            <View style={styles.botEye} />
+            <View style={styles.botEye} />
+          </View>
+        </View>
         <Text variant="titleMedium" style={styles.emptyTitle}>
-          Start a conversation
+          {welcomeTitle ?? 'Start a conversation'}
         </Text>
         <Text variant="bodySmall" style={styles.emptySubtitle}>
-          Type a message below to begin chatting with your AI assistant.
+          {welcomeSubtitle ?? 'Type a message below to begin chatting with your AI assistant.'}
         </Text>
+        {chips.length > 0 ? (
+          <View style={styles.chipColumn}>
+            {chips.map((label) => (
+              <Pressable
+                key={label}
+                style={({ pressed }) => [
+                  styles.chip,
+                  {
+                    borderColor: isDark ? 'rgba(180,180,190,0.35)' : 'rgba(120,120,128,0.35)',
+                    backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+                  },
+                  pressed && { opacity: 0.88, backgroundColor: isDark ? '#2C2C2E' : '#F5F5F7' },
+                ]}
+                onPress={() => onSuggestionPress?.(label)}
+              >
+                <Text variant="bodySmall" style={[styles.chipText, { color: isDark ? '#E5E5EA' : '#1C1C1E' }]} numberOfLines={2}>
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
       </View>
     );
   }
@@ -143,12 +181,28 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 32,
-    gap: 8,
+    paddingHorizontal: 28,
+    gap: 10,
   },
-  emptyIcon: {
-    fontSize: 40,
-    marginBottom: 8,
+  botAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#2563EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  botEyeRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  botEye: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FFFFFF',
   },
   emptyTitle: {
     fontWeight: '600',
@@ -156,9 +210,26 @@ const styles = StyleSheet.create({
   },
   emptySubtitle: {
     textAlign: 'center',
-    opacity: 0.6,
-    maxWidth: 260,
-    lineHeight: 18,
+    opacity: 0.58,
+    maxWidth: 280,
+    lineHeight: 20,
+  },
+  chipColumn: {
+    alignSelf: 'stretch',
+    gap: 10,
+    marginTop: 14,
+    maxWidth: 340,
+    width: '100%',
+  },
+  chip: {
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  chipText: {
+    textAlign: 'left',
+    lineHeight: 20,
   },
   listContent: {
     paddingTop: 12,

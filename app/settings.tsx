@@ -8,6 +8,7 @@ import { type GatewaySettingsForm, gatewaySettingsSchema } from '../src/config/s
 import { useMessages } from '../src/i18n/messages';
 import { AgentSection } from '../src/features/settings/AgentSection';
 import { AppearanceSection } from '../src/features/settings/AppearanceSection';
+import { GatewayFeaturesSection } from '../src/features/settings/GatewayFeaturesSection';
 import { useGatewayStore } from '../src/stores/gateway-store';
 
 export default function SettingsScreen() {
@@ -112,6 +113,11 @@ export default function SettingsScreen() {
           {s.save}
         </Button>
       </View>
+
+      <Divider style={styles.sectionDivider} />
+
+      {/* ── Gateway features (agents, skills, …) ─────── */}
+      <GatewayFeaturesSection />
 
       <Divider style={styles.sectionDivider} />
 
