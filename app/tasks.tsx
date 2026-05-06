@@ -8,6 +8,7 @@ import { FlatList, Linking, RefreshControl, StyleSheet, useColorScheme, View } f
 import { ActivityIndicator, Appbar, Button, Chip, Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../src/i18n/messages';
+import { dismissOrHome, useDismissOnHardwareBack } from '../src/lib/navigation';
 import { fetchCronRunsHistory, type CronRunRow } from '../src/query/cron';
 import { queryKeys } from '../src/query/keys';
 import { useGatewayConfigured } from '../src/query/sessions';
@@ -17,6 +18,7 @@ const RUNS_LIMIT = 50;
 
 export default function TasksScreen() {
   const router = useRouter();
+  useDismissOnHardwareBack(router);
   const queryClient = useQueryClient();
   const isDark = useColorScheme() === 'dark';
   const configured = useGatewayConfigured();
@@ -137,7 +139,7 @@ export default function TasksScreen() {
     return (
       <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
         <Appbar.Header mode="center-aligned" style={{ backgroundColor: 'transparent' }}>
-          <Appbar.BackAction onPress={() => router.back()} />
+          <Appbar.BackAction onPress={() => dismissOrHome(router)} />
           <Appbar.Content title={pm.title} />
         </Appbar.Header>
         <View style={styles.center}>
@@ -151,7 +153,7 @@ export default function TasksScreen() {
     return (
       <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
         <Appbar.Header mode="center-aligned" style={{ backgroundColor: 'transparent' }}>
-          <Appbar.BackAction onPress={() => router.back()} />
+          <Appbar.BackAction onPress={() => dismissOrHome(router)} />
           <Appbar.Content title={pm.title} />
         </Appbar.Header>
         <View style={styles.center}>
@@ -165,7 +167,7 @@ export default function TasksScreen() {
     return (
       <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
         <Appbar.Header mode="center-aligned" style={{ backgroundColor: 'transparent' }}>
-          <Appbar.BackAction onPress={() => router.back()} />
+          <Appbar.BackAction onPress={() => dismissOrHome(router)} />
           <Appbar.Content title={pm.title} />
         </Appbar.Header>
         <View style={styles.center}>
@@ -184,7 +186,7 @@ export default function TasksScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
       <Appbar.Header mode="center-aligned" style={{ backgroundColor: 'transparent' }}>
-        <Appbar.BackAction onPress={() => router.back()} />
+        <Appbar.BackAction onPress={() => dismissOrHome(router)} />
         <Appbar.Content title={pm.title} />
       </Appbar.Header>
       <FlatList

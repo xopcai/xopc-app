@@ -165,6 +165,7 @@ export const MessageList = memo(function MessageList({
     <FlashList
       key={listKey}
       ref={listRef}
+      style={styles.listFlex}
       data={messages}
       renderItem={renderItem}
       keyExtractor={keyExtractor}
@@ -172,11 +173,16 @@ export const MessageList = memo(function MessageList({
       onMomentumScrollEnd={onScrollEnd}
       onScrollEndDrag={onScrollEnd}
       showsVerticalScrollIndicator={false}
+      keyboardDismissMode="interactive"
+      keyboardShouldPersistTaps="handled"
     />
   );
 });
 
 const styles = StyleSheet.create({
+  listFlex: {
+    flex: 1,
+  },
   center: {
     flex: 1,
     justifyContent: 'center',

@@ -56,9 +56,31 @@ export const zh: MessageBundle = {
     pinned: '已置顶',
     archived: '已归档',
     gatewayNotConfigured: '未配置网关',
-    gatewayNotConfiguredHint: '请在设置中填写网关地址和可选的令牌以加载会话。',
+    gatewayNotConfiguredHint: '连接网关后即可加载会话，也可打开全部设置进行更多配置。',
     openSettings: '打开设置',
+    connectGateway: '连接网关',
     unauthorized: '未授权 (401)，请检查令牌。',
+  },
+
+  // ── 网关连接引导（首次弹层）──────────────────────────────
+  gatewayConnect: {
+    title: '网关',
+    headline: '连接到你的网关',
+    subline:
+      '请确保手机与运行 xopc 网关的设备处于同一网络，然后填写网关地址，或在桌面控制台展示二维码时用手机扫码填写。',
+    step1: '1. 在电脑上启动网关并打开 Web 控制台。',
+    step2: '2. 在下方填写网关地址，或点击「扫码」从屏幕上的二维码快速填入。',
+    step3: '3. 如网关启用了鉴权，可粘贴 Bearer 令牌（可选）。',
+    sessionExpired: '网关拒绝了当前令牌 (401)。请更新 Bearer 令牌后重试。',
+    scanQr: '扫码',
+    scannerTitle: '扫描网关二维码',
+    scannerHint: '将桌面控制台中的二维码对准取景框。',
+    close: '关闭',
+    saveContinue: '保存并继续',
+    openFullSettings: '全部设置',
+    invalidUrl: '请输入有效的 http(s) 网关地址。',
+    connectFailed: '无法连接网关，请检查地址、令牌与网络。',
+    cameraDenied: '扫码需要相机权限，请在系统设置中允许访问相机。',
   },
 
   // ── 会话操作 ────────────────────────────────────────────

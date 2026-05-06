@@ -215,10 +215,6 @@ export const ChatComposer = memo(function ChatComposer({
     [],
   );
 
-  const handleSubmitEditing = useCallback(() => {
-    if (canSend) handleSend();
-  }, [canSend, handleSend]);
-
   const surface = scheme === 'dark' ? '#1C1C1E' : '#F5F5F7';
   const border = scheme === 'dark' ? '#3A3A3C' : '#E5E5EA';
   const barBg = scheme === 'dark' ? '#000000' : '#FFFFFF';
@@ -276,10 +272,9 @@ export const ChatComposer = memo(function ChatComposer({
                 multiline
                 editable={!disabled}
                 onContentSizeChange={onContentSizeChange}
-                onSubmitEditing={handleSubmitEditing}
                 blurOnSubmit={false}
-                returnKeyType={Platform.OS === 'ios' ? 'default' : 'send'}
-                textAlignVertical="center"
+                returnKeyType="default"
+                textAlignVertical={Platform.OS === 'android' ? 'top' : 'center'}
                 autoCapitalize="sentences"
               />
 

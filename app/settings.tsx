@@ -1,11 +1,13 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
+import { useLayoutEffect } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { Button, Divider, HelperText, Text, TextInput } from 'react-native-paper';
+import { Button, Divider, HelperText, IconButton, Text, TextInput } from 'react-native-paper';
 
 import { type GatewaySettingsForm, gatewaySettingsSchema } from '../src/config/schema';
 import { useMessages } from '../src/i18n/messages';
+import { dismissOrHome, useDismissOnHardwareBack } from '../src/lib/navigation';
 import { AgentSection } from '../src/features/settings/AgentSection';
 import { AppearanceSection } from '../src/features/settings/AppearanceSection';
 import { GatewayFeaturesSection } from '../src/features/settings/GatewayFeaturesSection';
@@ -13,8 +15,19 @@ import { useGatewayStore } from '../src/stores/gateway-store';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const m = useMessages();
   const s = m.settings;
+
+  useDismissOnHardwareBack(router);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <IconButton icon="arrow-left" onPress={() => dismissOrHome(router)} />
+      ),
+    });
+  }, [navigation, router, s.title]);
 
   const baseUrl = useGatewayStore((st) => st.baseUrl);
   const token = useGatewayStore((st) => st.token);
@@ -42,7 +55,7 @@ export default function SettingsScreen() {
     setToken(data.token);
     setThinking(data.thinking);
     persist();
-    router.back();
+    dismissOrHome(router);
   };
 
   return (

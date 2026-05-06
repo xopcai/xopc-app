@@ -580,8 +580,9 @@ export default function ChatScreen() {
 
       <KeyboardAvoidingView
         style={[styles.chatBody, { backgroundColor: canvasBg }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        /** Custom header sits above this view — iOS must offset by header + status inset or the composer stays under the keyboard. */
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 56 : 0}
       >
         {error ? (
           <Banner visible icon="alert" actions={[{ label: m.chat.dismiss, onPress: () => setError(null) }]}>
@@ -598,17 +599,19 @@ export default function ChatScreen() {
           </Banner>
         ) : null}
 
-        <MessageList
-          messages={displayMessages}
-          streaming={streaming}
-          progress={progress}
-          loading={sessionQuery.isLoading}
-          sessionKey={sessionKey}
-          welcomeTitle={m.chat.welcomeTitle}
-          welcomeSubtitle={m.chat.welcomeSubtitle}
-          suggestions={chatSuggestions}
-          onSuggestionPress={(text) => setComposerSuggestion(text)}
-        />
+        <View style={styles.listFill}>
+          <MessageList
+            messages={displayMessages}
+            streaming={streaming}
+            progress={progress}
+            loading={sessionQuery.isLoading}
+            sessionKey={sessionKey}
+            welcomeTitle={m.chat.welcomeTitle}
+            welcomeSubtitle={m.chat.welcomeSubtitle}
+            suggestions={chatSuggestions}
+            onSuggestionPress={(text) => setComposerSuggestion(text)}
+          />
+        </View>
 
         <ChatComposer
           disabled={sessionQuery.isLoading}
@@ -619,7 +622,9 @@ export default function ChatScreen() {
           suggestionDraft={composerSuggestion}
           onConsumeSuggestionDraft={() => setComposerSuggestion(undefined)}
         />
-        <Text style={[styles.aiDisclaimer, { color: pillMuted }]}>{m.chat.aiDisclaimer}</Text>
+        <Text style={[styles.aiDisclaimer, { color: pillMuted, paddingBottom: Math.max(10, insets.bottom) }]}>
+          {m.chat.aiDisclaimer}
+        </Text>
       </KeyboardAvoidingView>
 
       {/* ── Dialogs ──────────────────────────────────── */}
@@ -689,6 +694,11 @@ const styles = StyleSheet.create({
   // ── Chat body ──
   chatBody: {
     flex: 1,
+  },
+  /** Lets FlashList shrink when the keyboard opens (flex parent must allow min height 0). */
+  listFill: {
+    flex: 1,
+    minHeight: 0,
   },
   emptyContainer: {
     flex: 1,

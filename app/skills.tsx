@@ -4,11 +4,13 @@
  * Displays skill entries with name, description, source badge, and enabled status.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { FlatList, StyleSheet, useColorScheme, View } from 'react-native';
 import { ActivityIndicator, Button, Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../src/i18n/messages';
+import { useDismissOnHardwareBack } from '../src/lib/navigation';
 import { queryKeys } from '../src/query/keys';
 import { fetchSkills, type SkillCatalogEntry } from '../src/query/skills';
 import { useGatewayConfigured } from '../src/query/sessions';
@@ -36,6 +38,8 @@ function skillIcon(name: string): string {
 }
 
 export default function SkillsScreen() {
+  const router = useRouter();
+  useDismissOnHardwareBack(router);
   const queryClient = useQueryClient();
   const isDark = useColorScheme() === 'dark';
   const configured = useGatewayConfigured();

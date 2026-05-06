@@ -1,18 +1,15 @@
 /**
- * Markdown renderer for chat messages using react-native-enriched-markdown.
+ * Markdown renderer for chat messages.
  *
- * Uses native Fabric text rendering (no WebView) with:
- * - GFM tables support (flavor="github")
- * - Streaming fade-in animation for LLM responses
- * - Dark/light mode via markdownStyle
- * - Interactive link handling
+ * - **Dev client / release builds:** `react-native-enriched-markdown` (GFM, tables, streaming animation).
+ * - **Expo Go:** that library has no native ViewManager — use a plain selectable `Text` fallback.
  */
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+import type { ComponentType } from 'react';
 import { memo, useCallback, useMemo } from 'react';
-import { Linking, useColorScheme } from 'react-native';
-import { EnrichedMarkdownText } from 'react-native-enriched-markdown';
-import type { MarkdownStyle } from 'react-native-enriched-markdown';
+import { Linking, Text, useColorScheme } from 'react-native';
 
-const lightStyle: MarkdownStyle = {
+const lightStyle = {
   paragraph: {
     fontSize: 15,
     lineHeight: 22,
@@ -21,21 +18,21 @@ const lightStyle: MarkdownStyle = {
   },
   h1: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: 'bold' as const,
     color: '#111827',
     marginTop: 16,
     marginBottom: 8,
   },
   h2: {
     fontSize: 19,
-    fontWeight: '600',
+    fontWeight: '600' as const,
     color: '#111827',
     marginTop: 14,
     marginBottom: 6,
   },
   h3: {
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: '600' as const,
     color: '#1F2937',
     marginTop: 12,
     marginBottom: 4,
@@ -45,7 +42,7 @@ const lightStyle: MarkdownStyle = {
     underline: false,
   },
   strong: {
-    fontWeight: 'bold',
+    fontWeight: 'bold' as const,
   },
   code: {
     color: '#DB2777',
@@ -84,7 +81,7 @@ const lightStyle: MarkdownStyle = {
   },
 };
 
-const darkStyle: MarkdownStyle = {
+const darkStyle = {
   paragraph: {
     fontSize: 15,
     lineHeight: 22,
@@ -93,21 +90,21 @@ const darkStyle: MarkdownStyle = {
   },
   h1: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: 'bold' as const,
     color: '#F9FAFB',
     marginTop: 16,
     marginBottom: 8,
   },
   h2: {
     fontSize: 19,
-    fontWeight: '600',
+    fontWeight: '600' as const,
     color: '#F9FAFB',
     marginTop: 14,
     marginBottom: 6,
   },
   h3: {
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: '600' as const,
     color: '#F3F4F6',
     marginTop: 12,
     marginBottom: 4,
@@ -117,7 +114,7 @@ const darkStyle: MarkdownStyle = {
     underline: false,
   },
   strong: {
-    fontWeight: 'bold',
+    fontWeight: 'bold' as const,
   },
   code: {
     color: '#F9A8D4',
@@ -161,21 +158,82 @@ const darkStyle: MarkdownStyle = {
   },
 };
 
+type EnrichedProps = {
+  markdown: string;
+  flavor: 'github';
+  markdownStyle: typeof lightStyle | typeof darkStyle;
+  streamingAnimation: boolean;
+  onLinkPress: (e: { url: string }) => void;
+  selectable: boolean;
+};
+
+function isExpoGo(): boolean {
+  return Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+}
+
+function getEnrichedMarkdownText(): ComponentType<EnrichedProps> | null {
+  if (isExpoGo()) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- avoid loading native module in Expo Go
+    const mod = require('react-native-enriched-markdown') as {
+      EnrichedMarkdownText: ComponentType<EnrichedProps>;
+    };
+    return mod.EnrichedMarkdownText;
+  } catch {
+    return null;
+  }
+}
+
+/** Expo Go / missing native module: show raw markdown as selectable text with tappable URLs. */
+const PlainMarkdownFallback = memo(function PlainMarkdownFallback({
+  content,
+  isDark,
+}: {
+  content: string;
+  isDark: boolean;
+}) {
+  const linkColor = isDark ? '#60A5FA' : '#2563EB';
+  const bodyColor = isDark ? '#E5E7EB' : '#1F2937';
+
+  const segments = useMemo(() => {
+    const parts = content.split(/(https?:\/\/[^\s]+)/g);
+    return parts.map((part, i) => ({ part, i, isUrl: /^https?:\/\//.test(part) }));
+  }, [content]);
+
+  return (
+    <Text
+      style={{ fontSize: 15, lineHeight: 22, marginBottom: 8, color: bodyColor }}
+      selectable
+    >
+      {segments.map(({ part, i, isUrl }) =>
+        isUrl ? (
+          <Text
+            key={i}
+            style={{ color: linkColor, textDecorationLine: 'underline' }}
+            onPress={() => void Linking.openURL(part)}
+          >
+            {part}
+          </Text>
+        ) : (
+          part
+        ),
+      )}
+    </Text>
+  );
+});
+
 export const MarkdownView = memo(function MarkdownView({
   content,
   streaming = false,
 }: {
   content: string;
-  /** When true, enables the streaming fade-in animation for new tokens. */
+  /** When true, enables the streaming fade-in animation for new tokens (native renderer only). */
   streaming?: boolean;
 }) {
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
-
-  const markdownStyle = useMemo(
-    () => (isDark ? darkStyle : lightStyle),
-    [isDark],
-  );
+  const Enriched = useMemo(() => getEnrichedMarkdownText(), []);
+  const markdownStyle = useMemo(() => (isDark ? darkStyle : lightStyle), [isDark]);
 
   const handleLinkPress = useCallback(({ url }: { url: string }) => {
     void Linking.openURL(url);
@@ -183,11 +241,15 @@ export const MarkdownView = memo(function MarkdownView({
 
   if (!content?.trim()) return null;
 
+  if (!Enriched) {
+    return <PlainMarkdownFallback content={content} isDark={isDark} />;
+  }
+
   return (
-    <EnrichedMarkdownText
+    <Enriched
       markdown={content}
       flavor="github"
-      markdownStyle={markdownStyle}
+      markdownStyle={markdownStyle as EnrichedProps['markdownStyle']}
       streamingAnimation={streaming}
       onLinkPress={handleLinkPress}
       selectable

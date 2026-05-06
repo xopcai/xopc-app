@@ -5,11 +5,13 @@
  * Data comes from GET /api/channels/status.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { FlatList, StyleSheet, useColorScheme, View } from 'react-native';
 import { ActivityIndicator, Button, Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../src/i18n/messages';
+import { useDismissOnHardwareBack } from '../src/lib/navigation';
 import { fetchChannelsStatus, type ChannelStatusEntry } from '../src/query/channels';
 import { queryKeys } from '../src/query/keys';
 import { useGatewayConfigured } from '../src/query/sessions';
@@ -39,6 +41,8 @@ function channelDisplayName(name: string): string {
 }
 
 export default function ChannelsScreen() {
+  const router = useRouter();
+  useDismissOnHardwareBack(router);
   const queryClient = useQueryClient();
   const isDark = useColorScheme() === 'dark';
   const configured = useGatewayConfigured();

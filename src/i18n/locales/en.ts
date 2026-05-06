@@ -54,9 +54,31 @@ export const en = {
     pinned: 'Pinned',
     archived: 'Archived',
     gatewayNotConfigured: 'Gateway not configured',
-    gatewayNotConfiguredHint: 'Set your gateway base URL and optional token in Settings to load sessions.',
+    gatewayNotConfiguredHint: 'Connect your gateway to load conversations, or open all settings for more options.',
     openSettings: 'Open Settings',
+    connectGateway: 'Connect gateway',
     unauthorized: 'Unauthorized (401). Check your bearer token.',
+  },
+
+  // ── Gateway connect landing (first-run modal) ────────────
+  gatewayConnect: {
+    title: 'Gateway',
+    headline: 'Connect to your gateway',
+    subline:
+      'Point your phone at the same network as your xopc gateway, then enter its URL or scan a QR code from the desktop console when available.',
+    step1: '1. Run the gateway and open the web console on your computer.',
+    step2: '2. Enter the gateway base URL below, or tap “Scan QR code” to fill it from your screen.',
+    step3: '3. Optionally paste a bearer token if your gateway requires authentication.',
+    sessionExpired: 'The gateway rejected this token (401). Update the bearer token and try again.',
+    scanQr: 'Scan QR code',
+    scannerTitle: 'Scan gateway QR',
+    scannerHint: 'Align the QR code from your gateway console within the frame.',
+    close: 'Close',
+    saveContinue: 'Save & continue',
+    openFullSettings: 'All settings',
+    invalidUrl: 'Enter a valid http(s) gateway URL.',
+    connectFailed: 'Could not reach the gateway. Check the URL, token, and network.',
+    cameraDenied: 'Camera access is required to scan QR codes.',
   },
 
   // ── Session actions ─────────────────────────────────────

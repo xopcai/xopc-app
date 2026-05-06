@@ -27,6 +27,7 @@ import {
 } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useGatewayConnectLanding } from '../features/gateway/gateway-connect-context';
 import { useMessages, t } from '../i18n/messages';
 import { fetchChatAgents } from '../query/agents';
 import { queryKeys } from '../query/keys';
@@ -70,6 +71,7 @@ function groupSessions(
 }
 
 export function DrawerContent({ navigation }: DrawerContentComponentProps) {
+  const { openGatewayConnectLanding } = useGatewayConnectLanding();
   const router = useRouter();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
@@ -196,11 +198,15 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
     return (
       <View style={[styles.fallback, { paddingTop: insets.top + 24, backgroundColor: colors.pageBg }]}>
         <Text style={[styles.fallbackText, { color: colors.text }]}>{m.sessions.gatewayNotConfigured}</Text>
+        <Text style={[styles.fallbackHint, { color: colors.textMuted }]}>{m.sessions.gatewayNotConfiguredHint}</Text>
         <Pressable
           style={[styles.newChatCta, { backgroundColor: colors.accent, marginTop: 16 }]}
-          onPress={() => router.push('/settings')}
+          onPress={openGatewayConnectLanding}
         >
-          <Text style={styles.newChatCtaLabel}>{m.sessions.openSettings}</Text>
+          <Text style={styles.newChatCtaLabel}>{m.sessions.connectGateway}</Text>
+        </Pressable>
+        <Pressable style={styles.secondaryLink} onPress={() => router.push('/settings')}>
+          <Text style={[styles.secondaryLinkLabel, { color: colors.accent }]}>{m.sessions.openSettings}</Text>
         </Pressable>
       </View>
     );
@@ -554,5 +560,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 15,
     opacity: 0.85,
+  },
+  fallbackHint: {
+    textAlign: 'center',
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 10,
+  },
+  secondaryLink: {
+    marginTop: 14,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  secondaryLinkLabel: {
+    fontSize: 15,
+    fontWeight: '500',
   },
 });

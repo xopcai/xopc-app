@@ -1,3 +1,5 @@
+import { queryKeys } from '../query/keys';
+import { queryClient } from '../query/query-client';
 import { useGatewayStore } from '../stores/gateway-store';
 
 export function formatApiHttpError(status: number, statusText: string, message?: string): string {
@@ -20,6 +22,8 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
 
   if (res.status === 401) {
     onUnauthorized();
+    void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.agents });
   }
 
   return res;

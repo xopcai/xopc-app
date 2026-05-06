@@ -11,12 +11,14 @@ import { FlatList, StyleSheet, useColorScheme, View } from 'react-native';
 import { ActivityIndicator, Button, Chip, Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../src/i18n/messages';
+import { useDismissOnHardwareBack } from '../src/lib/navigation';
 import { fetchChatAgents, type ChatAgentOption } from '../src/query/agents';
 import { queryKeys } from '../src/query/keys';
 import { createSession, useGatewayConfigured } from '../src/query/sessions';
 
 export default function AgentsScreen() {
   const router = useRouter();
+  useDismissOnHardwareBack(router);
   const queryClient = useQueryClient();
   const isDark = useColorScheme() === 'dark';
   const configured = useGatewayConfigured();
