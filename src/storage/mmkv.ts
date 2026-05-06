@@ -1,4 +1,4 @@
-import { createMMKV, type MMKV } from 'react-native-mmkv';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 
 export const KEYS = {
   baseUrl: 'gateway.baseUrl',
@@ -15,15 +15,34 @@ export type KeyValueStorage = {
   delete(key: string): void;
 };
 
-let mmkv: MMKV | null = null;
+type MMKVInstance = import('react-native-mmkv').MMKV;
+
+let mmkv: MMKVInstance | null = null;
+/** True after a failed native load (e.g. Expo Go without NitroModules). */
+let nativeUnavailable = false;
 const memory = new Map<string, string>();
 
-function getNativeMmkv(): MMKV | null {
+function isExpoGo(): boolean {
+  return Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+}
+
+function getNativeMmkv(): MMKVInstance | null {
   if (mmkv) return mmkv;
+  if (nativeUnavailable) return null;
+  // Never load MMKV in Expo Go: the Nitro native module is not in the client, and
+  // native failures are not always catchable from JS.
+  if (isExpoGo()) {
+    nativeUnavailable = true;
+    return null;
+  }
   try {
+    // Lazy require so the bundle loads in Expo Go (we return above before this runs).
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- intentional deferred native load
+    const { createMMKV } = require('react-native-mmkv') as typeof import('react-native-mmkv');
     mmkv = createMMKV({ id: 'xopc-mobile' });
     return mmkv;
   } catch {
+    nativeUnavailable = true;
     return null;
   }
 }
