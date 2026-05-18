@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { gatewaySettingsSchema } from '../../config/schema';
 import { useMessages } from '../../i18n/messages';
 import { queryKeys } from '../../query/keys';
-import { useGatewayStore } from '../../stores/gateway-store';
+import { DEFAULT_GATEWAY_BASE_URL, useGatewayStore } from '../../stores/gateway-store';
 import { parseGatewayQrPayload } from './parse-gateway-qr';
 import { openDefaultSessionAfterConnect } from './navigate-after-gateway-connect';
 
@@ -47,7 +47,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
   const setThinking = useGatewayStore((st) => st.setThinking);
   const persist = useGatewayStore((st) => st.persist);
 
-  const [baseUrl, setBaseUrlField] = useState('http://127.0.0.1:8787');
+  const [baseUrl, setBaseUrlField] = useState(DEFAULT_GATEWAY_BASE_URL);
   const [token, setTokenField] = useState('');
   const [thinking, setThinkingField] = useState('');
   const [baseUrlError, setBaseUrlError] = useState('');
@@ -61,7 +61,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
   useEffect(() => {
     if (!visible) return;
     const st = useGatewayStore.getState();
-    setBaseUrlField(st.baseUrl.trim() || 'http://127.0.0.1:8787');
+    setBaseUrlField(st.baseUrl.trim() || DEFAULT_GATEWAY_BASE_URL);
     setTokenField(st.token);
     setThinkingField(st.thinking);
     setBaseUrlError('');
@@ -177,6 +177,158 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
     onRequestClose();
   }, [onRequestClose, unauthorized]);
 
+  const landingContent = (
+    <KeyboardAvoidingView
+      style={[styles.root, { backgroundColor: colors.bg, paddingTop: insets.top }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={styles.topBar}>
+        <View style={{ width: 48 }} />
+        <Text variant="titleMedium" style={{ color: colors.text }}>
+          {l.title}
+        </Text>
+        {unauthorized ? (
+          <View style={{ width: 48 }} />
+        ) : (
+          <IconButton icon="close" size={22} onPress={requestClose} accessibilityLabel={l.close} />
+        )}
+      </View>
+
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}
+      >
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text variant="titleLarge" style={[styles.headline, { color: colors.text }]}>
+            {l.headline}
+          </Text>
+          <Text variant="bodyMedium" style={[styles.subline, { color: colors.muted }]}>
+            {l.subline}
+          </Text>
+
+          {unauthorized ? (
+            <View
+              style={[
+                styles.banner,
+                { backgroundColor: colors.dangerBg, borderColor: colors.dangerBorder },
+              ]}
+            >
+              <Text variant="bodySmall" style={{ color: colors.text }}>
+                {l.sessionExpired}
+              </Text>
+            </View>
+          ) : null}
+
+          <Text variant="bodySmall" style={[styles.steps, { color: colors.muted }]}>
+            {l.step1}
+            {'\n'}
+            {l.step2}
+            {'\n'}
+            {l.step3}
+          </Text>
+
+          <TextInput
+            label={s.baseUrl}
+            value={baseUrl}
+            onChangeText={(text) => {
+              setBaseUrlField(text);
+              setBaseUrlError('');
+            }}
+            mode="outlined"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            error={Boolean(baseUrlError)}
+            style={styles.field}
+          />
+          {baseUrlError ? (
+            <Text variant="bodySmall" style={styles.fieldError}>
+              {baseUrlError}
+            </Text>
+          ) : null}
+
+          <TextInput
+            label={s.token}
+            value={token}
+            onChangeText={setTokenField}
+            mode="outlined"
+            autoCapitalize="none"
+            secureTextEntry
+            style={styles.field}
+          />
+
+          <TextInput
+            label={s.thinkingLevel}
+            value={thinking}
+            onChangeText={setThinkingField}
+            mode="outlined"
+            autoCapitalize="none"
+            style={styles.field}
+          />
+
+          <View style={styles.row}>
+            <Button mode="outlined" onPress={openScanner} icon="barcode-scan">
+              {l.scanQr}
+            </Button>
+          </View>
+
+          {saveError ? (
+            <Text variant="bodySmall" style={styles.saveError}>
+              {saveError}
+            </Text>
+          ) : null}
+
+          <View style={[styles.actions, unauthorized && styles.actionsSingle]}>
+            {!unauthorized ? (
+              <Button mode="text" onPress={goFullSettings}>
+                {l.openFullSettings}
+              </Button>
+            ) : null}
+            <Button mode="contained" onPress={() => void handleSave()} loading={saving} disabled={saving}>
+              {l.saveContinue}
+            </Button>
+          </View>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+
+  const scannerContent = (
+    <View style={[styles.scannerRoot, { paddingTop: insets.top, backgroundColor: '#000' }]}>
+      <View style={styles.scannerBar}>
+        <Pressable onPress={() => setScannerOpen(false)} hitSlop={12}>
+          <Text style={styles.scannerBack}>{l.close}</Text>
+        </Pressable>
+        <Text style={styles.scannerTitle}>{l.scannerTitle}</Text>
+        <View style={{ width: 48 }} />
+      </View>
+      <View style={styles.scannerCameraWrap}>
+        {camPermission?.granted ? (
+          <CameraView
+            style={styles.scannerCamera}
+            facing="back"
+            active={scannerOpen}
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            onBarcodeScanned={onBarcodeScanned}
+          />
+        ) : null}
+      </View>
+      <View style={[styles.scannerFooter, { paddingBottom: insets.bottom + 16 }]}>
+        <Text style={styles.scannerHint}>{l.scannerHint}</Text>
+      </View>
+    </View>
+  );
+
+  if (Platform.OS === 'web') {
+    if (!visible) return null;
+    return (
+      <View style={styles.webOverlay}>
+        {landingContent}
+        {scannerOpen ? <View style={styles.webOverlay}>{scannerContent}</View> : null}
+      </View>
+    );
+  }
+
   return (
     <Modal
       visible={visible}
@@ -184,150 +336,20 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
       presentationStyle="fullScreen"
       onRequestClose={requestClose}
     >
-      <KeyboardAvoidingView
-        style={[styles.root, { backgroundColor: colors.bg, paddingTop: insets.top }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <View style={styles.topBar}>
-          <View style={{ width: 48 }} />
-          <Text variant="titleMedium" style={{ color: colors.text }}>
-            {l.title}
-          </Text>
-          {unauthorized ? (
-            <View style={{ width: 48 }} />
-          ) : (
-            <IconButton icon="close" size={22} onPress={requestClose} accessibilityLabel={l.close} />
-          )}
-        </View>
-
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}
-        >
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text variant="titleLarge" style={[styles.headline, { color: colors.text }]}>
-              {l.headline}
-            </Text>
-            <Text variant="bodyMedium" style={[styles.subline, { color: colors.muted }]}>
-              {l.subline}
-            </Text>
-
-            {unauthorized ? (
-              <View
-                style={[
-                  styles.banner,
-                  { backgroundColor: colors.dangerBg, borderColor: colors.dangerBorder },
-                ]}
-              >
-                <Text variant="bodySmall" style={{ color: colors.text }}>
-                  {l.sessionExpired}
-                </Text>
-              </View>
-            ) : null}
-
-            <Text variant="bodySmall" style={[styles.steps, { color: colors.muted }]}>
-              {l.step1}
-              {'\n'}
-              {l.step2}
-              {'\n'}
-              {l.step3}
-            </Text>
-
-            <TextInput
-              label={s.baseUrl}
-              value={baseUrl}
-              onChangeText={(t) => {
-                setBaseUrlField(t);
-                setBaseUrlError('');
-              }}
-              mode="outlined"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              error={Boolean(baseUrlError)}
-              style={styles.field}
-            />
-            {baseUrlError ? (
-              <Text variant="bodySmall" style={styles.fieldError}>
-                {baseUrlError}
-              </Text>
-            ) : null}
-
-            <TextInput
-              label={s.token}
-              value={token}
-              onChangeText={setTokenField}
-              mode="outlined"
-              autoCapitalize="none"
-              secureTextEntry
-              style={styles.field}
-            />
-
-            <TextInput
-              label={s.thinkingLevel}
-              value={thinking}
-              onChangeText={setThinkingField}
-              mode="outlined"
-              autoCapitalize="none"
-              style={styles.field}
-            />
-
-            <View style={styles.row}>
-              <Button mode="outlined" onPress={openScanner} icon="barcode-scan">
-                {l.scanQr}
-              </Button>
-            </View>
-
-            {saveError ? (
-              <Text variant="bodySmall" style={styles.saveError}>
-                {saveError}
-              </Text>
-            ) : null}
-
-            <View style={[styles.actions, unauthorized && styles.actionsSingle]}>
-              {!unauthorized ? (
-                <Button mode="text" onPress={goFullSettings}>
-                  {l.openFullSettings}
-                </Button>
-              ) : null}
-              <Button mode="contained" onPress={() => void handleSave()} loading={saving} disabled={saving}>
-                {l.saveContinue}
-              </Button>
-            </View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-
+      {landingContent}
       <Modal visible={scannerOpen} animationType="fade" onRequestClose={() => setScannerOpen(false)}>
-        <View style={[styles.scannerRoot, { paddingTop: insets.top, backgroundColor: '#000' }]}>
-          <View style={styles.scannerBar}>
-            <Pressable onPress={() => setScannerOpen(false)} hitSlop={12}>
-              <Text style={styles.scannerBack}>{l.close}</Text>
-            </Pressable>
-            <Text style={styles.scannerTitle}>{l.scannerTitle}</Text>
-            <View style={{ width: 48 }} />
-          </View>
-          <View style={styles.scannerCameraWrap}>
-            {camPermission?.granted ? (
-              <CameraView
-                style={styles.scannerCamera}
-                facing="back"
-                active={scannerOpen}
-                barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-                onBarcodeScanned={onBarcodeScanned}
-              />
-            ) : null}
-          </View>
-          <View style={[styles.scannerFooter, { paddingBottom: insets.bottom + 16 }]}>
-            <Text style={styles.scannerHint}>{l.scannerHint}</Text>
-          </View>
-        </View>
+        {scannerContent}
       </Modal>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  webOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1000,
+    elevation: 1000,
+  },
   root: {
     flex: 1,
   },

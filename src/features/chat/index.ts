@@ -1,6 +1,7 @@
 /** Chat feature barrel export. */
 export { AssistantStepsBlock } from './AssistantStepsBlock';
 export { ChatComposer } from './ChatComposer';
+export { CommandPaletteBar } from './CommandPaletteBar';
 export { MessageBubble } from './MessageBubble';
 export { MessageList } from './MessageList';
 export { MarkdownView } from './MarkdownView';

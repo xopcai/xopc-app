@@ -1,9 +1,5 @@
 /**
  * Gateway cron API — mirrors xopc `src/gateway/hono/routes/cron.ts` and web `cron-api.ts`.
- *
- * Endpoints:
- *   GET  /api/cron
- *   GET  /api/cron/runs/history?limit=
  */
 import { apiFetch, formatApiHttpError } from '../api/client';
 
@@ -13,7 +9,6 @@ export type CronPayload = {
   message?: string;
 };
 
-/** Job row from GET /api/cron (subset used by mobile). */
 export type CronJobRow = {
   id: string;
   name?: string;
@@ -36,8 +31,29 @@ export type CronRunRow = {
   summary?: string;
 };
 
+function encId(id: string): string {
+  return encodeURIComponent(id);
+}
+
 function parseJson(res: Response): Promise<unknown> {
   return res.json().catch(() => ({}));
+}
+
+function apiErrorMessage(data: unknown): string | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+  const error = (data as { error?: unknown }).error;
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    return typeof message === 'string' ? message : undefined;
+  }
+  return undefined;
+}
+
+async function throwIfNotOk(res: Response): Promise<void> {
+  if (res.ok) return;
+  const data = await parseJson(res);
+  throw new Error(formatApiHttpError(res.status, res.statusText, apiErrorMessage(data)));
 }
 
 function isCronJobRow(x: unknown): x is CronJobRow {
@@ -59,20 +75,10 @@ function isCronRunRow(x: unknown): x is CronRunRow {
 }
 
 export function cronJobPromptPreview(job: Pick<CronJobRow, 'payload'>): string {
-  const p = job.payload;
-  if (!p) return '';
-  if (p.kind === 'systemEvent') return (p.text ?? '').trim();
-  return (p.message ?? '').trim();
-}
-
-function apiErrorMessage(data: unknown): string | undefined {
-  if (!data || typeof data !== 'object') return undefined;
-  const e = (data as { error?: unknown }).error;
-  if (typeof e === 'string') return e;
-  if (e && typeof e === 'object' && 'message' in e && typeof (e as { message?: unknown }).message === 'string') {
-    return (e as { message: string }).message;
-  }
-  return undefined;
+  const payload = job.payload;
+  if (!payload) return '';
+  if (payload.kind === 'systemEvent') return (payload.text ?? '').trim();
+  return (payload.message ?? '').trim();
 }
 
 export async function fetchCronJobs(): Promise<CronJobRow[]> {
@@ -83,6 +89,19 @@ export async function fetchCronJobs(): Promise<CronJobRow[]> {
   }
   if (!Array.isArray(data.jobs)) return [];
   return data.jobs.filter(isCronJobRow);
+}
+
+export async function toggleCronJob(id: string, enabled: boolean): Promise<void> {
+  const res = await apiFetch(`/api/cron/${encId(id)}/toggle`, {
+    method: 'POST',
+    body: JSON.stringify({ enabled }),
+  });
+  await throwIfNotOk(res);
+}
+
+export async function runCronJobNow(id: string): Promise<void> {
+  const res = await apiFetch(`/api/cron/${encId(id)}/run`, { method: 'POST' });
+  await throwIfNotOk(res);
 }
 
 export async function fetchCronRunsHistory(limit = 50): Promise<CronRunRow[]> {

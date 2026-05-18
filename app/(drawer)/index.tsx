@@ -33,7 +33,7 @@ import {
 } from '../../src/features/chat/streaming';
 import { fetchChatAgents } from '../../src/query/agents';
 import { queryKeys } from '../../src/query/keys';
-import { createSession, fetchSession, renameSession } from '../../src/query/sessions';
+import { createSession, fetchSession, renameSession, useGatewayConfigured } from '../../src/query/sessions';
 import { pendingRunStorageKey, storage } from '../../src/storage/mmkv';
 import { useGatewayStore } from '../../src/stores/gateway-store';
 
@@ -258,6 +258,7 @@ export default function ChatScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const thinking = useGatewayStore((s) => s.thinking);
+  const configured = useGatewayConfigured();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
   const m = useMessages();
@@ -266,6 +267,7 @@ export default function ChatScreen() {
   const agentsQuery = useQuery({
     queryKey: queryKeys.agents,
     queryFn: fetchChatAgents,
+    enabled: configured,
   });
 
   const modelName = useMemo(() => {

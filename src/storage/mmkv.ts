@@ -15,12 +15,43 @@ export type KeyValueStorage = {
   delete(key: string): void;
 };
 
-type MMKVInstance = import('react-native-mmkv').MMKV;
+// ── Platform detection ──
+// We avoid importing Platform from react-native at module top level because
+// in some Expo Web bundler configurations the import resolves before RN-web
+// is fully initialised. Instead we detect web via `document` existence which
+// is reliable in all JS runtimes.
 
+function isWeb(): boolean {
+  return typeof document !== 'undefined';
+}
+
+// ── Web: localStorage (persists across page refresh) ──
+
+function webGetString(key: string): string | undefined {
+  try {
+    return globalThis.localStorage?.getItem(key) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function webSet(key: string, value: string | number | boolean): void {
+  try {
+    globalThis.localStorage?.setItem(key, String(value));
+  } catch { /* quota or private browsing */ }
+}
+
+function webDelete(key: string): void {
+  try {
+    globalThis.localStorage?.removeItem(key);
+  } catch { /* ignore */ }
+}
+
+// ── Native: MMKV ──
+
+type MMKVInstance = import('react-native-mmkv').MMKV;
 let mmkv: MMKVInstance | null = null;
-/** True after a failed native load (e.g. Expo Go without NitroModules). */
 let nativeUnavailable = false;
-const memory = new Map<string, string>();
 
 function isExpoGo(): boolean {
   return Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
@@ -29,14 +60,11 @@ function isExpoGo(): boolean {
 function getNativeMmkv(): MMKVInstance | null {
   if (mmkv) return mmkv;
   if (nativeUnavailable) return null;
-  // Never load MMKV in Expo Go: the Nitro native module is not in the client, and
-  // native failures are not always catchable from JS.
   if (isExpoGo()) {
     nativeUnavailable = true;
     return null;
   }
   try {
-    // Lazy require so the bundle loads in Expo Go (we return above before this runs).
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- intentional deferred native load
     const { createMMKV } = require('react-native-mmkv') as typeof import('react-native-mmkv');
     mmkv = createMMKV({ id: 'xopc-mobile' });
@@ -47,18 +75,27 @@ function getNativeMmkv(): MMKVInstance | null {
   }
 }
 
+// ── In-memory fallback (Expo Go without native MMKV) ──
+
+const memory = new Map<string, string>();
+
+// ── Public storage: delegates per-call to correct backend ──
+
 export const storage: KeyValueStorage = {
-  getString(key: string) {
+  getString(key: string): string | undefined {
+    if (isWeb()) return webGetString(key);
     const native = getNativeMmkv();
     if (native) return native.getString(key);
     return memory.get(key);
   },
-  set(key: string, value: string | number | boolean) {
+  set(key: string, value: string | number | boolean): void {
+    if (isWeb()) { webSet(key, value); return; }
     const native = getNativeMmkv();
     if (native) native.set(key, value);
     else memory.set(key, String(value));
   },
-  delete(key: string) {
+  delete(key: string): void {
+    if (isWeb()) { webDelete(key); return; }
     const native = getNativeMmkv();
     if (native) native.remove(key);
     else memory.delete(key);

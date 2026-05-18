@@ -1,15 +1,21 @@
 /**
- * Schedules — lists cron jobs from GET /api/cron (xopc gateway `hono/routes/cron.ts`).
+ * Schedules — lists and controls cron jobs from xopc gateway.
  */
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { FlatList, Linking, RefreshControl, StyleSheet, useColorScheme, View } from 'react-native';
-import { ActivityIndicator, Appbar, Button, Chip, Icon, Text } from 'react-native-paper';
+import { ActivityIndicator, Appbar, Button, Chip, Icon, Snackbar, Text } from 'react-native-paper';
 
 import { useMessages } from '../src/i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '../src/lib/navigation';
-import { cronJobPromptPreview, fetchCronJobs, type CronJobRow } from '../src/query/cron';
+import {
+  cronJobPromptPreview,
+  fetchCronJobs,
+  runCronJobNow,
+  toggleCronJob,
+  type CronJobRow,
+} from '../src/query/cron';
 import { queryKeys } from '../src/query/keys';
 import { useGatewayConfigured } from '../src/query/sessions';
 
@@ -23,11 +29,37 @@ export default function SchedulesScreen() {
   const configured = useGatewayConfigured();
   const m = useMessages();
   const pm = m.schedulesPage;
+  const [snackbarMessage, setSnackbarMessage] = useState('');
 
   const jobsQuery = useQuery({
     queryKey: queryKeys.cronJobs,
     queryFn: fetchCronJobs,
     enabled: configured,
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => toggleCronJob(id, enabled),
+    onSuccess: async (_data, variables) => {
+      setSnackbarMessage(variables.enabled ? pm.enabledToast : pm.disabledToast);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.cronJobs });
+    },
+    onError: (error) => {
+      setSnackbarMessage(error instanceof Error ? error.message : pm.actionFailed);
+    },
+  });
+
+  const runMutation = useMutation({
+    mutationFn: (id: string) => runCronJobNow(id),
+    onSuccess: async () => {
+      setSnackbarMessage(pm.runStartedToast);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.cronJobs }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.cronRunsHistory(50) }),
+      ]);
+    },
+    onError: (error) => {
+      setSnackbarMessage(error instanceof Error ? error.message : pm.actionFailed);
+    },
   });
 
   const jobs = jobsQuery.data ?? [];
@@ -47,6 +79,12 @@ export default function SchedulesScreen() {
     ({ item }: { item: CronJobRow }) => {
       const title = item.name?.trim() || item.id;
       const preview = cronJobPromptPreview(item);
+      const statusText = item.enabled ? pm.enabled : pm.disabled;
+      const statusColor = item.enabled ? enabledColor : disabledColor;
+      const actionInFlight = toggleMutation.isPending || runMutation.isPending;
+      const isTogglingThisJob = toggleMutation.isPending && toggleMutation.variables?.id === item.id;
+      const isRunningThisJob = runMutation.isPending && runMutation.variables === item.id;
+
       return (
         <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
           <View style={styles.cardHeader}>
@@ -60,8 +98,8 @@ export default function SchedulesScreen() {
               </Text>
             </View>
             <View style={[styles.badge, { backgroundColor: item.enabled ? 'rgba(22,163,74,0.12)' : 'rgba(220,38,38,0.12)' }]}>
-              <Text style={{ color: item.enabled ? enabledColor : disabledColor, fontSize: 12, fontWeight: '600' }}>
-                {item.enabled ? m.channelsPage.enabled : m.channelsPage.disabled}
+              <Text style={{ color: statusColor, fontSize: 12, fontWeight: '600' }}>
+                {statusText}
               </Text>
             </View>
           </View>
@@ -83,10 +121,33 @@ export default function SchedulesScreen() {
               {pm.prompt}: {preview}
             </Text>
           ) : null}
+
+          <View style={styles.actionsRow}>
+            <Button
+              mode="contained-tonal"
+              compact
+              icon="play"
+              onPress={() => runMutation.mutate(item.id)}
+              loading={isRunningThisJob}
+              disabled={actionInFlight}
+            >
+              {pm.runNow}
+            </Button>
+            <Button
+              mode="outlined"
+              compact
+              icon={item.enabled ? 'pause' : 'play-pause'}
+              onPress={() => toggleMutation.mutate({ id: item.id, enabled: !item.enabled })}
+              loading={isTogglingThisJob}
+              disabled={actionInFlight}
+            >
+              {item.enabled ? pm.disable : pm.enable}
+            </Button>
+          </View>
         </View>
       );
     },
-    [cardBg, cardBorder, disabledColor, enabledColor, m.channelsPage.disabled, m.channelsPage.enabled, pm, textPrimary, textSecondary],
+    [cardBg, cardBorder, disabledColor, enabledColor, pm, runMutation, textPrimary, textSecondary, toggleMutation],
   );
 
   const listHeader = (
@@ -172,6 +233,13 @@ export default function SchedulesScreen() {
           </View>
         }
       />
+      <Snackbar
+        visible={Boolean(snackbarMessage)}
+        onDismiss={() => setSnackbarMessage('')}
+        duration={3000}
+      >
+        {snackbarMessage}
+      </Snackbar>
     </View>
   );
 }
@@ -203,6 +271,12 @@ const styles = StyleSheet.create({
   },
   label: { fontSize: 13, lineHeight: 18 },
   preview: { fontSize: 12, lineHeight: 17 },
+  actionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
   footer: { alignItems: 'center', paddingVertical: 16 },
   empty: { alignItems: 'center', paddingVertical: 32 },
 });

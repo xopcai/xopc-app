@@ -1,5 +1,5 @@
 /**
- * Gateway capability shortcuts — agents, skills, channels, schedules, tasks (full-screen routes).
+ * Gateway capability shortcuts — agents and cron screens.
  */
 import { useRouter } from 'expo-router';
 import { memo, useCallback } from 'react';
@@ -10,8 +10,6 @@ import { useMessages } from '../../i18n/messages';
 
 const ROWS = [
   { href: '/agents' as const, icon: 'robot-outline', titleKey: 'agentsTitle' as const },
-  { href: '/skills' as const, icon: 'puzzle-outline', titleKey: 'skillsTitle' as const },
-  { href: '/channels' as const, icon: 'swap-horizontal', titleKey: 'channelsTitle' as const },
   { href: '/schedules' as const, icon: 'clock-outline', titleKey: 'schedulesTitle' as const },
   { href: '/tasks' as const, icon: 'checkbox-marked-outline', titleKey: 'tasksTitle' as const },
 ];
@@ -24,8 +22,6 @@ export const GatewayFeaturesSection = memo(function GatewayFeaturesSection() {
 
   const titles = {
     agentsTitle: m.agentsPage.title,
-    skillsTitle: m.skillsPage.title,
-    channelsTitle: m.channelsPage.title,
     schedulesTitle: m.schedulesPage.title,
     tasksTitle: m.tasksPage.title,
   };

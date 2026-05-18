@@ -15,6 +15,9 @@ import {
 import { Icon, Snackbar } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
+import { CommandPaletteBar } from './CommandPaletteBar';
+import { SlashTokenInput } from './SlashTokenInput';
+import { useCommandPalette } from './useCommandPalette';
 import { VoiceMeterBars } from './VoiceMeterBars';
 import {
   beginRecording,
@@ -56,7 +59,11 @@ export const ChatComposer = memo(function ChatComposer({
   const [mode, setMode] = useState<InputMode>('text');
   const [draft, setDraft] = useState('');
   const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
+  const [cursorPos, setCursorPos] = useState(0);
   const inputRef = useRef<TextInput>(null);
+
+  // Command palette integration
+  const palette = useCommandPalette(draft, cursorPos);
 
   const [hudOpen, setHudOpen] = useState(false);
   const [hudCancel, setHudCancel] = useState(false);
@@ -195,11 +202,22 @@ export const ChatComposer = memo(function ChatComposer({
     [finalizeRecordingInteraction, mode, disabled, streaming, startGrantFlow],
   );
 
+  const handlePaletteSelect = useCallback(
+    (item: import('./command-palette.types').PaletteItem) => {
+      const newDraft = palette.applyItem(item);
+      setDraft(newDraft);
+      setCursorPos(newDraft.length);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    },
+    [palette],
+  );
+
   const handleSend = useCallback(() => {
     const text = draft.trim();
     if (!text) return;
     onSend(text);
     setDraft('');
+    setCursorPos(0);
     setInputHeight(MIN_INPUT_HEIGHT);
   }, [draft, onSend]);
 
@@ -239,6 +257,15 @@ export const ChatComposer = memo(function ChatComposer({
         </View>
       ) : null}
 
+      {palette.open ? (
+        <CommandPaletteBar
+          items={palette.items}
+          query={palette.query}
+          loading={palette.loading}
+          onSelect={handlePaletteSelect}
+        />
+      ) : null}
+
       <View style={styles.barRow}>
         <View style={[styles.inputShell, { backgroundColor: surface, borderColor: border }]}>
           <Pressable
@@ -256,19 +283,24 @@ export const ChatComposer = memo(function ChatComposer({
 
           {mode === 'text' ? (
             <>
-              <TextInput
+              <SlashTokenInput
                 ref={inputRef}
                 style={[
                   styles.input,
                   {
-                    height: inputHeight,
                     color: scheme === 'dark' ? '#F5F5F7' : '#1C1C1E',
                   },
                 ]}
                 placeholder={placeholder ?? 'Message'}
                 placeholderTextColor="#8E8E93"
                 value={draft}
-                onChangeText={setDraft}
+                onChangeText={(text) => {
+                  setDraft(text);
+                  setCursorPos(text.length);
+                }}
+                onCursorChange={setCursorPos}
+                cursorPos={cursorPos}
+                isDark={scheme === 'dark'}
                 multiline
                 editable={!disabled}
                 onContentSizeChange={onContentSizeChange}

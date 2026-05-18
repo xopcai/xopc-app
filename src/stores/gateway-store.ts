@@ -2,6 +2,8 @@ import { create } from 'zustand';
 
 import { KEYS, storage } from '../storage/mmkv';
 
+export const DEFAULT_GATEWAY_BASE_URL = 'http://localhost:18790';
+
 export type GatewayState = {
   baseUrl: string;
   token: string;
@@ -61,7 +63,10 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
 
   apiUrl: (path: string) => {
     const base = normalizeBaseUrl(get().baseUrl);
-    const p = path.startsWith('/') ? path : `/${path}`;
-    return `${base}${p}`;
+    if (!base) {
+      throw new Error('Gateway base URL is not configured');
+    }
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    return `${base}${normalizedPath}`;
   },
 }));

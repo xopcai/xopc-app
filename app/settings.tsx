@@ -11,7 +11,7 @@ import { dismissOrHome, useDismissOnHardwareBack } from '../src/lib/navigation';
 import { AgentSection } from '../src/features/settings/AgentSection';
 import { AppearanceSection } from '../src/features/settings/AppearanceSection';
 import { GatewayFeaturesSection } from '../src/features/settings/GatewayFeaturesSection';
-import { useGatewayStore } from '../src/stores/gateway-store';
+import { DEFAULT_GATEWAY_BASE_URL, useGatewayStore } from '../src/stores/gateway-store';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -44,7 +44,7 @@ export default function SettingsScreen() {
   } = useForm<GatewaySettingsForm>({
     resolver: zodResolver(gatewaySettingsSchema),
     defaultValues: {
-      baseUrl: baseUrl || 'http://127.0.0.1:8787',
+      baseUrl: baseUrl || DEFAULT_GATEWAY_BASE_URL,
       token: token || '',
       thinking: thinking || '',
     },
@@ -129,7 +129,7 @@ export default function SettingsScreen() {
 
       <Divider style={styles.sectionDivider} />
 
-      {/* ── Gateway features (agents, skills, …) ─────── */}
+      {/* ── Gateway features (agents, schedules, tasks) ─────── */}
       <GatewayFeaturesSection />
 
       <Divider style={styles.sectionDivider} />

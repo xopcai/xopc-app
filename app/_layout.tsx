@@ -109,22 +109,6 @@ export default function RootLayout() {
                 }}
               />
               <Stack.Screen
-                name="skills"
-                options={{
-                  headerShown: true,
-                  title: m.skillsPage.title,
-                  presentation: 'modal',
-                }}
-              />
-              <Stack.Screen
-                name="channels"
-                options={{
-                  headerShown: true,
-                  title: m.channelsPage.title,
-                  presentation: 'modal',
-                }}
-              />
-              <Stack.Screen
                 name="schedules"
                 options={{
                   headerShown: false,

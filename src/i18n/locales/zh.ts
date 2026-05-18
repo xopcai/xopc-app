@@ -16,12 +16,9 @@ export const zh: MessageBundle = {
   drawer: {
     newChat: '新建对话',
     agents: '智能体',
-    skills: '技能',
     cron: '定时任务',
-    channels: '消息通道',
     conversations: '对话',
     chats: '对话',
-    channelsTab: '消息通道',
     brandDescription: '语言、主题与字号',
     historyTitle: '历史会话',
     sectionThisWeek: '本周',
@@ -147,7 +144,7 @@ export const zh: MessageBundle = {
     welcomeTitle: '今天想做点什么？',
     welcomeSubtitle: '点击下方示例，或直接输入你的问题。',
     suggestion1: '介绍一下当前网关会话能做什么',
-    suggestion2: '说明智能体和技能是如何协作的',
+    suggestion2: '说明智能体和定时任务是如何协作的',
     suggestion3: '帮我排查一下接口连接问题',
     aiDisclaimer: '内容由 AI 生成',
     holdToSpeak: '按住说话',
@@ -173,7 +170,7 @@ export const zh: MessageBundle = {
     thinkingLevel: '思考级别（可选）',
     save: '保存',
     gatewayFeatures: '网关功能',
-    gatewayFeaturesHint: '智能体、通道、定时与任务等在独立页面中打开。',
+    gatewayFeaturesHint: '智能体、定时安排与最近任务记录会在独立页面中打开。',
     // 外观
     appearance: '外观',
     language: '语言',
@@ -201,39 +198,24 @@ export const zh: MessageBundle = {
     chatWith: '对话',
   },
 
-  // ── Channels 页面 ─────────────────────────────────────────
-  channelsPage: {
-    title: '消息通道',
-    empty: '未配置任何消息通道。',
-    loadFailed: '加载消息通道失败。',
-    enabled: '已启用',
-    disabled: '已禁用',
-    connected: '已连接',
-    disconnected: '未连接',
-  },
-
-  // ── Skills 页面 ──────────────────────────────────────────
-  skillsPage: {
-    title: '技能',
-    empty: '暂无可用技能。',
-    loadFailed: '加载技能失败。',
-    enabled: '已启用',
-    disabled: '已禁用',
-    sourceBuiltin: '内置',
-    sourceWorkspace: '工作区',
-    sourceGlobal: '全局',
-    sourceExtra: '扩展',
-    managed: '托管',
-  },
 
   schedulesPage: {
     title: '定时安排',
-    subtitle: '网关返回的 Cron 任务（此处只读）。新建或编辑请在桌面控制台操作。',
+    subtitle: '来自网关的 Cron 任务。你可以在这里立即运行任务，或启用/禁用任务。',
     empty: '暂无定时任务。',
     loadFailed: '加载定时任务失败。',
     schedule: '表达式',
     nextRun: '下次运行',
     prompt: '指令摘要',
+    enabled: '已启用',
+    disabled: '已禁用',
+    runNow: '立即运行',
+    enable: '启用',
+    disable: '禁用',
+    runStartedToast: '任务已开始运行。',
+    enabledToast: '任务已启用。',
+    disabledToast: '任务已禁用。',
+    actionFailed: 'Cron 操作失败。',
     openDocs: 'Cron 文档',
   },
 
@@ -249,6 +231,13 @@ export const zh: MessageBundle = {
     statusFailed: '失败',
     statusCancelled: '已取消',
     openDocs: 'Cron 文档',
+  },
+
+  // ── 命令面板 ──────────────────────────────────────────────
+  commandPalette: {
+    noResults: '无匹配的命令',
+    skills: '技能',
+    commands: '命令',
   },
 
   // ── 通用 ────────────────────────────────────────────────
