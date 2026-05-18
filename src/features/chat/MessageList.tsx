@@ -7,12 +7,15 @@
  * so the scroll position resets cleanly — no visible "scroll down" flash.
  */
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { ActivityIndicator, Text } from 'react-native-paper';
 
+import { useKeyboardListPadding } from '../../hooks/use-keyboard-list-padding';
 import { MessageBubble } from './MessageBubble';
 import type { Message, ProgressState } from './messages.types';
+
+const LIST_BASE_PADDING_BOTTOM = 8;
 
 /** Generate a stable key for each message row. */
 function messageKey(msg: Message, index: number): string {
@@ -26,7 +29,6 @@ export const MessageList = memo(function MessageList({
   progress,
   loading,
   sessionKey,
-  keyboardVisible,
   welcomeTitle,
   welcomeSubtitle,
   suggestions,
@@ -38,8 +40,6 @@ export const MessageList = memo(function MessageList({
   loading: boolean;
   /** Pass the current session key so we can reset scroll state on session switch. */
   sessionKey?: string;
-  /** When true, scroll so the latest messages stay visible above the keyboard. */
-  keyboardVisible?: boolean;
   welcomeTitle?: string;
   welcomeSubtitle?: string;
   suggestions?: string[];
@@ -47,6 +47,7 @@ export const MessageList = memo(function MessageList({
 }) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const keyboardPadding = useKeyboardListPadding();
   const listRef = useRef<FlashListRef<Message>>(null);
   const isAtBottomRef = useRef(true);
   const prevLengthRef = useRef(messages.length);
@@ -86,11 +87,21 @@ export const MessageList = memo(function MessageList({
   }, [messages, streaming]);
 
   useEffect(() => {
-    if (!keyboardVisible || messages.length === 0) return;
+    if (keyboardPadding <= 0 || messages.length === 0) return;
     requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd({ animated: true });
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToEnd({ animated: true });
+      });
     });
-  }, [keyboardVisible, messages.length]);
+  }, [keyboardPadding, messages.length]);
+
+  const listContentStyle = useMemo(
+    () => ({
+      paddingTop: 12,
+      paddingBottom: LIST_BASE_PADDING_BOTTOM + keyboardPadding,
+    }),
+    [keyboardPadding],
+  );
 
   const renderItem = useCallback(
     ({ item, index }: { item: Message; index: number }) => {
@@ -179,7 +190,7 @@ export const MessageList = memo(function MessageList({
       data={messages}
       renderItem={renderItem}
       keyExtractor={keyExtractor}
-      contentContainerStyle={styles.listContent}
+      contentContainerStyle={listContentStyle}
       onMomentumScrollEnd={onScrollEnd}
       onScrollEndDrag={onScrollEnd}
       showsVerticalScrollIndicator={false}
@@ -246,9 +257,5 @@ const styles = StyleSheet.create({
   chipText: {
     textAlign: 'left',
     lineHeight: 20,
-  },
-  listContent: {
-    paddingTop: 12,
-    paddingBottom: 8,
   },
 });

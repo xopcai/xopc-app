@@ -606,7 +606,6 @@ export default function ChatScreen() {
             progress={progress}
             loading={sessionQuery.isLoading}
             sessionKey={sessionKey}
-            keyboardVisible={keyboardVisible}
             welcomeTitle={m.chat.welcomeTitle}
             welcomeSubtitle={m.chat.welcomeSubtitle}
             suggestions={chatSuggestions}
