@@ -160,6 +160,217 @@ export function dispatchAgentSseEvent(
   }
 }
 
+/** Incremental `text/event-stream` line parser (fetch stream, XHR progress, or buffered text). */
+export class AgentSseLineParser {
+  private buf = '';
+  private evtType = '';
+  private evtData = '';
+
+  constructor(
+    private readonly callbacks?: AgentSseCallbacks,
+    private readonly options?: AgentSseDispatchOptions,
+  ) {}
+
+  feed(chunk: string): void {
+    if (!chunk) return;
+    this.buf += chunk.replace(/\r\n/g, '\n');
+    this.drainCompleteLines();
+  }
+
+  flush(): void {
+    this.drainCompleteLines();
+    if (this.evtData) {
+      dispatchAgentSseEvent(this.evtType || 'message', this.evtData, this.callbacks, this.options);
+      this.evtType = '';
+      this.evtData = '';
+    }
+  }
+
+  private drainCompleteLines(): void {
+    while (this.buf.includes('\n')) {
+      const idx = this.buf.indexOf('\n');
+      let line = this.buf.slice(0, idx);
+      this.buf = this.buf.slice(idx + 1);
+      line = line.replace(/\r$/, '');
+      this.processLine(line);
+    }
+  }
+
+  private processLine(line: string): void {
+    if (line.startsWith('event:')) {
+      this.evtData = '';
+      this.evtType = line.slice(6).trim();
+    } else if (line.startsWith('data:')) {
+      const payload = line.startsWith('data: ') ? line.slice(6) : line.slice(5);
+      this.evtData += (this.evtData ? '\n' : '') + payload;
+    } else if (line === '' && this.evtData) {
+      dispatchAgentSseEvent(this.evtType || 'message', this.evtData, this.callbacks, this.options);
+      this.evtType = '';
+      this.evtData = '';
+    }
+  }
+}
+
+/** True when `fetch` exposes a readable `response.body` suitable for incremental SSE parsing. */
+export function supportsReadableStreamBody(res: Response): boolean {
+  const body = res.body;
+  if (body == null || typeof TextDecoderStream === 'undefined') return false;
+  try {
+    return typeof body.getReader === 'function';
+  } catch {
+    return false;
+  }
+}
+
+export function isEventStreamResponse(res: Response): boolean {
+  return (res.headers.get('Content-Type') || '').includes('text/event-stream');
+}
+
+/** Parse a complete `text/event-stream` payload (buffered fallback). */
+export function consumeAgentSseFromText(
+  text: string,
+  callbacks: AgentSseCallbacks | undefined,
+  options?: AgentSseDispatchOptions,
+): void {
+  const parser = new AgentSseLineParser(callbacks, options);
+  parser.feed(text);
+  parser.flush();
+}
+
+export type AgentSseHttpInit = {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  signal?: AbortSignal;
+};
+
+export type AgentSseHttpResult = {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  responseText?: string;
+};
+
+/**
+ * Use XHR `onprogress` for incremental SSE when `fetch().body` is unavailable (React Native Android/iOS).
+ */
+export function shouldUseXhrForAgentSse(): boolean {
+  if (typeof XMLHttpRequest === 'undefined') return false;
+  if (typeof document !== 'undefined') {
+    try {
+      const body = new Response('').body;
+      if (body != null && typeof body.getReader === 'function' && typeof TextDecoderStream !== 'undefined') {
+        return false;
+      }
+    } catch {
+      /* use XHR */
+    }
+  }
+  return true;
+}
+
+export function consumeAgentSseXhr(
+  url: string,
+  init: AgentSseHttpInit,
+  callbacks: AgentSseCallbacks | undefined,
+  options?: AgentSseDispatchOptions,
+): Promise<AgentSseHttpResult> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const method = init.method ?? 'POST';
+    xhr.open(method, url, true);
+
+    const headers = init.headers ?? {};
+    for (const [key, value] of Object.entries(headers)) {
+      xhr.setRequestHeader(key, value);
+    }
+
+    const parser = new AgentSseLineParser(callbacks, options);
+    let parsedLen = 0;
+    let settled = false;
+
+    const finish = (result: AgentSseHttpResult) => {
+      if (settled) return;
+      settled = true;
+      init.signal?.removeEventListener('abort', onAbort);
+      resolve(result);
+    };
+
+    const fail = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      init.signal?.removeEventListener('abort', onAbort);
+      reject(err);
+    };
+
+    const drainProgress = () => {
+      const text = xhr.responseText;
+      if (text.length > parsedLen) {
+        parser.feed(text.slice(parsedLen));
+        parsedLen = text.length;
+      }
+    };
+
+    const onAbort = () => {
+      xhr.abort();
+    };
+
+    if (init.signal?.aborted) {
+      fail(abortError());
+      return;
+    }
+    init.signal?.addEventListener('abort', onAbort);
+
+    xhr.onprogress = drainProgress;
+
+    xhr.onload = () => {
+      drainProgress();
+      parser.flush();
+      finish({
+        ok: xhr.status >= 200 && xhr.status < 300,
+        status: xhr.status,
+        statusText: xhr.statusText,
+        responseText: xhr.responseText,
+      });
+    };
+
+    xhr.onerror = () => {
+      fail(new Error('Network request failed'));
+    };
+
+    xhr.onabort = () => {
+      if (init.signal?.aborted) {
+        fail(abortError());
+        return;
+      }
+      fail(new Error('Request aborted'));
+    };
+
+    xhr.send(init.body ?? null);
+  });
+}
+
+function abortError(): Error {
+  const err = new Error('Aborted');
+  err.name = 'AbortError';
+  return err;
+}
+
+/**
+ * Consume an agent SSE HTTP response, streaming when supported or buffering via `text()` otherwise.
+ */
+export async function consumeAgentSseResponse(
+  res: Response,
+  callbacks: AgentSseCallbacks | undefined,
+  options?: AgentSseDispatchOptions,
+): Promise<void> {
+  if (supportsReadableStreamBody(res)) {
+    await consumeAgentSseStream(res.body as ReadableStream<Uint8Array>, callbacks, options);
+    return;
+  }
+  consumeAgentSseFromText(await res.text(), callbacks, options);
+}
+
 /**
  * Incrementally parse `text/event-stream` lines from a UTF-8 byte stream and dispatch events.
  */
@@ -168,39 +379,18 @@ export async function consumeAgentSseStream(
   callbacks: AgentSseCallbacks | undefined,
   options?: AgentSseDispatchOptions,
 ): Promise<void> {
+  const parser = new AgentSseLineParser(callbacks, options);
   const reader = body
     .pipeThrough(new TextDecoderStream() as unknown as ReadableWritablePair<string, Uint8Array>)
     .getReader();
-  let buf = '';
-  let evtType = '';
-  let evtData = '';
 
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      buf += value;
-
-      while (buf.includes('\n')) {
-        const idx = buf.indexOf('\n');
-        let line = buf.slice(0, idx);
-        buf = buf.slice(idx + 1);
-        line = line.replace(/\r$/, '');
-
-        if (line.startsWith('event:')) {
-          evtData = '';
-          evtType = line.slice(6).trim();
-        } else if (line.startsWith('data:')) {
-          const payload = line.startsWith('data: ') ? line.slice(6) : line.slice(5);
-          evtData += (evtData ? '\n' : '') + payload;
-        } else if (line === '' && evtData) {
-          dispatchAgentSseEvent(evtType || 'message', evtData, callbacks, options);
-          evtType = '';
-          evtData = '';
-        }
-      }
+      parser.feed(value);
     }
-    if (evtData) dispatchAgentSseEvent(evtType || 'message', evtData, callbacks, options);
+    parser.flush();
   } finally {
     reader.releaseLock();
   }

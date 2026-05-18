@@ -10,7 +10,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DrawerActions } from '@react-navigation/native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { Banner, IconButton, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -35,6 +36,7 @@ import { fetchChatAgents } from '../../src/query/agents';
 import { queryKeys } from '../../src/query/keys';
 import { createSession, fetchSession, renameSession, useGatewayConfigured } from '../../src/query/sessions';
 import { pendingRunStorageKey, storage } from '../../src/storage/mmkv';
+import { useKeyboardVisible } from '../../src/hooks/use-keyboard-visible';
 import { useGatewayStore } from '../../src/stores/gateway-store';
 
 // ── Session wire → UI message helpers (ported from web/src/features/chat/agent-messages.ts) ──
@@ -261,6 +263,7 @@ export default function ChatScreen() {
   const configured = useGatewayConfigured();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
+  const keyboardVisible = useKeyboardVisible();
   const m = useMessages();
 
   // ── Agent / model info ───────────────────────────────────
@@ -580,12 +583,7 @@ export default function ChatScreen() {
         </View>
       </View>
 
-      <KeyboardAvoidingView
-        style={[styles.chatBody, { backgroundColor: canvasBg }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        /** Custom header sits above this view — iOS must offset by header + status inset or the composer stays under the keyboard. */
-        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 56 : 0}
-      >
+      <View style={[styles.chatBody, { backgroundColor: canvasBg }]}>
         {error ? (
           <Banner visible icon="alert" actions={[{ label: m.chat.dismiss, onPress: () => setError(null) }]}>
             {error}
@@ -608,6 +606,7 @@ export default function ChatScreen() {
             progress={progress}
             loading={sessionQuery.isLoading}
             sessionKey={sessionKey}
+            keyboardVisible={keyboardVisible}
             welcomeTitle={m.chat.welcomeTitle}
             welcomeSubtitle={m.chat.welcomeSubtitle}
             suggestions={chatSuggestions}
@@ -615,19 +614,31 @@ export default function ChatScreen() {
           />
         </View>
 
-        <ChatComposer
-          disabled={sessionQuery.isLoading}
-          streaming={streaming}
-          onSend={(text) => void send(text)}
-          onAbort={abort}
-          placeholder={m.chat.inputPlaceholder}
-          suggestionDraft={composerSuggestion}
-          onConsumeSuggestionDraft={() => setComposerSuggestion(undefined)}
-        />
-        <Text style={[styles.aiDisclaimer, { color: pillMuted, paddingBottom: Math.max(10, insets.bottom) }]}>
-          {m.chat.aiDisclaimer}
-        </Text>
-      </KeyboardAvoidingView>
+        <KeyboardStickyView
+          offset={{ closed: 0, opened: 0 }}
+          style={{ backgroundColor: canvasBg }}
+        >
+          <ChatComposer
+            disabled={sessionQuery.isLoading}
+            streaming={streaming}
+            onSend={(text) => void send(text)}
+            onAbort={abort}
+            placeholder={m.chat.inputPlaceholder}
+            suggestionDraft={composerSuggestion}
+            onConsumeSuggestionDraft={() => setComposerSuggestion(undefined)}
+          />
+          {!keyboardVisible ? (
+            <Text
+              style={[
+                styles.aiDisclaimer,
+                { color: pillMuted, paddingBottom: Math.max(10, insets.bottom) },
+              ]}
+            >
+              {m.chat.aiDisclaimer}
+            </Text>
+          ) : null}
+        </KeyboardStickyView>
+      </View>
 
       {/* ── Dialogs ──────────────────────────────────── */}
       <RenameDialog

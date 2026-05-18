@@ -1,10 +1,14 @@
 import {
-  consumeAgentSseStream,
+  consumeAgentSseResponse,
+  consumeAgentSseXhr,
+  isEventStreamResponse,
+  shouldUseXhrForAgentSse,
   type AgentSseCallbacks,
   type AgentSseDispatchOptions,
 } from '@xopcai/gateway-sse-client';
 
-import { apiFetch, formatApiHttpError } from './client';
+import { apiFetch, buildAgentSseHeaders, formatApiHttpError, notifyUnauthorizedIfNeeded } from './client';
+import { useGatewayStore } from '../stores/gateway-store';
 import { pendingRunStorageKey, storage } from '../storage/mmkv';
 
 export type MessagingCallbacks = AgentSseCallbacks;
@@ -81,35 +85,55 @@ export class AgentMessageSender {
       channel: 'webchat',
       ...(thinkingLevel?.trim() ? { thinking: thinkingLevel.trim() } : {}),
     };
+    const bodyJson = JSON.stringify(mergedBody);
+    const terminal = wrapTerminalCallbacks(callbacks);
+    const opts = sseDispatchOptions(this._sseChatId);
 
-    const res = await apiFetch(path, {
-      method: 'POST',
-      headers: { Accept: 'text/event-stream' },
-      body: JSON.stringify(mergedBody),
-      signal: this._abort.signal,
-    });
-
-    if (!res.ok) {
-      const errBody = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-      throw new Error(formatApiHttpError(res.status, res.statusText, errBody.error?.message));
-    }
-
-    await Promise.resolve();
-
-    const ct = res.headers.get('Content-Type') || '';
-    if (ct.includes('text/event-stream') && res.body) {
-      const terminal = wrapTerminalCallbacks(callbacks);
-      const opts = sseDispatchOptions(this._sseChatId);
-      await consumeAgentSseStream(res.body, terminal.wrapped, opts);
-      if (!terminal.sawTerminal && !this._abort?.signal.aborted) {
-        terminal.onMissingTerminal();
+    if (shouldUseXhrForAgentSse()) {
+      const result = await consumeAgentSseXhr(
+        useGatewayStore.getState().apiUrl(path),
+        {
+          method: 'POST',
+          headers: buildAgentSseHeaders(),
+          body: bodyJson,
+          signal: this._abort.signal,
+        },
+        terminal.wrapped,
+        opts,
+      );
+      notifyUnauthorizedIfNeeded(result.status);
+      if (!result.ok) {
+        const errBody = parseApiErrorBody(result.responseText);
+        throw new Error(formatApiHttpError(result.status, result.statusText, errBody));
       }
     } else {
-      const json = (await res.json()) as { ok?: boolean; payload?: { content?: string } };
-      if (json.ok && json.payload?.content) {
-        callbacks?.onToken(json.payload.content);
-        callbacks?.onResult();
+      const res = await apiFetch(path, {
+        method: 'POST',
+        headers: { Accept: 'text/event-stream' },
+        body: bodyJson,
+        signal: this._abort.signal,
+      });
+
+      if (!res.ok) {
+        const errBody = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+        throw new Error(formatApiHttpError(res.status, res.statusText, errBody.error?.message));
       }
+
+      await Promise.resolve();
+
+      if (isEventStreamResponse(res)) {
+        await consumeAgentSseResponse(res, terminal.wrapped, opts);
+      } else {
+        const json = (await res.json()) as { ok?: boolean; payload?: { content?: string } };
+        if (json.ok && json.payload?.content) {
+          callbacks?.onToken(json.payload.content);
+          callbacks?.onResult();
+        }
+      }
+    }
+
+    if (!terminal.sawTerminal && !this._abort?.signal.aborted) {
+      terminal.onMissingTerminal();
     }
 
     this._clearPendingRun();
@@ -166,30 +190,62 @@ export class AgentMessageSender {
   async resume(runId: string, chatId: string, callbacks?: MessagingCallbacks, _thinkingLevel?: string): Promise<void> {
     this._abort = new AbortController();
     this._sseChatId = chatId;
+    const terminal = wrapTerminalCallbacks(callbacks);
+    const opts = sseDispatchOptions(chatId);
+    const bodyJson = JSON.stringify({ runId, chatId });
 
-    const res = await apiFetch('/api/agent/resume', {
-      method: 'POST',
-      headers: { Accept: 'text/event-stream' },
-      body: JSON.stringify({ runId, chatId }),
-      signal: this._abort.signal,
-    });
+    if (shouldUseXhrForAgentSse()) {
+      const result = await consumeAgentSseXhr(
+        useGatewayStore.getState().apiUrl('/api/agent/resume'),
+        {
+          method: 'POST',
+          headers: buildAgentSseHeaders(),
+          body: bodyJson,
+          signal: this._abort.signal,
+        },
+        terminal.wrapped,
+        opts,
+      );
+      notifyUnauthorizedIfNeeded(result.status);
+      if (!result.ok) {
+        this._clearPendingRun();
+        this._abort = undefined;
+        return;
+      }
+    } else {
+      const res = await apiFetch('/api/agent/resume', {
+        method: 'POST',
+        headers: { Accept: 'text/event-stream' },
+        body: bodyJson,
+        signal: this._abort.signal,
+      });
 
-    if (!res.ok) {
-      this._clearPendingRun();
-      this._abort = undefined;
-      return;
+      if (!res.ok) {
+        this._clearPendingRun();
+        this._abort = undefined;
+        return;
+      }
+
+      if (isEventStreamResponse(res)) {
+        await consumeAgentSseResponse(res, terminal.wrapped, opts);
+      }
     }
 
-    const ct = res.headers.get('Content-Type') || '';
-    if (ct.includes('text/event-stream') && res.body) {
-      const terminal = wrapTerminalCallbacks(callbacks);
-      await consumeAgentSseStream(res.body, terminal.wrapped, sseDispatchOptions(chatId));
-      if (!terminal.sawTerminal && !this._abort?.signal.aborted) {
-        terminal.onMissingTerminal();
-      }
+    if (!terminal.sawTerminal && !this._abort?.signal.aborted) {
+      terminal.onMissingTerminal();
     }
 
     this._clearPendingRun();
     this._abort = undefined;
+  }
+}
+
+function parseApiErrorBody(responseText?: string): string | undefined {
+  if (!responseText?.trim()) return undefined;
+  try {
+    const body = JSON.parse(responseText) as { error?: { message?: string } };
+    return body.error?.message;
+  } catch {
+    return undefined;
   }
 }

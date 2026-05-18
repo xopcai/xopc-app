@@ -5,6 +5,7 @@ import * as Linking from 'expo-linking';
 import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
 
 import { tryConsumeGatewayDeeplink } from '../src/features/gateway/apply-gateway-deeplink';
@@ -83,53 +84,55 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <QueryClientProvider client={queryClient}>
-        <PaperProvider theme={paperTheme}>
-          <GatewayConnectLandingContext.Provider value={gatewayConnectCtx}>
-            <Stack screenOptions={{ headerShown: false }}>
+      <KeyboardProvider>
+        <QueryClientProvider client={queryClient}>
+          <PaperProvider theme={paperTheme}>
+            <GatewayConnectLandingContext.Provider value={gatewayConnectCtx}>
+              <Stack screenOptions={{ headerShown: false }}>
               {/**
                * Keep the main app group first so cold start / restored state default to chat,
                * not the first modal screen declared below.
                */}
-              <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
-              <Stack.Screen
-                name="settings"
-                options={{
-                  headerShown: true,
-                  title: m.settings.title,
-                  presentation: 'modal',
-                }}
+                <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
+                <Stack.Screen
+                  name="settings"
+                  options={{
+                    headerShown: true,
+                    title: m.settings.title,
+                    presentation: 'modal',
+                  }}
+                />
+                <Stack.Screen
+                  name="agents"
+                  options={{
+                    headerShown: true,
+                    title: m.agentsPage.title,
+                    presentation: 'modal',
+                  }}
+                />
+                <Stack.Screen
+                  name="schedules"
+                  options={{
+                    headerShown: false,
+                    presentation: 'modal',
+                  }}
+                />
+                <Stack.Screen
+                  name="tasks"
+                  options={{
+                    headerShown: false,
+                    presentation: 'modal',
+                  }}
+                />
+              </Stack>
+              <GatewayConnectLandingModal
+                visible={connectLandingVisible}
+                onRequestClose={onConnectLandingClose}
               />
-              <Stack.Screen
-                name="agents"
-                options={{
-                  headerShown: true,
-                  title: m.agentsPage.title,
-                  presentation: 'modal',
-                }}
-              />
-              <Stack.Screen
-                name="schedules"
-                options={{
-                  headerShown: false,
-                  presentation: 'modal',
-                }}
-              />
-              <Stack.Screen
-                name="tasks"
-                options={{
-                  headerShown: false,
-                  presentation: 'modal',
-                }}
-              />
-            </Stack>
-            <GatewayConnectLandingModal
-              visible={connectLandingVisible}
-              onRequestClose={onConnectLandingClose}
-            />
-          </GatewayConnectLandingContext.Provider>
-        </PaperProvider>
-      </QueryClientProvider>
+            </GatewayConnectLandingContext.Provider>
+          </PaperProvider>
+        </QueryClientProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

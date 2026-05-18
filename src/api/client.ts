@@ -28,3 +28,23 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
 
   return res;
 }
+
+export function notifyUnauthorizedIfNeeded(status: number): void {
+  if (status !== 401) return;
+  const { onUnauthorized } = useGatewayStore.getState();
+  onUnauthorized();
+  void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.agents });
+}
+
+export function buildAgentSseHeaders(): Record<string, string> {
+  const { token } = useGatewayStore.getState();
+  const headers: Record<string, string> = {
+    Accept: 'text/event-stream',
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}

@@ -26,6 +26,7 @@ export const MessageList = memo(function MessageList({
   progress,
   loading,
   sessionKey,
+  keyboardVisible,
   welcomeTitle,
   welcomeSubtitle,
   suggestions,
@@ -37,6 +38,8 @@ export const MessageList = memo(function MessageList({
   loading: boolean;
   /** Pass the current session key so we can reset scroll state on session switch. */
   sessionKey?: string;
+  /** When true, scroll so the latest messages stay visible above the keyboard. */
+  keyboardVisible?: boolean;
   welcomeTitle?: string;
   welcomeSubtitle?: string;
   suggestions?: string[];
@@ -81,6 +84,13 @@ export const MessageList = memo(function MessageList({
       });
     }
   }, [messages, streaming]);
+
+  useEffect(() => {
+    if (!keyboardVisible || messages.length === 0) return;
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd({ animated: true });
+    });
+  }, [keyboardVisible, messages.length]);
 
   const renderItem = useCallback(
     ({ item, index }: { item: Message; index: number }) => {
