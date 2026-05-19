@@ -16,6 +16,7 @@ import {
 } from './client';
 import { capAttachments } from '../features/chat/chat-limits';
 import type { WireAttachment } from '../features/chat/composer.types';
+import { clearPendingAgentRun, setPendingAgentRun } from '../features/gateway/pending-agent-run';
 import { useGatewayStore } from '../stores/gateway-store';
 import { pendingRunStorageKey, storage } from '../storage/mmkv';
 
@@ -80,11 +81,12 @@ function wrapTerminalCallbacks(cb?: MessagingCallbacks): {
   };
 }
 
-function sseDispatchOptions(sseChatId: string): AgentSseDispatchOptions {
+function sseDispatchOptions(sseChatId: string, sender: AgentMessageSender): AgentSseDispatchOptions {
   return {
     sseChatId,
     savePendingRunId: (chatId, runId) => {
-      storage.set(pendingRunStorageKey(chatId), JSON.stringify({ runId }));
+      sender.trackPendingRunId(runId);
+      setPendingAgentRun(chatId, runId);
     },
   };
 }
@@ -95,9 +97,20 @@ function sseDispatchOptions(sseChatId: string): AgentSseDispatchOptions {
 export class AgentMessageSender {
   private _abort?: AbortController;
   private _sseChatId = '';
+  /** `runId` from the `status` event for this POST/resume; do not clear a newer pending run. */
+  private _trackedRunId?: string;
 
   get isSending() {
     return !!this._abort;
+  }
+
+  isStreamingFor(chatId: string): boolean {
+    return !!this._abort && this._sseChatId === chatId;
+  }
+
+  trackPendingRunId(runId: string): void {
+    const id = runId.trim();
+    if (id) this._trackedRunId = id;
   }
 
   async send(
@@ -116,7 +129,7 @@ export class AgentMessageSender {
     };
     const bodyJson = JSON.stringify(mergedBody);
     const terminal = wrapTerminalCallbacks(callbacks);
-    const opts = sseDispatchOptions(this._sseChatId);
+    const opts = sseDispatchOptions(this._sseChatId, this);
 
     try {
       if (shouldUseXhrForAgentSse()) {
@@ -184,7 +197,7 @@ export class AgentMessageSender {
     this._sseChatId = sessionKey;
 
     const terminal = wrapTerminalCallbacks(callbacks);
-    const opts = sseDispatchOptions(this._sseChatId);
+    const opts = sseDispatchOptions(this._sseChatId, this);
 
     try {
       if (shouldUseXhrForAgentSse()) {
@@ -241,7 +254,7 @@ export class AgentMessageSender {
 
   abort(): void {
     this._notifyServerAbort();
-    this._clearPendingRun();
+    this._forceClearPendingRun();
     this._abort?.abort();
     this._abort = undefined;
   }
@@ -263,14 +276,37 @@ export class AgentMessageSender {
     }
   }
 
-  private _clearPendingRun(): void {
-    if (this._sseChatId) {
-      try {
-        storage.delete(pendingRunStorageKey(this._sseChatId));
-      } catch {
-        /* ignore */
-      }
+  private _forceClearPendingRun(): void {
+    const chatId = this._sseChatId;
+    if (!chatId) return;
+    try {
+      storage.delete(pendingRunStorageKey(chatId));
+      clearPendingAgentRun(chatId);
+    } catch {
+      /* ignore */
     }
+    this._trackedRunId = undefined;
+  }
+
+  private _clearPendingRun(): void {
+    const chatId = this._sseChatId;
+    if (!chatId) return;
+    try {
+      const key = pendingRunStorageKey(chatId);
+      const raw = storage.getString(key);
+      if (raw) {
+        const pr = JSON.parse(raw) as { runId?: string };
+        const stored = typeof pr?.runId === 'string' ? pr.runId : '';
+        if (this._trackedRunId && stored && stored !== this._trackedRunId) {
+          return;
+        }
+      }
+      storage.delete(key);
+      clearPendingAgentRun(chatId);
+    } catch {
+      /* ignore */
+    }
+    this._trackedRunId = undefined;
   }
 
   async sendMessage(
@@ -314,10 +350,12 @@ export class AgentMessageSender {
   }
 
   async resume(runId: string, chatId: string, callbacks?: MessagingCallbacks): Promise<void> {
+    this._trackedRunId = undefined;
     this._abort = new AbortController();
     this._sseChatId = chatId;
+    this.trackPendingRunId(runId);
     const terminal = wrapTerminalCallbacks(callbacks);
-    const opts = sseDispatchOptions(chatId);
+    const opts = sseDispatchOptions(chatId, this);
     const bodyJson = JSON.stringify({ runId, chatId });
 
     if (shouldUseXhrForAgentSse()) {

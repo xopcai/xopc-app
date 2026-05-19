@@ -25,6 +25,15 @@ import { AgentPickerSheet } from '../../src/features/chat/AgentPickerSheet';
 import { GoalMissionCard } from '../../src/features/chat/GoalMissionCard';
 import { MessageList } from '../../src/features/chat/MessageList';
 import {
+  useAgentStreamResume,
+  type AgentStreamResumeOptions,
+} from '../../src/features/chat/use-agent-stream-resume';
+import { subscribeGatewayEvent } from '../../src/features/gateway/gateway-event-bus';
+import {
+  readPendingAgentRunId,
+  subscribePendingAgentRunChanged,
+} from '../../src/features/gateway/pending-agent-run';
+import {
   followUpPromptForSuggestionId,
   suggestFollowUpsFromAssistantMessage,
   type FollowUpSuggestionId,
@@ -51,7 +60,6 @@ import {
   renameSession,
   useGatewayConfigured,
 } from '../../src/query/sessions';
-import { pendingRunStorageKey, storage } from '../../src/storage/mmkv';
 import { useKeyboardVisible } from '../../src/hooks/use-keyboard-visible';
 import { usePreferencesStore } from '../../src/stores/preferences-store';
 
@@ -839,30 +847,42 @@ export default function ChatScreen() {
     }
   }, [clarifyPrompt, clarifySubmitting]);
 
+  const [pendingRunTick, setPendingRunTick] = useState(0);
+
+  useEffect(() => {
+    return subscribePendingAgentRunChanged((detail) => {
+      if (detail.chatId === sessionKey) {
+        setPendingRunTick((n) => n + 1);
+      }
+    });
+  }, [sessionKey]);
+
   const pendingRunId = useMemo(() => {
     if (!sessionKey) return null;
-    try {
-      const raw = storage.getString(pendingRunStorageKey(sessionKey));
-      if (!raw) return null;
-      const p = JSON.parse(raw) as { runId?: string };
-      return typeof p.runId === 'string' ? p.runId : null;
-    } catch {
-      return null;
-    }
-  }, [sessionKey, streaming]);
+    return readPendingAgentRunId(sessionKey);
+  }, [sessionKey, streaming, pendingRunTick]);
 
-  const resume = useCallback(async () => {
-    if (!sessionKey || !pendingRunId || streaming || awaitingSessionRefresh) return;
-    clearStreamingMessage();
+  const resume = useCallback(async (opts?: AgentStreamResumeOptions) => {
+    const background = opts?.background === true;
+    const runId = pendingRunId ?? (sessionKey ? readPendingAgentRunId(sessionKey) : null);
+    if (!sessionKey || !runId) return;
+    if (senderRef.current.isStreamingFor(sessionKey)) return;
+    if (!background && (streaming || awaitingSessionRefresh)) return;
+
+    if (background) {
+      setAwaitingSessionRefresh(false);
+      setSessionRefreshStartedAt(0);
+    } else {
+      clearStreamingMessage();
+      setAwaitingSessionRefresh(false);
+      setSessionRefreshStartedAt(0);
+    }
     setProgress(null);
-    setAwaitingSessionRefresh(false);
-    setSessionRefreshStartedAt(0);
+    setStreaming(true);
+    streamingRef.current = true;
+    setError(null);
     try {
-      await senderRef.current.resume(
-        pendingRunId,
-        sessionKey,
-        buildCallbacks(sessionKey),
-      );
+      await senderRef.current.resume(runId, sessionKey, buildCallbacks(sessionKey));
       autoResumeFailedRef.current = false;
     } catch (e) {
       if (activeSessionKeyRef.current !== sessionKey) {
@@ -874,13 +894,40 @@ export default function ChatScreen() {
       setStreaming(false);
       streamingRef.current = false;
     }
-  }, [sessionKey, pendingRunId, streaming, awaitingSessionRefresh, invalidateSessionByKey, clearStreamingMessage]);
+  }, [
+    sessionKey,
+    pendingRunId,
+    streaming,
+    awaitingSessionRefresh,
+    invalidateSessionByKey,
+    clearStreamingMessage,
+  ]);
 
-  // Auto-resume: self-heal SSE connection when a pending run is detected
+  useAgentStreamResume({
+    sessionKey,
+    senderRef,
+    activeSessionKeyRef,
+    tryResume: resume,
+    streaming,
+  });
+
+  // Auto-resume when a pending run id appears (e.g. stored from POST `status` before clear race).
   useEffect(() => {
-    if (!pendingRunId || streaming || awaitingSessionRefresh || autoResumeFailedRef.current) return;
-    void resume();
-  }, [pendingRunId, streaming, awaitingSessionRefresh, resume]);
+    if (!pendingRunId || autoResumeFailedRef.current) return;
+    if (senderRef.current.isStreamingFor(sessionKey)) return;
+    if (streaming && !awaitingSessionRefresh) return;
+    void resume({ background: awaitingSessionRefresh });
+  }, [pendingRunId, streaming, awaitingSessionRefresh, resume, sessionKey]);
+
+  useEffect(() => {
+    return subscribeGatewayEvent('session-updated', (detail) => {
+      const key = (detail as { key?: string }).key;
+      if (key && key === sessionKey) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoal(sessionKey) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoalRuns(sessionKey, 1) });
+      }
+    });
+  }, [queryClient, sessionKey]);
 
   useEffect(() => {
     return () => {
@@ -1123,7 +1170,7 @@ export default function ChatScreen() {
           <Banner
             visible
             icon="sync"
-            actions={[{ label: m.chat.resumeButton, onPress: () => { autoResumeFailedRef.current = false; void resume(); } }]}
+            actions={[{ label: m.chat.resumeButton, onPress: () => { autoResumeFailedRef.current = false; void resume({ background: true }); } }]}
           >
             {m.chat.resumeBanner}
           </Banner>

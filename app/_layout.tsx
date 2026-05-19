@@ -11,6 +11,7 @@ import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
 import { tryConsumeGatewayDeeplink } from '../src/features/gateway/apply-gateway-deeplink';
 import { GatewayConnectLandingContext } from '../src/features/gateway/gateway-connect-context';
 import { GatewayConnectLandingModal } from '../src/features/gateway/GatewayConnectLandingModal';
+import { useGatewaySse } from '../src/features/gateway/use-gateway-sse';
 import { useMessages } from '../src/i18n/messages';
 import { queryClient } from '../src/query/query-client';
 import { useGatewayConfigured } from '../src/query/sessions';
@@ -29,6 +30,8 @@ export default function RootLayout() {
   const configured = useGatewayConfigured();
   const unauthorized = useGatewayStore((s) => s.unauthorized);
   const [userDismissedConnect, setUserDismissedConnect] = useState(false);
+
+  useGatewaySse();
 
   const paperTheme = resolvedTheme === 'dark' ? MD3DarkTheme : MD3LightTheme;
 
