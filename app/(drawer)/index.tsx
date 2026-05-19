@@ -10,7 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DrawerActions } from '@react-navigation/native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { Banner, IconButton, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,7 +34,13 @@ import {
 } from '../../src/features/chat/streaming';
 import { fetchChatAgents, resolveEffectiveDefaultAgentId } from '../../src/query/agents';
 import { queryKeys } from '../../src/query/keys';
-import { createSession, fetchSession, renameSession, useGatewayConfigured } from '../../src/query/sessions';
+import {
+  createSession,
+  fetchSession,
+  fetchSessionsList,
+  renameSession,
+  useGatewayConfigured,
+} from '../../src/query/sessions';
 import { pendingRunStorageKey, storage } from '../../src/storage/mmkv';
 import { useKeyboardVisible } from '../../src/hooks/use-keyboard-visible';
 import { useGatewayStore } from '../../src/stores/gateway-store';
@@ -276,6 +282,15 @@ export default function ChatScreen() {
 
   const localDefaultAgentId = usePreferencesStore((s) => s.defaultAgentId);
 
+  const sessionsQuery = useQuery({
+    queryKey: queryKeys.sessions,
+    queryFn: fetchSessionsList,
+    enabled: configured && !sessionKey,
+  });
+
+  const [creatingInitialSession, setCreatingInitialSession] = useState(false);
+  const autoSessionStartedRef = useRef(false);
+
   const modelName = useMemo(() => {
     const agents = agentsQuery.data?.items ?? [];
     const defaultId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
@@ -513,6 +528,51 @@ export default function ChatScreen() {
     return () => senderRef.current.abort();
   }, []);
 
+  /** Open latest session (or create one) when landing on home without `k`. */
+  useEffect(() => {
+    if (sessionKey || !configured || autoSessionStartedRef.current) return;
+    if (sessionsQuery.isLoading || sessionsQuery.isFetching) return;
+
+    if (sessionsQuery.isError) return;
+
+    const sessions = sessionsQuery.data ?? [];
+    if (sessions.length > 0) {
+      autoSessionStartedRef.current = true;
+      router.setParams({ k: sessions[0].key });
+      return;
+    }
+
+    if (!sessionsQuery.isFetched || creatingInitialSession) return;
+
+    autoSessionStartedRef.current = true;
+    setCreatingInitialSession(true);
+    const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
+    void createSession(agentId)
+      .then((key) => {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+        router.setParams({ k: key });
+      })
+      .catch(() => {
+        autoSessionStartedRef.current = false;
+      })
+      .finally(() => {
+        setCreatingInitialSession(false);
+      });
+  }, [
+    sessionKey,
+    configured,
+    sessionsQuery.isLoading,
+    sessionsQuery.isFetching,
+    sessionsQuery.isFetched,
+    sessionsQuery.isError,
+    sessionsQuery.data,
+    creatingInitialSession,
+    agentsQuery.data,
+    localDefaultAgentId,
+    router,
+    queryClient,
+  ]);
+
   // ── New chat ─────────────────────────────────────────────
   const handleNewChat = useCallback(() => {
     const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
@@ -543,7 +603,15 @@ export default function ChatScreen() {
     router.push('/agents');
   }, [router]);
 
-  // ── Render: no session key → prompt ──────────────────────
+  const bootstrappingSession =
+    !sessionKey &&
+    configured &&
+    (sessionsQuery.isLoading ||
+      sessionsQuery.isFetching ||
+      creatingInitialSession ||
+      (sessionsQuery.isSuccess && (sessionsQuery.data?.length ?? 0) > 0));
+
+  // ── Render: no session key → bootstrap or fallback ───────
   if (!sessionKey) {
     return (
       <View style={[styles.screen, { backgroundColor: canvasBg }]}>
@@ -562,8 +630,16 @@ export default function ChatScreen() {
           </View>
         </View>
         <View style={styles.emptyContainer}>
-          <Text variant="bodyLarge" style={{ opacity: 0.65 }}>{m.sessions.empty}</Text>
-          <Text variant="bodySmall" style={{ opacity: 0.45, marginTop: 8, textAlign: 'center' }}>{m.sessions.emptyHint}</Text>
+          {bootstrappingSession ? (
+            <ActivityIndicator size="large" />
+          ) : (
+            <>
+              <Text variant="bodyLarge" style={{ opacity: 0.65 }}>{m.sessions.empty}</Text>
+              <Text variant="bodySmall" style={{ opacity: 0.45, marginTop: 8, textAlign: 'center' }}>
+                {m.sessions.emptyHint}
+              </Text>
+            </>
+          )}
         </View>
       </View>
     );
