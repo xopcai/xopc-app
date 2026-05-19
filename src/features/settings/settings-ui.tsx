@@ -1,0 +1,156 @@
+import { Pressable, StyleSheet, useColorScheme, View, type ViewStyle } from 'react-native';
+import { Icon, Text } from 'react-native-paper';
+
+export function useSettingsColors() {
+  const isDark = useColorScheme() === 'dark';
+  return {
+    pageBg: isDark ? '#000000' : '#F5F7FA',
+    card: isDark ? '#1C1C1E' : '#FFFFFF',
+    text: isDark ? '#F5F5F7' : '#1C1C1E',
+    textMuted: isDark ? '#8E8E93' : '#8E8E93',
+    border: isDark ? '#38383A' : '#E5E5EA',
+    accent: '#007AFF',
+    sectionLabel: isDark ? '#8E8E93' : '#8E8E93',
+  };
+}
+
+type SettingsSectionProps = {
+  title?: string;
+  children: React.ReactNode;
+  style?: ViewStyle;
+};
+
+export function SettingsSection({ title, children, style }: SettingsSectionProps) {
+  const colors = useSettingsColors();
+  return (
+    <View style={[styles.section, style]}>
+      {title ? (
+        <Text style={[styles.sectionTitle, { color: colors.sectionLabel }]}>{title}</Text>
+      ) : null}
+      <View style={[styles.card, { backgroundColor: colors.card }]}>{children}</View>
+    </View>
+  );
+}
+
+type SettingsRowProps = {
+  icon: string;
+  iconColor?: string;
+  label: string;
+  value?: string;
+  showChevron?: boolean;
+  isLast?: boolean;
+  onPress?: () => void;
+};
+
+export function SettingsRow({
+  icon,
+  iconColor = '#007AFF',
+  label,
+  value,
+  showChevron = true,
+  isLast = false,
+  onPress,
+}: SettingsRowProps) {
+  const colors = useSettingsColors();
+  const content = (
+    <View style={[styles.row, !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}>
+      <View style={[styles.iconWrap, { backgroundColor: `${iconColor}18` }]}>
+        <Icon source={icon} size={18} color={iconColor} />
+      </View>
+      <Text style={[styles.rowLabel, { color: colors.text }]} numberOfLines={1}>
+        {label}
+      </Text>
+      {value ? (
+        <Text style={[styles.rowValue, { color: colors.textMuted }]} numberOfLines={1}>
+          {value}
+        </Text>
+      ) : null}
+      {showChevron ? <Icon source="chevron-right" size={20} color={colors.textMuted} /> : null}
+    </View>
+  );
+
+  if (!onPress) return content;
+
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => pressed && styles.rowPressed}>
+      {content}
+    </Pressable>
+  );
+}
+
+type SettingsOptionRowProps = {
+  label: string;
+  selected?: boolean;
+  isLast?: boolean;
+  onPress: () => void;
+};
+
+export function SettingsOptionRow({ label, selected, isLast, onPress }: SettingsOptionRowProps) {
+  const colors = useSettingsColors();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.optionRow,
+        !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+        pressed && styles.rowPressed,
+      ]}
+    >
+      <Text style={[styles.optionLabel, { color: colors.text }]}>{label}</Text>
+      {selected ? <Icon source="check" size={20} color={colors.accent} /> : null}
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  section: {
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  card: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    gap: 12,
+  },
+  rowPressed: {
+    opacity: 0.65,
+  },
+  iconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  rowValue: {
+    fontSize: 15,
+    maxWidth: '42%',
+    textAlign: 'right',
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  optionLabel: {
+    fontSize: 16,
+  },
+});

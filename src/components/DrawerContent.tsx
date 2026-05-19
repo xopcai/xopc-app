@@ -6,9 +6,8 @@ import { DrawerActions } from '@react-navigation/native';
 import type { DrawerContentComponentProps } from '@react-navigation/drawer';
 import Constants from 'expo-constants';
 import { useGlobalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,10 +16,8 @@ import {
 } from 'react-native';
 import {
   ActivityIndicator,
-  Divider,
   Icon,
   IconButton,
-  Menu,
   Searchbar,
   Text,
   TouchableRipple,
@@ -37,8 +34,6 @@ import {
   useGatewayConfigured,
 } from '../query/sessions';
 import type { SessionListItem } from '../query/sessions';
-import { usePreferencesStore } from '../stores/preferences-store';
-import type { Language, ThemePreference } from '../stores/preferences-store';
 
 function groupSessions(
   items: SessionListItem[],
@@ -79,23 +74,11 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
   const configured = useGatewayConfigured();
   const m = useMessages();
   const dm = m.drawer;
-  const sm = m.drawerMenu;
-
   const params = useGlobalSearchParams<{ k?: string }>();
   const rawK = params.k;
   const activeKey = typeof rawK === 'string' ? rawK : Array.isArray(rawK) ? rawK[0] : '';
 
   const [searchQuery, setSearchQuery] = useState('');
-
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [langSubVisible, setLangSubVisible] = useState(false);
-  const [themeSubVisible, setThemeSubVisible] = useState(false);
-  const gearRef = useRef<View>(null);
-
-  const language = usePreferencesStore((s) => s.language);
-  const themePreference = usePreferencesStore((s) => s.themePreference);
-  const setLanguage = usePreferencesStore((s) => s.setLanguage);
-  const setThemePreference = usePreferencesStore((s) => s.setThemePreference);
 
   const sessionsQuery = useQuery({
     queryKey: queryKeys.sessions,
@@ -167,8 +150,6 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
     accent: '#007AFF',
     activeRow: isDark ? 'rgba(0,122,255,0.18)' : 'rgba(0,122,255,0.10)',
     blueAvatar: '#007AFF',
-    menuSurface: isDark ? '#1C1C1E' : '#FFFFFF',
-    menuBorder: isDark ? '#38383A' : '#E5E5EA',
   };
 
   const renderSessionRow = useCallback(
@@ -254,132 +235,15 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
                 </View>
               </View>
             </View>
-            <Menu
-              visible={menuVisible}
-              onDismiss={() => {
-                setMenuVisible(false);
-                setLangSubVisible(false);
-                setThemeSubVisible(false);
+            <IconButton
+              icon="cog-outline"
+              size={22}
+              iconColor={colors.textMuted}
+              onPress={() => {
+                navigation.dispatch(DrawerActions.closeDrawer());
+                router.push('/settings');
               }}
-              anchor={
-                <View ref={gearRef}>
-                  <IconButton
-                    icon="cog-outline"
-                    size={22}
-                    iconColor={colors.textMuted}
-                    onPress={() => setMenuVisible(true)}
-                  />
-                </View>
-              }
-              anchorPosition="top"
-              contentStyle={[
-                styles.menuContent,
-                { backgroundColor: colors.menuSurface, borderColor: colors.menuBorder },
-              ]}
-            >
-              <Menu.Item
-                leadingIcon="web"
-                title={sm.language}
-                trailingIcon={langSubVisible ? 'chevron-up' : 'chevron-right'}
-                onPress={() => {
-                  setLangSubVisible(!langSubVisible);
-                  setThemeSubVisible(false);
-                }}
-                titleStyle={{ color: colors.text }}
-              />
-              {langSubVisible ? (
-                <View style={styles.subMenu}>
-                  {(['en', 'zh'] as Language[]).map((lang) => (
-                    <Menu.Item
-                      key={lang}
-                      title={lang === 'en' ? 'English' : '中文'}
-                      onPress={() => {
-                        setLanguage(lang);
-                        setLangSubVisible(false);
-                        setMenuVisible(false);
-                      }}
-                      titleStyle={{
-                        color: language === lang ? colors.accent : colors.text,
-                        fontWeight: language === lang ? '700' : '400',
-                      }}
-                      style={styles.subMenuItem}
-                    />
-                  ))}
-                </View>
-              ) : null}
-
-              <Menu.Item
-                leadingIcon="theme-light-dark"
-                title={sm.theme}
-                trailingIcon={themeSubVisible ? 'chevron-up' : 'chevron-right'}
-                onPress={() => {
-                  setThemeSubVisible(!themeSubVisible);
-                  setLangSubVisible(false);
-                }}
-                titleStyle={{ color: colors.text }}
-              />
-              {themeSubVisible ? (
-                <View style={styles.subMenu}>
-                  {(['light', 'dark', 'system'] as ThemePreference[]).map((pref) => {
-                    const labelMap = { light: sm.themeLight, dark: sm.themeDark, system: sm.themeSystem };
-                    return (
-                      <Menu.Item
-                        key={pref}
-                        title={labelMap[pref]}
-                        onPress={() => {
-                          setThemePreference(pref);
-                          setThemeSubVisible(false);
-                          setMenuVisible(false);
-                        }}
-                        titleStyle={{
-                          color: themePreference === pref ? colors.accent : colors.text,
-                          fontWeight: themePreference === pref ? '700' : '400',
-                        }}
-                        style={styles.subMenuItem}
-                      />
-                    );
-                  })}
-                </View>
-              ) : null}
-
-              <Menu.Item
-                leadingIcon="format-size"
-                title={sm.fontSize}
-                trailingIcon="chevron-right"
-                onPress={() => {}}
-                titleStyle={{ color: colors.text }}
-              />
-
-              <Divider style={{ backgroundColor: colors.border, marginVertical: 4 }} />
-
-              <Menu.Item
-                leadingIcon="information-outline"
-                title={sm.about}
-                onPress={() => setMenuVisible(false)}
-                titleStyle={{ color: colors.text }}
-              />
-
-              <Menu.Item
-                leadingIcon="book-open-variant"
-                title={sm.helpDocs}
-                trailingIcon="open-in-new"
-                onPress={() => {
-                  setMenuVisible(false);
-                  void Linking.openURL('https://github.com/nicepkg/xopc');
-                }}
-                titleStyle={{ color: colors.text }}
-              />
-
-              <Menu.Item
-                leadingIcon="cog-outline"
-                title={sm.openAllSettings}
-                onPress={() => {
-                  setMenuVisible(false);
-                  router.push('/settings');
-                }}
-                titleStyle={{ color: colors.text }}
-              />
-            </Menu>
+            />
           </View>
 
           <Text style={[styles.versionHint, { color: colors.textMuted }]}>v{appVersion}</Text>
@@ -534,18 +398,6 @@ const styles = StyleSheet.create({
   sessionLabel: {
     fontSize: 14,
     flex: 1,
-  },
-  menuContent: {
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingVertical: 4,
-    minWidth: 220,
-  },
-  subMenu: {
-    paddingLeft: 12,
-  },
-  subMenuItem: {
-    height: 40,
   },
   emptyWrap: {
     paddingVertical: 24,

@@ -1,33 +1,19 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useNavigation, useRouter } from 'expo-router';
-import { useLayoutEffect } from 'react';
+import { useRouter } from 'expo-router';
 import { Controller, useForm } from 'react-hook-form';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { Button, Divider, HelperText, IconButton, Text, TextInput } from 'react-native-paper';
+import { Button, HelperText, Text, TextInput } from 'react-native-paper';
 
-import { type GatewaySettingsForm, gatewaySettingsSchema } from '../src/config/schema';
-import { useMessages } from '../src/i18n/messages';
-import { dismissOrHome, useDismissOnHardwareBack } from '../src/lib/navigation';
-import { AgentSection } from '../src/features/settings/AgentSection';
-import { AppearanceSection } from '../src/features/settings/AppearanceSection';
-import { GatewayFeaturesSection } from '../src/features/settings/GatewayFeaturesSection';
-import { DEFAULT_GATEWAY_BASE_URL, useGatewayStore } from '../src/stores/gateway-store';
+import { type GatewaySettingsForm, gatewaySettingsSchema } from '../../src/config/schema';
+import { useSettingsColors } from '../../src/features/settings/settings-ui';
+import { useMessages } from '../../src/i18n/messages';
+import { DEFAULT_GATEWAY_BASE_URL, useGatewayStore } from '../../src/stores/gateway-store';
 
-export default function SettingsScreen() {
+export default function GatewaySettingsScreen() {
   const router = useRouter();
-  const navigation = useNavigation();
   const m = useMessages();
   const s = m.settings;
-
-  useDismissOnHardwareBack(router);
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerLeft: () => (
-        <IconButton icon="arrow-left" onPress={() => dismissOrHome(router)} />
-      ),
-    });
-  }, [navigation, router, s.title]);
+  const colors = useSettingsColors();
 
   const baseUrl = useGatewayStore((st) => st.baseUrl);
   const token = useGatewayStore((st) => st.token);
@@ -55,16 +41,16 @@ export default function SettingsScreen() {
     setToken(data.token);
     setThinking(data.thinking);
     persist();
-    dismissOrHome(router);
+    router.back();
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      {/* ── Gateway section ──────────────────────────── */}
-      <Text variant="titleMedium" style={styles.sectionTitle}>
-        {s.gateway}
-      </Text>
-      <Text variant="bodySmall" style={styles.sectionHint}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.pageBg }}
+      contentContainerStyle={styles.scroll}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text variant="bodySmall" style={[styles.hint, { color: colors.textMuted }]}>
         {s.gatewayHint}
       </Text>
 
@@ -101,6 +87,7 @@ export default function SettingsScreen() {
             autoCapitalize="none"
             secureTextEntry
             mode="outlined"
+            style={styles.fieldGap}
           />
         )}
       />
@@ -116,7 +103,7 @@ export default function SettingsScreen() {
             onChangeText={onChange}
             autoCapitalize="none"
             mode="outlined"
-            style={styles.thinkingInput}
+            style={styles.fieldGap}
           />
         )}
       />
@@ -126,24 +113,6 @@ export default function SettingsScreen() {
           {s.save}
         </Button>
       </View>
-
-      <Divider style={styles.sectionDivider} />
-
-      {/* ── Gateway features (agents, schedules, tasks) ─────── */}
-      <GatewayFeaturesSection />
-
-      <Divider style={styles.sectionDivider} />
-
-      {/* ── Appearance section ───────────────────────── */}
-      <AppearanceSection />
-
-      <Divider style={styles.sectionDivider} />
-
-      {/* ── Agent section ────────────────────────────── */}
-      <AgentSection />
-
-      {/* Bottom spacer */}
-      <View style={styles.bottomSpacer} />
     </ScrollView>
   );
 }
@@ -152,24 +121,14 @@ const styles = StyleSheet.create({
   scroll: {
     padding: 16,
   },
-  sectionTitle: {
-    marginBottom: 8,
-  },
-  sectionHint: {
+  hint: {
     marginBottom: 16,
-    opacity: 0.75,
+    lineHeight: 20,
   },
-  thinkingInput: {
+  fieldGap: {
     marginTop: 8,
   },
   saveRow: {
     marginTop: 24,
-  },
-  sectionDivider: {
-    marginTop: 28,
-    marginBottom: 4,
-  },
-  bottomSpacer: {
-    height: 40,
   },
 });

@@ -159,6 +159,15 @@ export const en = {
   // ── Settings screen ─────────────────────────────────────
   settings: {
     title: 'Settings',
+    sectionPreferences: 'Preferences',
+    sectionGatewayFeatures: 'Gateway features',
+    sectionAbout: 'About',
+    about: 'About',
+    aboutDescription: 'Mobile client for the xopc gateway — chat, agents, and scheduled tasks.',
+    helpDocs: 'Help docs',
+    sourceCode: 'Source code',
+    softwareVersion: 'Version',
+    gatewayNotConfigured: 'Not configured',
     // Gateway section
     gateway: 'Gateway',
     gatewayHint: 'MMKV persists these fields in a development build. Expo Go uses in-memory storage only.',

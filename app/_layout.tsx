@@ -97,8 +97,7 @@ export default function RootLayout() {
                 <Stack.Screen
                   name="settings"
                   options={{
-                    headerShown: true,
-                    title: m.settings.title,
+                    headerShown: false,
                     presentation: 'modal',
                   }}
                 />

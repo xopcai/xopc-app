@@ -4,7 +4,7 @@
  * Mirrors web/src/stores/locale-store.ts + theme-store.ts combined,
  * adapted for React Native (no DOM, no View Transitions).
  */
-import { Appearance } from 'react-native';
+import { Appearance, Platform } from 'react-native';
 import { create } from 'zustand';
 
 import { KEYS, storage } from '../storage/mmkv';
@@ -27,6 +27,12 @@ export type PreferencesState = {
 };
 
 // ── Helpers ──────────────────────────────────────────────
+
+/** Push preference to RN so `useColorScheme()` matches the user's choice (native only). */
+function syncAppearance(pref: ThemePreference): void {
+  if (Platform.OS === 'web') return;
+  Appearance.setColorScheme(pref === 'system' ? null : pref);
+}
 
 function resolveTheme(pref: ThemePreference): 'light' | 'dark' {
   if (pref === 'system') {
@@ -56,6 +62,7 @@ export const usePreferencesStore = create<PreferencesState>((set, _get) => ({
   },
 
   setThemePreference: (themePreference) => {
+    syncAppearance(themePreference);
     const resolvedTheme = resolveTheme(themePreference);
     storage.set(KEYS.themePreference, themePreference);
     set({ themePreference, resolvedTheme });
@@ -66,6 +73,7 @@ export const usePreferencesStore = create<PreferencesState>((set, _get) => ({
     const themeRaw = storage.getString(KEYS.themePreference);
     const language = isValidLanguage(langRaw) ? langRaw : 'en';
     const themePreference = isValidThemePref(themeRaw) ? themeRaw : 'system';
+    syncAppearance(themePreference);
     set({ language, themePreference, resolvedTheme: resolveTheme(themePreference) });
   },
 }));

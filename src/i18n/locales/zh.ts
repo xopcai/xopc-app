@@ -160,6 +160,15 @@ export const zh: MessageBundle = {
   // ── 设置界面 ────────────────────────────────────────────
   settings: {
     title: '设置',
+    sectionPreferences: '偏好设置',
+    sectionGatewayFeatures: '网关功能',
+    sectionAbout: '关于',
+    about: '关于',
+    aboutDescription: 'xopc 网关移动端 — 对话、智能体与定时任务。',
+    helpDocs: '帮助文档',
+    sourceCode: '源代码',
+    softwareVersion: '软件版本',
+    gatewayNotConfigured: '未配置',
     // 网关
     gateway: '网关',
     gatewayHint: '开发构建中通过 MMKV 持久化存储。Expo Go 仅使用内存存储。',
