@@ -42,6 +42,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "./plugins/with-android-maven-mirrors",
       "expo-router",
       [
         "expo-av",
