@@ -1,8 +1,11 @@
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 
-import { composerAttachmentFromBase64, type AttachmentPickSource } from './attachment-file-io-core';
+import {
+  arrayBufferToBase64,
+  composerAttachmentFromBase64,
+  type AttachmentPickSource,
+} from './attachment-file-io-core';
 import { MAX_WEBCHAT_ATTACHMENT_FILE_BYTES } from './chat-limits';
 import type { ComposerAttachment } from './composer.types';
 import { mimeTypeFromFileName } from './tool-result-file-paths';
@@ -32,22 +35,24 @@ export class AttachmentFileError extends Error {
 }
 
 export async function readUriAsBase64(uri: string, fileName?: string): Promise<{ content: string; size: number }> {
-  const info = await FileSystem.getInfoAsync(uri);
-  const size =
-    info.exists && 'size' in info && typeof (info as { size?: number }).size === 'number'
-      ? (info as { size: number }).size
-      : 0;
+  let res: Response;
+  try {
+    res = await fetch(uri);
+  } catch {
+    throw new AttachmentFileError('Failed to read file', 'read_failed', fileName);
+  }
+  if (!res.ok) {
+    throw new AttachmentFileError('Failed to read file', 'read_failed', fileName);
+  }
+  const buffer = await res.arrayBuffer();
+  const size = buffer.byteLength;
   if (size > MAX_WEBCHAT_ATTACHMENT_FILE_BYTES) {
     throw new AttachmentFileError('File too large', 'too_large', fileName);
   }
-  const content = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  const resolvedSize = size || Math.ceil((content.replace(/\s/g, '').length * 3) / 4);
-  if (resolvedSize > MAX_WEBCHAT_ATTACHMENT_FILE_BYTES) {
-    throw new AttachmentFileError('File too large', 'too_large', fileName);
+  if (size === 0) {
+    throw new AttachmentFileError('Failed to read file', 'read_failed', fileName);
   }
-  return { content, size: resolvedSize };
+  return { content: arrayBufferToBase64(buffer), size };
 }
 
 async function loadFromUri(uri: string, name: string, mimeType?: string): Promise<ComposerAttachment> {

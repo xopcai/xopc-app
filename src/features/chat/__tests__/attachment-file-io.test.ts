@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  arrayBufferToBase64,
   composerAttachmentFromBase64,
   formatAttachmentSize,
   shouldOpenNativeImageEditor,
@@ -39,6 +40,13 @@ describe('composerAttachmentFromBase64', () => {
       size: 3,
     });
     expect(att.content).toBe('YWJj');
+  });
+});
+
+describe('arrayBufferToBase64', () => {
+  it('encodes bytes to base64', () => {
+    const buf = new Uint8Array([97, 98, 99]).buffer;
+    expect(arrayBufferToBase64(buf)).toBe('YWJj');
   });
 });
 
