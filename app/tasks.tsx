@@ -4,11 +4,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo } from 'react';
-import { FlatList, Linking, RefreshControl, StyleSheet, useColorScheme, View } from 'react-native';
+import { FlatList, Linking, RefreshControl, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Appbar, Button, Chip, Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../src/i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '../src/lib/navigation';
+import { useResolvedIsDark } from '../src/lib/stack-screen-theme';
 import { fetchCronRunsHistory, type CronRunRow } from '../src/query/cron';
 import { queryKeys } from '../src/query/keys';
 import { useGatewayConfigured } from '../src/query/sessions';
@@ -20,7 +21,7 @@ export default function TasksScreen() {
   const router = useRouter();
   useDismissOnHardwareBack(router);
   const queryClient = useQueryClient();
-  const isDark = useColorScheme() === 'dark';
+  const isDark = useResolvedIsDark();
   const configured = useGatewayConfigured();
   const m = useMessages();
   const pm = m.tasksPage;

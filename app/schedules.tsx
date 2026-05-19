@@ -4,11 +4,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, Linking, RefreshControl, StyleSheet, useColorScheme, View } from 'react-native';
+import { FlatList, Linking, RefreshControl, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Appbar, Button, Chip, Icon, Snackbar, Text } from 'react-native-paper';
 
 import { useMessages } from '../src/i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '../src/lib/navigation';
+import { useResolvedIsDark } from '../src/lib/stack-screen-theme';
 import {
   cronJobPromptPreview,
   fetchCronJobs,
@@ -25,7 +26,7 @@ export default function SchedulesScreen() {
   const router = useRouter();
   useDismissOnHardwareBack(router);
   const queryClient = useQueryClient();
-  const isDark = useColorScheme() === 'dark';
+  const isDark = useResolvedIsDark();
   const configured = useGatewayConfigured();
   const m = useMessages();
   const pm = m.schedulesPage;

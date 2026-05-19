@@ -9,6 +9,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
 
 import { tryConsumeGatewayDeeplink } from '../src/features/gateway/apply-gateway-deeplink';
+import { themedStackScreenOptions } from '../src/lib/stack-screen-theme';
 import { GatewayConnectLandingContext } from '../src/features/gateway/gateway-connect-context';
 import { GatewayConnectLandingModal } from '../src/features/gateway/GatewayConnectLandingModal';
 import { useGatewaySse } from '../src/features/gateway/use-gateway-sse';
@@ -33,7 +34,9 @@ export default function RootLayout() {
 
   useGatewaySse();
 
-  const paperTheme = resolvedTheme === 'dark' ? MD3DarkTheme : MD3LightTheme;
+  const isDark = resolvedTheme === 'dark';
+  const paperTheme = isDark ? MD3DarkTheme : MD3LightTheme;
+  const agentsStackOptions = themedStackScreenOptions(isDark);
 
   useEffect(() => {
     hydrateGateway();
@@ -110,6 +113,7 @@ export default function RootLayout() {
                     headerShown: true,
                     title: m.agentsPage.title,
                     presentation: 'modal',
+                    ...agentsStackOptions,
                   }}
                 />
                 <Stack.Screen

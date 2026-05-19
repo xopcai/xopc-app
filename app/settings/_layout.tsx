@@ -1,15 +1,18 @@
 import { Stack } from 'expo-router';
 
 import { useMessages } from '../../src/i18n/messages';
+import { useThemedStackScreenOptions } from '../../src/lib/stack-screen-theme';
 
 export default function SettingsLayout() {
   const m = useMessages();
   const s = m.settings;
+  const themedScreenOptions = useThemedStackScreenOptions();
 
   return (
     <Stack
       screenOptions={{
         headerShown: true,
+        ...themedScreenOptions,
       }}
     >
       <Stack.Screen name="index" options={{ title: s.title }} />

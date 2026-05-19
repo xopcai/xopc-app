@@ -1,8 +1,10 @@
-import { Pressable, StyleSheet, useColorScheme, View, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
+import { useResolvedIsDark } from '../../lib/stack-screen-theme';
+
 export function useSettingsColors() {
-  const isDark = useColorScheme() === 'dark';
+  const isDark = useResolvedIsDark();
   return {
     pageBg: isDark ? '#000000' : '#F5F7FA',
     card: isDark ? '#1C1C1E' : '#FFFFFF',

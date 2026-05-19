@@ -11,7 +11,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  useColorScheme,
   View,
 } from 'react-native';
 import {
@@ -26,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useGatewayConnectLanding } from '../features/gateway/gateway-connect-context';
 import { useMessages, t } from '../i18n/messages';
+import { useResolvedIsDark } from '../lib/stack-screen-theme';
 import { fetchChatAgents } from '../query/agents';
 import { queryKeys } from '../query/keys';
 import { resolveEffectiveDefaultAgentId } from '../query/agents';
@@ -72,7 +72,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
-  const isDark = useColorScheme() === 'dark';
+  const isDark = useResolvedIsDark();
   const configured = useGatewayConfigured();
   const m = useMessages();
   const dm = m.drawer;
