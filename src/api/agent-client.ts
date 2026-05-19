@@ -10,10 +10,10 @@ import {
 import {
   apiFetch,
   buildAgentSseHeaders,
-  buildAgentSseMultipartHeaders,
   formatApiHttpError,
   notifyUnauthorizedIfNeeded,
 } from './client';
+import { readUriAsBase64 } from '../features/chat/attachment-file-io';
 import { capAttachments } from '../features/chat/chat-limits';
 import type { WireAttachment } from '../features/chat/composer.types';
 import { clearPendingAgentRun, setPendingAgentRun } from '../features/gateway/pending-agent-run';
@@ -186,72 +186,6 @@ export class AgentMessageSender {
     }
   }
 
-  async sendMultipart(
-    path: string,
-    formData: FormData,
-    sessionKey: string,
-    callbacks?: MessagingCallbacks,
-  ): Promise<void> {
-    this._abort = new AbortController();
-    const abortController = this._abort;
-    this._sseChatId = sessionKey;
-
-    const terminal = wrapTerminalCallbacks(callbacks);
-    const opts = sseDispatchOptions(this._sseChatId, this);
-
-    try {
-      if (shouldUseXhrForAgentSse()) {
-        const result = await consumeAgentSseXhr(
-          useGatewayStore.getState().apiUrl(path),
-          {
-            method: 'POST',
-            headers: buildAgentSseMultipartHeaders(),
-            body: formData,
-            signal: abortController.signal,
-          },
-          terminal.wrapped,
-          opts,
-        );
-        notifyUnauthorizedIfNeeded(result.status);
-        if (!result.ok) {
-          const errBody = parseApiErrorBody(result.responseText);
-          throw new Error(formatApiHttpError(result.status, result.statusText, errBody));
-        }
-      } else {
-        const res = await apiFetch(path, {
-          method: 'POST',
-          headers: { Accept: 'text/event-stream' },
-          body: formData,
-          signal: abortController.signal,
-        });
-
-        if (!res.ok) {
-          const errBody = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-          throw new Error(formatApiHttpError(res.status, res.statusText, errBody.error?.message));
-        }
-
-        if (isEventStreamResponse(res)) {
-          await consumeAgentSseResponse(res, terminal.wrapped, opts);
-        } else {
-          const json = (await res.json()) as { ok?: boolean; payload?: { content?: string } };
-          if (json.ok && json.payload?.content) {
-            callbacks?.onToken(json.payload.content);
-            callbacks?.onResult();
-          }
-        }
-      }
-
-      if (!terminal.sawTerminal && !abortController.signal.aborted) {
-        terminal.onMissingTerminal();
-      }
-    } finally {
-      this._clearPendingRun();
-      if (this._abort === abortController) {
-        this._abort = undefined;
-      }
-    }
-  }
-
   abort(): void {
     this._notifyServerAbort();
     this._forceClearPendingRun();
@@ -335,18 +269,19 @@ export class AgentMessageSender {
   ): Promise<void> {
     const mimeType = payload.mimeType || 'audio/mp4';
     const name = payload.name || (mimeType.includes('mpeg') ? 'voice.mp3' : 'voice.m4a');
-    const formData = new FormData();
-    formData.append('sessionKey', sessionKey);
-    formData.append('channel', 'webchat');
-    formData.append('durationMillis', String(payload.durationMillis));
-    formData.append('mimeType', mimeType);
-    formData.append('file', {
-      uri: payload.uri,
+    const { content, size } = await readUriAsBase64(payload.uri, name);
+    const secs = payload.durationMillis / 1000;
+    const durationSeconds =
+      Number.isFinite(secs) && secs >= 0.05 ? Math.round(secs * 1000) / 1000 : undefined;
+    const wire: WireAttachment = {
+      type: 'voice',
+      mimeType,
+      data: content,
       name,
-      type: mimeType,
-    } as unknown as Blob);
-
-    return this.sendMultipart('/api/agent/voice', formData, sessionKey, callbacks);
+      size,
+      ...(durationSeconds != null ? { durationSeconds } : {}),
+    };
+    return this.sendMessage('', sessionKey, callbacks, [wire]);
   }
 
   async resume(runId: string, chatId: string, callbacks?: MessagingCallbacks): Promise<void> {

@@ -48,14 +48,3 @@ export function buildAgentSseHeaders(): Record<string, string> {
   }
   return headers;
 }
-
-export function buildAgentSseMultipartHeaders(): Record<string, string> {
-  const { token } = useGatewayStore.getState();
-  const headers: Record<string, string> = {
-    Accept: 'text/event-stream',
-  };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-  return headers;
-}
