@@ -14,6 +14,8 @@ import {
   formatApiHttpError,
   notifyUnauthorizedIfNeeded,
 } from './client';
+import { capAttachments } from '../features/chat/chat-limits';
+import type { WireAttachment } from '../features/chat/composer.types';
 import { useGatewayStore } from '../stores/gateway-store';
 import { pendingRunStorageKey, storage } from '../storage/mmkv';
 
@@ -265,10 +267,17 @@ export class AgentMessageSender {
     message: string,
     sessionKey: string,
     callbacks?: MessagingCallbacks,
+    attachments?: WireAttachment[],
   ): Promise<void> {
+    const capped = capAttachments(attachments);
     return this.send(
       '/api/agent',
-      { message, sessionKey },
+      {
+        message,
+        sessionKey,
+        ...(capped?.length ? { attachments: capped } : {}),
+        clientCreatedAtMs: Date.now(),
+      },
       callbacks,
     );
   }

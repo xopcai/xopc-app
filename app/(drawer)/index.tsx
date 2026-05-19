@@ -17,6 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AgentMessageSender, submitClarifyResponse, type MessagingCallbacks } from '../../src/api/agent-client';
 import { ChatComposer } from '../../src/features/chat/ChatComposer';
+import { canSendComposerDraft, buildOptimisticUserMessage } from '../../src/features/chat/composer-send-helpers';
+import type { WireAttachment } from '../../src/features/chat/composer.types';
 import { ClarifyPrompt, type ClarifyPromptState } from '../../src/features/chat/ClarifyPrompt';
 import { GoalMissionCard } from '../../src/features/chat/GoalMissionCard';
 import { MessageList } from '../../src/features/chat/MessageList';
@@ -693,14 +695,11 @@ export default function ChatScreen() {
   }
 
   const send = useCallback(
-    async (text: string) => {
-      if (!text.trim() || !sessionKey || streaming || awaitingSessionRefresh) return;
-      // Optimistic: show user message immediately
-      const userMsg: Message = {
-        role: 'user',
-        content: [{ type: 'text', text: text.trim() }],
-        timestamp: Date.now(),
-      };
+    async (text: string, attachments?: WireAttachment[]) => {
+      if (!canSendComposerDraft(text, attachments?.length ?? 0) || !sessionKey || streaming || awaitingSessionRefresh) {
+        return;
+      }
+      const userMsg = buildOptimisticUserMessage(text, attachments);
       setOptimisticMessages([userMsg]);
       clearStreamingMessage();
       setProgress(null);
@@ -712,9 +711,10 @@ export default function ChatScreen() {
       setSessionRefreshStartedAt(0);
       try {
         await senderRef.current.sendMessage(
-          text,
+          text.trim(),
           sessionKey,
           buildCallbacks(sessionKey),
+          attachments,
         );
       } catch (e) {
         if (activeSessionKeyRef.current !== sessionKey) {
@@ -1047,7 +1047,8 @@ export default function ChatScreen() {
           <ChatComposer
             disabled={sessionQuery.isLoading || awaitingSessionRefresh}
             streaming={streaming}
-            onSend={(text) => void send(text)}
+            onSend={(text, attachments) => void send(text, attachments)}
+            keyboardVisible={keyboardVisible}
             onSendVoice={(payload) => void sendVoice(payload)}
             onAbort={abort}
             placeholder={m.chat.inputPlaceholder}

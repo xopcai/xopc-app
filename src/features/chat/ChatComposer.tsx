@@ -1,8 +1,9 @@
 /**
- * Chat composer — text / voice modes: left mic⇄keyboard toggle, hold-to-speak, swipe-up cancel, metering HUD.
+ * Chat composer — Kimi-style compact/expanded input, attachments, text / voice modes.
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Keyboard,
   PanResponder,
   Platform,
   Pressable,
@@ -15,9 +16,14 @@ import {
 import { Icon, Snackbar } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
+import { canSendComposerDraft } from './composer-send-helpers';
+import type { WireAttachment } from './composer.types';
+import { AttachmentSourceSheet } from './attachment-source-sheet';
+import { ComposerAttachmentStrip } from './composer-attachment-strip';
 import { CommandPaletteBar } from './CommandPaletteBar';
 import { SlashTokenInput } from './SlashTokenInput';
 import { useCommandPalette } from './useCommandPalette';
+import { useComposerAttachments } from './use-composer-attachments';
 import { VoiceMeterBars } from './VoiceMeterBars';
 import {
   beginRecording,
@@ -45,15 +51,17 @@ export const ChatComposer = memo(function ChatComposer({
   placeholder,
   suggestionDraft,
   onConsumeSuggestionDraft,
+  keyboardVisible = false,
 }: {
   disabled: boolean;
   streaming: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, attachments?: WireAttachment[]) => void;
   onSendVoice?: (payload: { uri: string; durationMillis: number; mimeType?: string }) => void | Promise<void>;
   onAbort: () => void;
   placeholder?: string;
   suggestionDraft?: string;
   onConsumeSuggestionDraft?: () => void;
+  keyboardVisible?: boolean;
 }) {
   const m = useMessages();
   const cm = m.chat;
@@ -63,9 +71,17 @@ export const ChatComposer = memo(function ChatComposer({
   const [draft, setDraft] = useState('');
   const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
   const [cursorPos, setCursorPos] = useState(0);
+  const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
-  // Command palette integration
+  const att = useComposerAttachments({
+    maxAttachmentsReached: cm.maxAttachmentsReached,
+    maxAttachmentsTruncated: cm.maxAttachmentsTruncated,
+    attachmentFileTooLarge: cm.attachmentFileTooLarge,
+    attachmentLoadFailed: cm.attachmentLoadFailed,
+    attachmentPermissionDenied: cm.attachmentPermissionDenied,
+  });
+
   const palette = useCommandPalette(draft, cursorPos);
 
   const [hudOpen, setHudOpen] = useState(false);
@@ -78,6 +94,16 @@ export const ChatComposer = memo(function ChatComposer({
   const abortStartRef = useRef(false);
   const cancelZoneRef = useRef(false);
   const grantInFlightRef = useRef(false);
+
+  const isExpanded = useMemo(
+    () =>
+      isFocused ||
+      draft.length > 0 ||
+      att.attachments.length > 0 ||
+      keyboardVisible ||
+      palette.open,
+    [isFocused, draft.length, att.attachments.length, keyboardVisible, palette.open],
+  );
 
   useEffect(() => {
     if (streaming && mode === 'voice') {
@@ -93,7 +119,7 @@ export const ChatComposer = memo(function ChatComposer({
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [suggestionDraft, onConsumeSuggestionDraft]);
 
-  const canSend = draft.trim().length > 0 && !streaming && !disabled;
+  const canSend = canSendComposerDraft(draft, att.attachments.length) && !streaming && !disabled;
 
   const finalizeRecordingInteraction = useCallback(async () => {
     const rec = recordingRef.current;
@@ -224,13 +250,15 @@ export const ChatComposer = memo(function ChatComposer({
   );
 
   const handleSend = useCallback(() => {
-    const text = draft.trim();
-    if (!text) return;
-    onSend(text);
+    if (!canSend) return;
+    const wire = att.toWirePayload();
+    onSend(draft.trim(), wire.length ? wire : undefined);
     setDraft('');
     setCursorPos(0);
     setInputHeight(MIN_INPUT_HEIGHT);
-  }, [draft, onSend]);
+    att.clearAttachments();
+    inputRef.current?.blur();
+  }, [att, canSend, draft, onSend]);
 
   const handleAbort = useCallback(() => {
     onAbort();
@@ -256,6 +284,95 @@ export const ChatComposer = memo(function ChatComposer({
     setMode((prev) => (prev === 'text' ? 'voice' : 'text'));
   }, [disabled, streaming, hudOpen]);
 
+  const openAttachmentSheet = useCallback(() => {
+    if (disabled || streaming) return;
+    Keyboard.dismiss();
+    att.openSheet();
+  }, [att, disabled, streaming]);
+
+  const sheetItems = useMemo(
+    () => [
+      { source: 'camera' as const, icon: 'camera-outline', label: cm.takePhoto },
+      { source: 'photos' as const, icon: 'image-outline', label: cm.photos },
+      { source: 'document' as const, icon: 'folder-outline', label: cm.localFiles },
+    ],
+    [cm.takePhoto, cm.photos, cm.localFiles],
+  );
+
+  const renderVoiceToggle = () => (
+    <Pressable
+      style={styles.toolBtn}
+      onPress={toggleMode}
+      disabled={disabled || streaming}
+      accessibilityLabel={mode === 'text' ? 'Switch to voice input' : 'Switch to keyboard'}
+    >
+      <Icon
+        source={mode === 'text' ? 'microphone-outline' : 'keyboard-outline'}
+        size={22}
+        color={disabled || streaming ? '#8E8E93' : accent}
+      />
+    </Pressable>
+  );
+
+  const renderAttachButton = () => (
+    <Pressable
+      style={styles.toolBtn}
+      onPress={openAttachmentSheet}
+      disabled={disabled || streaming || att.attachments.length >= att.maxAttachments}
+      accessibilityLabel={cm.attachFile}
+    >
+      <Icon
+        source="plus-circle-outline"
+        size={24}
+        color={disabled || streaming ? '#8E8E93' : accent}
+      />
+    </Pressable>
+  );
+
+  const renderSendOrStop = () => {
+    if (streaming) {
+      return (
+        <Pressable style={styles.sendCircle} onPress={handleAbort} hitSlop={8} accessibilityLabel={cm.stop}>
+          <Icon source="stop" size={20} color="#FFFFFF" />
+        </Pressable>
+      );
+    }
+    if (!isExpanded) return null;
+    return (
+      <Pressable
+        style={[styles.sendCircle, { backgroundColor: canSend ? '#1C1C1E' : scheme === 'dark' ? '#48484A' : '#C7C7CC' }]}
+        onPress={handleSend}
+        disabled={!canSend}
+        hitSlop={8}
+        accessibilityLabel={cm.send}
+      >
+        <Icon source="arrow-up" size={22} color="#FFFFFF" />
+      </Pressable>
+    );
+  };
+
+  const textInputProps = {
+    placeholder: placeholder ?? 'Message',
+    placeholderTextColor: '#8E8E93',
+    value: draft,
+    onChangeText: (text: string) => {
+      setDraft(text);
+      setCursorPos(text.length);
+    },
+    onCursorChange: setCursorPos,
+    cursorPos,
+    isDark: scheme === 'dark',
+    multiline: true as const,
+    editable: !disabled,
+    onContentSizeChange,
+    blurOnSubmit: false,
+    returnKeyType: 'default' as const,
+    textAlignVertical: (Platform.OS === 'android' ? 'top' : 'center') as 'top' | 'center',
+    autoCapitalize: 'sentences' as const,
+    onFocus: () => setIsFocused(true),
+    onBlur: () => setIsFocused(false),
+  };
+
   return (
     <View style={[styles.wrap, { backgroundColor: barBg, borderTopColor: border }]}>
       {hudOpen ? (
@@ -277,88 +394,96 @@ export const ChatComposer = memo(function ChatComposer({
         />
       ) : null}
 
-      <View style={styles.barRow}>
-        <View style={[styles.inputShell, { backgroundColor: surface, borderColor: border }]}>
-          <Pressable
-            style={styles.modeToggle}
-            onPress={toggleMode}
-            disabled={disabled || streaming}
-            accessibilityLabel={mode === 'text' ? 'Switch to voice input' : 'Switch to keyboard'}
-          >
-            <Icon
-              source={mode === 'text' ? 'microphone-outline' : 'keyboard-outline'}
-              size={20}
-              color={disabled || streaming ? '#8E8E93' : accent}
-            />
-          </Pressable>
+      {att.attachments.length > 0 ? (
+        <ComposerAttachmentStrip
+          attachments={att.attachments}
+          onRemove={att.removeAttachment}
+          removeLabel={cm.removeAttachment}
+        />
+      ) : null}
 
-          {mode === 'text' ? (
+      <View style={[styles.shell, { backgroundColor: surface, borderColor: border }]}>
+        {mode === 'text' ? (
+          isExpanded ? (
             <>
+              <View style={styles.expandedInput}>
+                <SlashTokenInput
+                  ref={inputRef}
+                  style={[
+                    styles.input,
+                    styles.inputExpanded,
+                    { color: scheme === 'dark' ? '#F5F5F7' : '#1C1C1E', height: inputHeight },
+                  ]}
+                  {...textInputProps}
+                />
+              </View>
+              <View style={styles.toolRow}>
+                {renderVoiceToggle()}
+                <View style={styles.toolSpacer} />
+                {renderAttachButton()}
+                {renderSendOrStop()}
+              </View>
+            </>
+          ) : (
+            <View style={styles.compactRow}>
+              {renderVoiceToggle()}
               <SlashTokenInput
                 ref={inputRef}
                 style={[
                   styles.input,
-                  {
-                    color: scheme === 'dark' ? '#F5F5F7' : '#1C1C1E',
-                    height: inputHeight,
-                  }
+                  styles.inputCompact,
+                  { color: scheme === 'dark' ? '#F5F5F7' : '#1C1C1E', height: MIN_INPUT_HEIGHT },
                 ]}
-                placeholder={placeholder ?? 'Message'}
-                placeholderTextColor="#8E8E93"
-                value={draft}
-                onChangeText={(text) => {
-                  setDraft(text);
-                  setCursorPos(text.length);
-                }}
-                onCursorChange={setCursorPos}
-                cursorPos={cursorPos}
-                isDark={scheme === 'dark'}
-                multiline
-                editable={!disabled}
-                onContentSizeChange={onContentSizeChange}
-                blurOnSubmit={false}
-                returnKeyType="default"
-                textAlignVertical={Platform.OS === 'android' ? 'top' : 'center'}
-                autoCapitalize="sentences"
+                {...textInputProps}
               />
-
-              {streaming ? (
-                <Pressable style={styles.sendHit} onPress={handleAbort} hitSlop={8}>
-                  <Icon source="stop-circle" size={26} color="#EF4444" />
-                </Pressable>
-              ) : (
-                <Pressable style={styles.sendHit} onPress={handleSend} disabled={!canSend} hitSlop={8}>
-                  <Icon
-                    source="send"
-                    size={22}
-                    color={canSend ? accent : scheme === 'dark' ? '#48484A' : '#C7C7CC'}
-                  />
-                </Pressable>
-              )}
-            </>
-          ) : (
-            <>
-              <View
-                style={[styles.holdPad, hudOpen && { opacity: 0.92 }]}
-                {...panResponder.panHandlers}
-              >
-                <Text style={[styles.holdLabel, { color: scheme === 'dark' ? '#E5E5EA' : '#3A3A3C' }]}>
-                  {cm.holdToSpeak}
-                </Text>
-              </View>
-
-              {streaming ? (
-                <Pressable style={styles.sendHit} onPress={handleAbort} hitSlop={8}>
-                  <Icon source="stop-circle" size={26} color="#EF4444" />
-                </Pressable>
-              ) : null}
-            </>
-          )}
-        </View>
+              {renderAttachButton()}
+            </View>
+          )
+        ) : isExpanded ? (
+          <>
+            <View
+              style={[styles.holdPad, styles.holdPadExpanded, hudOpen && { opacity: 0.92 }]}
+              {...panResponder.panHandlers}
+            >
+              <Text style={[styles.holdLabel, { color: scheme === 'dark' ? '#E5E5EA' : '#3A3A3C' }]}>
+                {cm.holdToSpeak}
+              </Text>
+            </View>
+            <View style={styles.toolRow}>
+              {renderVoiceToggle()}
+              <View style={styles.toolSpacer} />
+              {renderAttachButton()}
+              {streaming ? renderSendOrStop() : null}
+            </View>
+          </>
+        ) : (
+          <View style={styles.compactRow}>
+            {renderVoiceToggle()}
+            <View
+              style={[styles.holdPad, styles.holdPadCompact, hudOpen && { opacity: 0.92 }]}
+              {...panResponder.panHandlers}
+            >
+              <Text style={[styles.holdLabel, { color: scheme === 'dark' ? '#E5E5EA' : '#3A3A3C' }]}>
+                {cm.holdToSpeak}
+              </Text>
+            </View>
+            {renderAttachButton()}
+          </View>
+        )}
       </View>
+
+      <AttachmentSourceSheet
+        visible={att.sheetOpen}
+        items={sheetItems}
+        onClose={att.closeSheet}
+        onPick={(source) => void att.addFromSource(source)}
+      />
 
       <Snackbar visible={Boolean(snack)} onDismiss={() => setSnack('')} duration={3200}>
         {snack}
+      </Snackbar>
+      <Snackbar visible={Boolean(att.snack)} onDismiss={att.dismissSnack} duration={3200}>
+        {att.snack}
       </Snackbar>
     </View>
   );
@@ -389,30 +514,48 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     opacity: 0.85,
   },
-  barRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-  },
-  inputShell: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+  shell: {
     borderWidth: 1,
-    borderRadius: 20,
-    paddingLeft: 3,
-    paddingRight: 3,
-    paddingVertical: 2,
-    gap: 2,
-    minHeight: MIN_INPUT_HEIGHT,
+    borderRadius: 22,
+    overflow: 'hidden',
   },
-  modeToggle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  compactRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    gap: 2,
+  },
+  expandedInput: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  toolRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingBottom: 6,
+    paddingTop: 2,
+    gap: 4,
+  },
+  toolSpacer: {
+    flex: 1,
+  },
+  toolBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: Platform.OS === 'ios' ? 2 : 2,
-    marginLeft: 2,
+  },
+  sendCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1C1C1E',
   },
   input: {
     flex: 1,
@@ -427,23 +570,30 @@ const styles = StyleSheet.create({
       default: {},
     }),
   },
-  holdPad: {
-    flex: 1,
+  inputCompact: {
     minHeight: MIN_INPUT_HEIGHT,
+  },
+  inputExpanded: {
+    minHeight: MIN_INPUT_HEIGHT,
+  },
+  holdPad: {
     justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: 1,
-    marginHorizontal: 4,
     borderRadius: 14,
+  },
+  holdPadCompact: {
+    flex: 1,
+    minHeight: MIN_INPUT_HEIGHT,
+    marginVertical: 1,
+  },
+  holdPadExpanded: {
+    minHeight: 44,
+    marginHorizontal: 8,
+    marginTop: 10,
+    marginBottom: 4,
   },
   holdLabel: {
     fontSize: 15,
     fontWeight: '600',
-  },
-  sendHit: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    marginBottom: Platform.OS === 'ios' ? 4 : 3,
   },
 });
