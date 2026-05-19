@@ -38,6 +38,11 @@ import {
   suggestFollowUpsFromAssistantMessage,
   type FollowUpSuggestionId,
 } from '../../src/features/chat/follow-up-suggestions';
+import {
+  applyStripToUserContent,
+  extractAttachmentsFromUserContent,
+  mergeUserAttachments,
+} from '../../src/features/chat/inbound-message-text';
 import type { Message, MessageAttachment, MessageContent, ProgressState } from '../../src/features/chat/messages.types';
 import { useMessages } from '../../src/i18n/messages';
 import { RenameDialog } from '../../src/features/sessions/RenameDialog';
@@ -372,10 +377,12 @@ function parseSessionMessages(raw: Array<Record<string, unknown>>): Message[] {
     }
 
     if (role === 'user' || role === 'user-with-attachments') {
-      const attachments = normalizeAttachments(m.attachments);
+      const roleTyped = role as Message['role'];
+      const fromContent = extractAttachmentsFromUserContent(m.content);
+      const attachments = mergeUserAttachments(normalizeAttachments(m.attachments), fromContent);
       out.push({
-        role,
-        content: appendAudioAttachments(normalizeContentBlocks(m.content), attachments),
+        role: roleTyped,
+        content: applyStripToUserContent(roleTyped, normalizeContentBlocks(m.content)),
         attachments,
         timestamp: parseTimestamp(m.timestamp),
       });
@@ -760,14 +767,6 @@ export default function ChatScreen() {
             uri: payload.uri,
             mimeType: payload.mimeType,
             name: 'voice.m4a',
-            durationSeconds: Math.round(payload.durationMillis / 1000),
-          },
-        ],
-        attachments: [
-          {
-            name: 'voice.m4a',
-            type: 'voice',
-            mimeType: payload.mimeType,
             durationSeconds: Math.round(payload.durationMillis / 1000),
           },
         ],

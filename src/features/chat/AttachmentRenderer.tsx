@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
+import { AudioMessageBlock } from './AudioMessageBlock';
 import { FilePreviewModal, type PreviewableFile } from './FilePreviewModal';
-import type { MessageAttachment } from './messages.types';
+import type { AudioContent, MessageAttachment } from './messages.types';
 import { mimeTypeFromFileName } from './tool-result-file-paths';
 
 function isImageAttachment(att: MessageAttachment): boolean {
@@ -41,6 +42,24 @@ function imageUri(att: MessageAttachment): string | null {
   return `data:${mime};base64,${payload.replace(/\s/g, '')}`;
 }
 
+function attachmentToAudioContent(att: MessageAttachment): AudioContent {
+  const payload = attachmentPayload(att)?.trim();
+  const mimeType = att.mimeType || 'audio/mpeg';
+  return {
+    type: 'audio',
+    workspaceRelativePath: att.workspaceRelativePath,
+    uri:
+      payload && !att.workspaceRelativePath
+        ? payload.startsWith('data:') || payload.startsWith('file:')
+          ? payload
+          : `data:${mimeType};base64,${payload.replace(/\s/g, '')}`
+        : undefined,
+    mimeType,
+    name: att.name,
+    durationSeconds: att.durationSeconds,
+  };
+}
+
 export function AttachmentRenderer({
   attachments,
   sessionKey,
@@ -53,6 +72,11 @@ export function AttachmentRenderer({
   const isDark = useColorScheme() === 'dark';
   const [active, setActive] = useState<PreviewableFile | null>(null);
   const items = useMemo(() => attachments?.filter(Boolean) ?? [], [attachments]);
+  const audioItems = useMemo(() => items.filter(isAudioAttachment), [items]);
+  const nonAudioItems = useMemo(
+    () => items.filter((att) => !isAudioAttachment(att)),
+    [items],
+  );
   if (!items.length) return null;
 
   const border = isDark ? 'rgba(255,255,255,0.12)' : '#E5E7EB';
@@ -62,8 +86,20 @@ export function AttachmentRenderer({
 
   return (
     <>
+      {audioItems.length > 0 ? (
+        <View style={[styles.audioWrap, compact && styles.wrapCompact]}>
+          {audioItems.map((att, index) => (
+            <AudioMessageBlock
+              key={att.id ?? `${attachmentName(att, index)}-${index}`}
+              audio={attachmentToAudioContent(att)}
+              sessionKey={sessionKey}
+            />
+          ))}
+        </View>
+      ) : null}
+      {nonAudioItems.length > 0 ? (
       <View style={[styles.wrap, compact && styles.wrapCompact]}>
-        {items.map((att, index) => {
+        {nonAudioItems.map((att, index) => {
           const name = attachmentName(att, index);
           const preview = attachmentToPreviewable(att, index);
           const uri = isImageAttachment(att) ? imageUri(att) : null;
@@ -88,13 +124,14 @@ export function AttachmentRenderer({
               accessibilityRole="button"
               accessibilityLabel={`预览 ${name}`}
             >
-              <Icon source={isAudioAttachment(att) ? 'volume-high' : 'file-outline'} size={16} color={muted} />
+              <Icon source="file-outline" size={16} color={muted} />
               <Text style={[styles.chipText, { color: textColor }]} numberOfLines={1}>{name}</Text>
               <Icon source="eye-outline" size={14} color={muted} />
             </Pressable>
           );
         })}
       </View>
+      ) : null}
       <FilePreviewModal
         visible={Boolean(active)}
         file={active}
@@ -106,6 +143,11 @@ export function AttachmentRenderer({
 }
 
 const styles = StyleSheet.create({
+  audioWrap: {
+    gap: 8,
+    marginTop: 4,
+    alignSelf: 'stretch',
+  },
   wrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',

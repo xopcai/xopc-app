@@ -1,18 +1,11 @@
 import { useGatewayStore } from '../../stores/gateway-store';
-
-function normalizeWorkspaceRelativePath(path: string): string {
-  return path.replace(/\\/g, '/').replace(/^\/+/, '');
-}
+import { workspaceRelativePathToApiPath } from './workspace-file-url';
 
 export function buildGatewayAudioPath(
   workspaceRelativePath: string,
   sessionKey?: string | null,
 ): string {
-  const rel = normalizeWorkspaceRelativePath(workspaceRelativePath);
-  const params = new URLSearchParams({ path: rel });
-  const sk = sessionKey?.trim();
-  if (sk) params.set('sessionKey', sk);
-  return `/api/workspace/editor/raw?${params.toString()}`;
+  return workspaceRelativePathToApiPath(workspaceRelativePath.replace(/^\/+/, ''), { sessionKey });
 }
 
 export function buildGatewayAudioUrl(

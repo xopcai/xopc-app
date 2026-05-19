@@ -89,7 +89,12 @@ function userContentText(content: MessageContent[]): string {
   return content
     .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
     .map((b) => stripEnvelopeTimestampPrefix(b.text))
-    .join('\n');
+    .join('\n')
+    .trim();
+}
+
+function userAudioBlocks(content: MessageContent[]): Extract<MessageContent, { type: 'audio' }>[] {
+  return content.filter((b): b is Extract<MessageContent, { type: 'audio' }> => b.type === 'audio');
 }
 
 /**
@@ -208,6 +213,11 @@ export const MessageBubble = memo(function MessageBubble({
     [isUser, message.content],
   );
 
+  const userAudio = useMemo(
+    () => (isUser ? userAudioBlocks(message.content) : []),
+    [isUser, message.content],
+  );
+
   const displayContent = useMemo(
     () => (isAssistant ? (message.content ?? []).filter((b) => b.type !== 'image') : (message.content ?? [])),
     [isAssistant, message.content],
@@ -323,6 +333,9 @@ export const MessageBubble = memo(function MessageBubble({
                 },
               ]}
             >
+              {userAudio.map((block, i) => (
+                <AudioMessageBlock key={`user-audio-${i}`} audio={block} sessionKey={sessionKey} />
+              ))}
               {userText ? (
                 <Text
                   selectable
