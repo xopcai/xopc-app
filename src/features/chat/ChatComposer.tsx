@@ -440,41 +440,39 @@ export const ChatComposer = memo(function ChatComposer({
 
       <View style={[styles.shell, { backgroundColor: surface, borderColor: border }]}>
         {mode === 'text' ? (
-          isExpanded ? (
-            <>
-              <View style={styles.expandedInput} onLayout={handleInputLayout}>
+          <>
+            <View style={isExpanded ? undefined : styles.compactRow}>
+              {!isExpanded ? renderVoiceToggle() : null}
+              <View
+                style={isExpanded ? styles.expandedInput : styles.compactInputWrap}
+                onLayout={handleInputLayout}
+              >
                 <SlashTokenInput
                   ref={inputRef}
                   style={[
                     styles.input,
-                    styles.inputExpanded,
-                    { color: scheme === 'dark' ? '#F5F5F7' : '#1C1C1E', minHeight: inputHeight },
+                    isExpanded ? styles.inputExpanded : styles.inputCompact,
+                    {
+                      color: scheme === 'dark' ? '#F5F5F7' : '#1C1C1E',
+                      ...(isExpanded
+                        ? { minHeight: inputHeight }
+                        : { height: MIN_COMPOSER_INPUT_HEIGHT }),
+                    },
                   ]}
                   {...textInputProps}
                 />
               </View>
+              {!isExpanded ? renderAttachButton() : null}
+            </View>
+            {isExpanded ? (
               <View style={styles.toolRow}>
                 {renderVoiceToggle()}
                 <View style={styles.toolSpacer} />
                 {renderAttachButton()}
                 {renderSendOrStop()}
               </View>
-            </>
-          ) : (
-            <View style={styles.compactRow}>
-              {renderVoiceToggle()}
-              <SlashTokenInput
-                ref={inputRef}
-                style={[
-                  styles.input,
-                  styles.inputCompact,
-                  { color: scheme === 'dark' ? '#F5F5F7' : '#1C1C1E', height: MIN_COMPOSER_INPUT_HEIGHT },
-                ]}
-                {...textInputProps}
-              />
-              {renderAttachButton()}
-            </View>
-          )
+            ) : null}
+          </>
         ) : isExpanded ? (
           <>
             <View
@@ -566,6 +564,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 10,
     paddingBottom: 4,
+  },
+  compactInputWrap: {
+    flex: 1,
   },
   toolRow: {
     flexDirection: 'row',

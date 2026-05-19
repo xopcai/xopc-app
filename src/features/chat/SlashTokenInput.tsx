@@ -156,22 +156,7 @@ export const SlashTokenInput = memo(
     [onCursorChange],
   );
 
-  // If no pills, render plain TextInput (better performance)
-  if (!hasPills) {
-    return (
-      <TextInput
-        ref={inputRef}
-        style={style}
-        value={value}
-        onChangeText={handleChangeText}
-        onSelectionChange={handleSelectionChange}
-        onKeyPress={handleKeyPress}
-        {...rest}
-      />
-    );
-  }
-
-  // Render with styled pill tokens using nested Text children
+  // Keep a single TextInput instance so focus survives pill token insert/remove.
   return (
     <TextInput
       ref={inputRef}
@@ -182,23 +167,25 @@ export const SlashTokenInput = memo(
       onKeyPress={handleKeyPress}
       {...rest}
     >
-      <Text>
-        {segments.map((seg, i) =>
-          seg.isPill ? (
-            <Text
-              key={i}
-              style={[
-                pillStyles.pill,
-                { backgroundColor: pillBg, color: pillColor },
-              ]}
-            >
-              {seg.text}
-            </Text>
-          ) : (
-            <Text key={i}>{seg.text}</Text>
-          ),
-        )}
-      </Text>
+      {hasPills ? (
+        <Text>
+          {segments.map((seg, i) =>
+            seg.isPill ? (
+              <Text
+                key={i}
+                style={[
+                  pillStyles.pill,
+                  { backgroundColor: pillBg, color: pillColor },
+                ]}
+              >
+                {seg.text}
+              </Text>
+            ) : (
+              <Text key={i}>{seg.text}</Text>
+            ),
+          )}
+        </Text>
+      ) : null}
     </TextInput>
   );
   }),
