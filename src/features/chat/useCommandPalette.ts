@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { fetchAllPaletteItems } from './command-palette-api';
-import type { PaletteItem } from './command-palette.types';
+import type { PaletteItem, SlashRange } from './command-palette.types';
 import { detectSlashRange, paletteItemMatchRank } from './command-palette-utils';
 
 // Re-export pure utils for consumers that need them directly
