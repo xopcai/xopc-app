@@ -2,7 +2,6 @@
 export type ParsedGatewayQr = {
   baseUrl?: string;
   token?: string;
-  thinking?: string;
 };
 
 function isHttpUrl(s: string): boolean {
@@ -42,7 +41,7 @@ function isMobileConnectPath(pathname: string): boolean {
  * Interpret QR / deep-link text for gateway onboarding.
  * Supports:
  * - `xopc://gateway/mobile-connect?baseUrl=<encoded>&token=…` (desktop console QR)
- * - JSON `{"baseUrl","token","thinking"}`, http(s) URLs with optional query params, plain URLs.
+ * - JSON `{"baseUrl","token"}`, http(s) URLs with optional query params, plain URLs.
  */
 export function parseGatewayQrPayload(raw: string): ParsedGatewayQr {
   const t = raw.trim();
@@ -60,11 +59,9 @@ export function parseGatewayQrPayload(raw: string): ParsedGatewayQr {
         (typeof o.token === 'string' && o.token) ||
         (typeof o.bearerToken === 'string' && o.bearerToken) ||
         '';
-      const thinking = typeof o.thinking === 'string' ? o.thinking : '';
       const out: ParsedGatewayQr = {};
       if (url.trim()) out.baseUrl = trimBase(url);
       if (token.trim()) out.token = token.trim();
-      if (thinking.trim()) out.thinking = thinking.trim();
       return out;
     } catch {
       return {};
@@ -81,12 +78,10 @@ export function parseGatewayQrPayload(raw: string): ParsedGatewayQr {
     ) {
       const encBase = u.searchParams.get('baseUrl') ?? '';
       const token = u.searchParams.get('token') ?? u.searchParams.get('bearer') ?? '';
-      const thinking = u.searchParams.get('thinking') ?? '';
       const baseDecoded = decodeLayeredURIComponent(encBase);
       const out: ParsedGatewayQr = {};
       if (baseDecoded && isHttpUrl(baseDecoded)) out.baseUrl = trimBase(baseDecoded);
       if (token) out.token = token.trim();
-      if (thinking) out.thinking = thinking.trim();
       if (out.baseUrl || out.token) return out;
     }
   } catch {
@@ -97,13 +92,11 @@ export function parseGatewayQrPayload(raw: string): ParsedGatewayQr {
     const u = new URL(t);
     if (isHttpUrl(t)) {
       const token = u.searchParams.get('token') ?? u.searchParams.get('bearer') ?? '';
-      const thinking = u.searchParams.get('thinking') ?? '';
       u.search = '';
       u.hash = '';
       const baseUrl = trimBase(u.toString());
       const out: ParsedGatewayQr = { baseUrl };
       if (token) out.token = token.trim();
-      if (thinking) out.thinking = thinking.trim();
       return out;
     }
   } catch {

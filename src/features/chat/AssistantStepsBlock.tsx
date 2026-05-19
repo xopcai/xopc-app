@@ -214,6 +214,8 @@ export function hasTextAfterIndex(content: MessageContent[], afterIndex: number)
 
 const styles = StyleSheet.create({
   container: {
+    alignSelf: 'stretch',
+    width: '100%',
     borderWidth: 1,
     borderRadius: 10,
     marginVertical: 4,

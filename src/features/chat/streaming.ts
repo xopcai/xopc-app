@@ -12,6 +12,7 @@ export function hasRenderableAssistantContent(msg: Message): boolean {
     if (b.type === 'text' && (b.text || '').trim().length > 0) return true;
     if (b.type === 'thinking' && (b.text || '').trim().length > 0) return true;
     if (b.type === 'tool_use') return true;
+    if (b.type === 'audio' && Boolean(b.uri || b.workspaceRelativePath)) return true;
   }
   return false;
 }

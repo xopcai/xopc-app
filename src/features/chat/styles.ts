@@ -32,6 +32,7 @@ export const chatLayout = StyleSheet.create({
   },
   assistantBubbleContainer: {
     alignSelf: 'flex-start',
+    width: '92%',
     maxWidth: '92%',
   },
   userBubble: {

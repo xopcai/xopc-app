@@ -67,9 +67,15 @@ export async function fetchSession(key: string): Promise<SessionDetail | null> {
   return data.session ?? null;
 }
 
-export async function createSession(agentId?: string): Promise<string> {
+export async function createSession(
+  agentId?: string,
+  options?: { forceNew?: boolean },
+): Promise<string> {
   const body: Record<string, unknown> = { channel: 'webchat' };
   if (agentId?.trim()) body.agentId = agentId.trim().toLowerCase();
+  if (options?.forceNew) {
+    body.chat_id = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  }
   const res = await apiFetch('/api/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

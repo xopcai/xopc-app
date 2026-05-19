@@ -23,6 +23,7 @@ import {
   beginRecording,
   discardRecording,
   finishRecording,
+  inferRecordingMimeType,
   meteringToLevel,
   requestMicPermission,
   type ExpoRecording,
@@ -39,6 +40,7 @@ export const ChatComposer = memo(function ChatComposer({
   disabled,
   streaming,
   onSend,
+  onSendVoice,
   onAbort,
   placeholder,
   suggestionDraft,
@@ -47,6 +49,7 @@ export const ChatComposer = memo(function ChatComposer({
   disabled: boolean;
   streaming: boolean;
   onSend: (text: string) => void;
+  onSendVoice?: (payload: { uri: string; durationMillis: number; mimeType?: string }) => void | Promise<void>;
   onAbort: () => void;
   placeholder?: string;
   suggestionDraft?: string;
@@ -113,16 +116,24 @@ export const ChatComposer = memo(function ChatComposer({
     }
 
     try {
-      const { durationMillis } = await finishRecording(rec);
+      const { uri, durationMillis } = await finishRecording(rec);
       if (durationMillis < MIN_VOICE_MS) {
         setSnack(cm.voiceTooShort);
         return;
       }
-      setSnack(cm.voiceCapturedNoStt);
+      if (!uri) {
+        setSnack(cm.voiceRecordingFailed);
+        return;
+      }
+      if (!onSendVoice) {
+        setSnack(cm.voiceCapturedNoStt);
+        return;
+      }
+      await onSendVoice({ uri, durationMillis, mimeType: inferRecordingMimeType(uri) });
     } catch {
       setSnack(cm.voiceRecordingFailed);
     }
-  }, [cm]);
+  }, [cm, onSendVoice]);
 
   const startGrantFlow = useCallback(() => {
     if (disabled || streaming || grantInFlightRef.current) return;
@@ -289,7 +300,8 @@ export const ChatComposer = memo(function ChatComposer({
                   styles.input,
                   {
                     color: scheme === 'dark' ? '#F5F5F7' : '#1C1C1E',
-                  },
+                    height: inputHeight,
+                  }
                 ]}
                 placeholder={placeholder ?? 'Message'}
                 placeholderTextColor="#8E8E93"

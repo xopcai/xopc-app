@@ -16,7 +16,6 @@ export const gatewaySettingsSchema = z.object({
     .min(1, 'Base URL is required')
     .refine(isValidHttpUrl, 'Must be a valid http(s) URL'),
   token: z.string(),
-  thinking: z.string(),
 });
 
 export type GatewaySettingsForm = z.infer<typeof gatewaySettingsSchema>;

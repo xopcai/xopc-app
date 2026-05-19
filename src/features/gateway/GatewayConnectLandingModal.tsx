@@ -44,12 +44,10 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
   const unauthorized = useGatewayStore((st) => st.unauthorized);
   const setBaseUrl = useGatewayStore((st) => st.setBaseUrl);
   const setToken = useGatewayStore((st) => st.setToken);
-  const setThinking = useGatewayStore((st) => st.setThinking);
   const persist = useGatewayStore((st) => st.persist);
 
   const [baseUrl, setBaseUrlField] = useState(DEFAULT_GATEWAY_BASE_URL);
   const [token, setTokenField] = useState('');
-  const [thinking, setThinkingField] = useState('');
   const [baseUrlError, setBaseUrlError] = useState('');
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -63,7 +61,6 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
     const st = useGatewayStore.getState();
     setBaseUrlField(st.baseUrl.trim() || DEFAULT_GATEWAY_BASE_URL);
     setTokenField(st.token);
-    setThinkingField(st.thinking);
     setBaseUrlError('');
     setSaveError('');
   }, [visible]);
@@ -88,7 +85,6 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
   const applyParsed = useCallback((parsed: ReturnType<typeof parseGatewayQrPayload>) => {
     if (parsed.baseUrl) setBaseUrlField(parsed.baseUrl);
     if (parsed.token != null) setTokenField(parsed.token);
-    if (parsed.thinking != null) setThinkingField(parsed.thinking);
   }, []);
 
   const openScanner = useCallback(async () => {
@@ -120,7 +116,6 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
     const parsed = gatewaySettingsSchema.safeParse({
       baseUrl: baseUrl.trim(),
       token: token.trim(),
-      thinking: thinking.trim(),
     });
     if (!parsed.success) {
       const urlIssue = parsed.error.flatten().fieldErrors.baseUrl?.[0];
@@ -131,20 +126,17 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
     const before = {
       baseUrl: useGatewayStore.getState().baseUrl,
       token: useGatewayStore.getState().token,
-      thinking: useGatewayStore.getState().thinking,
     };
     setSaving(true);
     try {
       setBaseUrl(parsed.data.baseUrl);
       setToken(parsed.data.token);
-      setThinking(parsed.data.thinking);
       persist();
 
       const nav = await openDefaultSessionAfterConnect(router.replace);
       if (!nav.ok) {
         setBaseUrl(before.baseUrl);
         setToken(before.token);
-        setThinking(before.thinking);
         persist();
         setSaveError(nav.message || l.connectFailed);
         return;
@@ -157,14 +149,12 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
   }, [
     baseUrl,
     token,
-    thinking,
     l.connectFailed,
     l.invalidUrl,
     persist,
     queryClient,
     router.replace,
     setBaseUrl,
-    setThinking,
     setToken,
   ]);
 
@@ -256,16 +246,6 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
             secureTextEntry
             style={styles.field}
           />
-
-          <TextInput
-            label={s.thinkingLevel}
-            value={thinking}
-            onChangeText={setThinkingField}
-            mode="outlined"
-            autoCapitalize="none"
-            style={styles.field}
-          />
-
           <View style={styles.row}>
             <Button mode="outlined" onPress={openScanner} icon="barcode-scan">
               {l.scanQr}

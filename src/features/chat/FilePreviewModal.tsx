@@ -1,0 +1,285 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  useColorScheme,
+  View,
+} from 'react-native';
+import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { MarkdownView } from './MarkdownView';
+import { mimeTypeFromFileName } from './tool-result-file-paths';
+import { readWorkspaceFile, readWorkspaceFileBase64 } from './workspace-api';
+
+export type PreviewableFile = {
+  name: string;
+  mimeType?: string;
+  /** Base64 binary payload, without data URI prefix. */
+  contentBase64?: string;
+  /** Plain text payload. */
+  textContent?: string;
+  /** Workspace-relative path to load on demand. */
+  workspaceRelativePath?: string;
+  /** Optional extracted text fallback for documents. */
+  extractedText?: string;
+};
+
+export type FilePreviewModalProps = {
+  visible: boolean;
+  file: PreviewableFile | null;
+  sessionKey?: string | null;
+  onClose: () => void;
+};
+
+type PreviewKind = 'image' | 'markdown' | 'text' | 'binary';
+
+type LoadedPreview = {
+  kind: PreviewKind;
+  mimeType: string;
+  text: string | null;
+  base64: string | null;
+};
+
+function extensionOf(name: string): string {
+  const i = name.lastIndexOf('.');
+  return i >= 0 ? name.slice(i + 1).toLowerCase() : '';
+}
+
+function fileName(pathOrName: string): string {
+  const parts = pathOrName.replace(/\\/g, '/').split('/').filter(Boolean);
+  return parts[parts.length - 1] ?? pathOrName;
+}
+
+function isImageFile(name: string, mimeType: string): boolean {
+  const ext = extensionOf(name);
+  return mimeType.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(ext);
+}
+
+function isMarkdownFile(name: string, mimeType: string): boolean {
+  const ext = extensionOf(name);
+  return ext === 'md' || ext === 'markdown' || mimeType === 'text/markdown';
+}
+
+function isTextFile(name: string, mimeType: string): boolean {
+  const ext = extensionOf(name);
+  if (mimeType.startsWith('text/')) return true;
+  return ['txt', 'json', 'html', 'htm', 'css', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'xml', 'csv'].includes(ext);
+}
+
+function normalizeBase64Payload(raw: string | undefined): string | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  const m = value.match(/^data:[^;]+;base64,([\s\S]+)$/i);
+  return (m?.[1] ?? value).replace(/\s/g, '');
+}
+
+function dataUri(mimeType: string, base64: string): string {
+  return `data:${mimeType || 'application/octet-stream'};base64,${base64}`;
+}
+
+async function loadPreview(file: PreviewableFile, sessionKey?: string | null): Promise<LoadedPreview> {
+  const name = file.name || fileName(file.workspaceRelativePath ?? 'preview');
+  const mimeType = file.mimeType || mimeTypeFromFileName(name);
+  const kind: PreviewKind = isImageFile(name, mimeType)
+    ? 'image'
+    : isMarkdownFile(name, mimeType)
+      ? 'markdown'
+      : isTextFile(name, mimeType)
+        ? 'text'
+        : 'binary';
+
+  if (kind === 'image') {
+    const direct = normalizeBase64Payload(file.contentBase64);
+    if (direct) return { kind, mimeType, text: null, base64: direct };
+    if (file.workspaceRelativePath) {
+      const loaded = await readWorkspaceFileBase64(file.workspaceRelativePath, { sessionKey });
+      return { kind, mimeType, text: null, base64: loaded.contentBase64 };
+    }
+    return { kind, mimeType, text: null, base64: null };
+  }
+
+  if (kind === 'markdown' || kind === 'text') {
+    if (file.textContent != null) {
+      return { kind, mimeType, text: file.textContent, base64: null };
+    }
+    if (file.workspaceRelativePath) {
+      const loaded = await readWorkspaceFile(file.workspaceRelativePath, { sessionKey });
+      return { kind, mimeType, text: loaded.content, base64: null };
+    }
+    const fromBase64 = normalizeBase64Payload(file.contentBase64);
+    if (fromBase64) {
+      try {
+        return { kind, mimeType, text: globalThis.atob(fromBase64), base64: null };
+      } catch {
+        return { kind, mimeType, text: null, base64: null };
+      }
+    }
+  }
+
+  return {
+    kind: 'binary',
+    mimeType,
+    text: file.extractedText ?? null,
+    base64: normalizeBase64Payload(file.contentBase64),
+  };
+}
+
+export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePreviewModalProps) {
+  const insets = useSafeAreaInsets();
+  const isDark = useColorScheme() === 'dark';
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState<LoadedPreview | null>(null);
+
+  const title = useMemo(() => (file ? file.name || fileName(file.workspaceRelativePath ?? 'Preview') : ''), [file]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setError(null);
+    setLoaded(null);
+    if (!visible || !file) return;
+    setLoading(true);
+    void loadPreview(file, sessionKey)
+      .then((next) => {
+        if (!cancelled) setLoaded(next);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [file, sessionKey, visible]);
+
+  const surface = isDark ? '#111827' : '#FFFFFF';
+  const textColor = isDark ? '#F9FAFB' : '#111827';
+  const muted = isDark ? '#9CA3AF' : '#6B7280';
+  const border = isDark ? 'rgba(255,255,255,0.12)' : '#E5E7EB';
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+      <View style={[styles.root, { backgroundColor: surface, paddingTop: insets.top }]}> 
+        <View style={[styles.header, { borderBottomColor: border }]}> 
+          <Text variant="titleMedium" numberOfLines={1} style={[styles.title, { color: textColor }]}> 
+            {title}
+          </Text>
+          <IconButton icon="close" size={22} iconColor={textColor} onPress={onClose} accessibilityLabel="关闭预览" />
+        </View>
+
+        <View style={styles.body}>
+          {loading ? (
+            <View style={styles.center}>
+              <ActivityIndicator />
+              <Text style={{ color: muted }}>正在加载预览…</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.center}>
+              <Text style={[styles.error, { color: '#EF4444' }]}>预览加载失败：{error}</Text>
+            </View>
+          ) : loaded?.kind === 'image' && loaded.base64 ? (
+            <ScrollView
+              contentContainerStyle={styles.imageScroller}
+              maximumZoomScale={4}
+              minimumZoomScale={1}
+              bouncesZoom
+            >
+              <Image source={{ uri: dataUri(loaded.mimeType, loaded.base64) }} style={styles.image} resizeMode="contain" />
+            </ScrollView>
+          ) : loaded?.kind === 'markdown' && loaded.text != null ? (
+            <ScrollView contentContainerStyle={styles.textContent}>
+              <MarkdownView content={loaded.text} />
+            </ScrollView>
+          ) : loaded?.kind === 'text' && loaded.text != null ? (
+            <ScrollView contentContainerStyle={styles.textContent}>
+              <Text selectable style={[styles.mono, { color: textColor }]}> 
+                {loaded.text}
+              </Text>
+            </ScrollView>
+          ) : loaded?.kind === 'binary' && loaded.text ? (
+            <ScrollView contentContainerStyle={styles.textContent}>
+              <Text style={[styles.notice, { color: muted }]}>移动端暂不支持该文件类型的内嵌预览，以下为可提取文本。</Text>
+              <Text selectable style={[styles.mono, { color: textColor }]}> 
+                {loaded.text}
+              </Text>
+            </ScrollView>
+          ) : (
+            <View style={styles.center}>
+              <Text style={[styles.notice, { color: muted }]}>移动端暂不支持该文件类型的内嵌预览。</Text>
+              <Pressable style={[styles.closeButton, { borderColor: border }]} onPress={onClose} accessibilityRole="button">
+                <Text style={{ color: textColor }}>关闭</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  header: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingLeft: 16,
+  },
+  title: {
+    flex: 1,
+    fontWeight: '600',
+  },
+  body: {
+    flex: 1,
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingHorizontal: 28,
+  },
+  imageScroller: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+  },
+  image: {
+    width: '100%',
+    minHeight: 360,
+  },
+  textContent: {
+    padding: 16,
+  },
+  mono: {
+    fontSize: 13,
+    lineHeight: 20,
+    fontFamily: 'Menlo',
+  },
+  notice: {
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  error: {
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  closeButton: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+  },
+});

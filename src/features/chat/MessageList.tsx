@@ -8,7 +8,7 @@
  */
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
 import { ActivityIndicator, Text } from 'react-native-paper';
 
 import { useKeyboardListPadding } from '../../hooks/use-keyboard-list-padding';
@@ -103,6 +103,14 @@ export const MessageList = memo(function MessageList({
     [keyboardPadding],
   );
 
+  const emptyContentStyle = useMemo(
+    () => [
+      styles.emptyContent,
+      { paddingBottom: 32 + keyboardPadding },
+    ],
+    [keyboardPadding],
+  );
+
   const renderItem = useCallback(
     ({ item, index }: { item: Message; index: number }) => {
       const isLast = index === messages.length - 1;
@@ -112,10 +120,11 @@ export const MessageList = memo(function MessageList({
           message={item}
           isStreaming={isStreamRow}
           progress={isStreamRow ? progress : null}
+          sessionKey={sessionKey}
         />
       );
     },
-    [messages.length, streaming, progress],
+    [messages.length, streaming, progress, sessionKey],
   );
 
   const keyExtractor = useCallback(
@@ -143,7 +152,13 @@ export const MessageList = memo(function MessageList({
   if (messages.length === 0 && !streaming) {
     const chips = suggestions?.filter(Boolean) ?? [];
     return (
-      <View style={styles.center}>
+      <ScrollView
+        style={styles.listFlex}
+        contentContainerStyle={emptyContentStyle}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.botAvatar}>
           <View style={styles.botEyeRow}>
             <View style={styles.botEye} />
@@ -178,7 +193,7 @@ export const MessageList = memo(function MessageList({
             ))}
           </View>
         ) : null}
-      </View>
+      </ScrollView>
     );
   }
 
@@ -208,6 +223,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 28,
+    gap: 10,
+  },
+  emptyContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 24,
     paddingHorizontal: 28,
     gap: 10,
   },

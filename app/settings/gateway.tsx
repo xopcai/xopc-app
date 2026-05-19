@@ -17,10 +17,8 @@ export default function GatewaySettingsScreen() {
 
   const baseUrl = useGatewayStore((st) => st.baseUrl);
   const token = useGatewayStore((st) => st.token);
-  const thinking = useGatewayStore((st) => st.thinking);
   const setBaseUrl = useGatewayStore((st) => st.setBaseUrl);
   const setToken = useGatewayStore((st) => st.setToken);
-  const setThinking = useGatewayStore((st) => st.setThinking);
   const persist = useGatewayStore((st) => st.persist);
 
   const {
@@ -32,14 +30,12 @@ export default function GatewaySettingsScreen() {
     defaultValues: {
       baseUrl: baseUrl || DEFAULT_GATEWAY_BASE_URL,
       token: token || '',
-      thinking: thinking || '',
     },
   });
 
   const onSubmit = (data: GatewaySettingsForm) => {
     setBaseUrl(data.baseUrl);
     setToken(data.token);
-    setThinking(data.thinking);
     persist();
     router.back();
   };
@@ -91,23 +87,6 @@ export default function GatewaySettingsScreen() {
           />
         )}
       />
-
-      <Controller
-        control={control}
-        name="thinking"
-        render={({ field: { onChange, onBlur, value } }) => (
-          <TextInput
-            label={s.thinkingLevel}
-            value={value}
-            onBlur={onBlur}
-            onChangeText={onChange}
-            autoCapitalize="none"
-            mode="outlined"
-            style={styles.fieldGap}
-          />
-        )}
-      />
-
       <View style={styles.saveRow}>
         <Button mode="contained" onPress={handleSubmit(onSubmit)}>
           {s.save}

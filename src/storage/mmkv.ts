@@ -3,7 +3,6 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 export const KEYS = {
   baseUrl: 'gateway.baseUrl',
   token: 'gateway.token',
-  thinking: 'gateway.thinking',
   pendingRunPrefix: 'xopc:pendingRun:',
   language: 'prefs.language',
   themePreference: 'prefs.themePreference',

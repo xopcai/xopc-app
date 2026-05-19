@@ -10,7 +10,7 @@ export type TextContent = {
 
 export type ImageContent = {
   type: 'image';
-  source?: { data?: string };
+  source?: { data?: string; media_type?: string };
 };
 
 export type ToolUseContent = {
@@ -30,7 +30,16 @@ export type ThinkingContent = {
   streaming?: boolean;
 };
 
-export type MessageContent = TextContent | ImageContent | ToolUseContent | ThinkingContent;
+export type AudioContent = {
+  type: 'audio';
+  workspaceRelativePath?: string;
+  uri?: string;
+  mimeType?: string;
+  name?: string;
+  durationSeconds?: number;
+};
+
+export type MessageContent = TextContent | ImageContent | ToolUseContent | ThinkingContent | AudioContent;
 
 export type MessageAttachment = {
   id?: string;

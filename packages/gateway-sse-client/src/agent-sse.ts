@@ -240,7 +240,7 @@ export function consumeAgentSseFromText(
 export type AgentSseHttpInit = {
   method?: string;
   headers?: Record<string, string>;
-  body?: string;
+  body?: string | FormData;
   signal?: AbortSignal;
 };
 

@@ -15,10 +15,12 @@ import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { Banner, IconButton, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AgentMessageSender, type MessagingCallbacks } from '../../src/api/agent-client';
+import { AgentMessageSender, submitClarifyResponse, type MessagingCallbacks } from '../../src/api/agent-client';
 import { ChatComposer } from '../../src/features/chat/ChatComposer';
+import { ClarifyPrompt, type ClarifyPromptState } from '../../src/features/chat/ClarifyPrompt';
+import { GoalMissionCard } from '../../src/features/chat/GoalMissionCard';
 import { MessageList } from '../../src/features/chat/MessageList';
-import type { Message, MessageContent, ProgressState } from '../../src/features/chat/messages.types';
+import type { Message, MessageAttachment, MessageContent, ProgressState } from '../../src/features/chat/messages.types';
 import { useMessages } from '../../src/i18n/messages';
 import { RenameDialog } from '../../src/features/sessions/RenameDialog';
 import {
@@ -37,21 +39,42 @@ import { queryKeys } from '../../src/query/keys';
 import {
   createSession,
   fetchSession,
-  fetchSessionsList,
   renameSession,
   useGatewayConfigured,
 } from '../../src/query/sessions';
 import { pendingRunStorageKey, storage } from '../../src/storage/mmkv';
 import { useKeyboardVisible } from '../../src/hooks/use-keyboard-visible';
-import { useGatewayStore } from '../../src/stores/gateway-store';
 import { usePreferencesStore } from '../../src/stores/preferences-store';
 
+const STREAMING_RENDER_THROTTLE_MS = 50;
+
 // ── Session wire → UI message helpers (ported from web/src/features/chat/agent-messages.ts) ──
+
+type WireContentBlock = {
+  type?: string;
+  text?: string;
+  thinking?: string;
+  source?: { data?: string; media_type?: string };
+  data?: string;
+  mimeType?: string;
+  workspaceRelativePath?: string;
+  uri?: string;
+  durationSeconds?: number;
+  id?: string;
+  name?: string;
+  input?: unknown;
+  args?: unknown;
+  arguments?: unknown;
+  function?: { name?: string; arguments?: unknown };
+  result?: string;
+  status?: string;
+};
 
 type WireMessage = {
   role?: string;
   content?: unknown;
   timestamp?: string | number;
+  attachments?: unknown;
   tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
   toolCalls?: Array<{ id?: string; name: string; args?: Record<string, unknown> }>;
   tool_call_id?: string;
@@ -59,23 +82,59 @@ type WireMessage = {
   isError?: boolean;
 };
 
+function wireImageBlockToContent(block: WireContentBlock): MessageContent | null {
+  const fromSource = block.source?.data;
+  if (typeof fromSource === 'string' && fromSource.length > 0) {
+    return { type: 'image', source: { data: fromSource, media_type: block.source?.media_type } };
+  }
+
+  const raw = block.data;
+  if (typeof raw !== 'string' || raw.length === 0) {
+    return null;
+  }
+
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('data:') || /^https?:\/\//i.test(trimmed) || trimmed.startsWith('/')) {
+    return { type: 'image', source: { data: trimmed } };
+  }
+
+  const mime =
+    typeof block.mimeType === 'string' && block.mimeType.includes('/')
+      ? block.mimeType
+      : 'image/png';
+  return { type: 'image', source: { data: `data:${mime};base64,${trimmed.replace(/\s/g, '')}` } };
+}
+
 /** Parse a single content block from wire format. */
-function parseContentBlock(b: Record<string, unknown>): MessageContent {
-  const t = b.type;
-  if (t === 'text') return { type: 'text', text: String(b.text ?? '') };
-  if (t === 'thinking') return { type: 'thinking', text: String(b.text ?? b.thinking ?? ''), streaming: false };
+function parseContentBlock(b: Record<string, unknown>): MessageContent | null {
+  const block = b as WireContentBlock;
+  const t = block.type;
+  if (t === 'text') return { type: 'text', text: String(block.text ?? '') };
+  if (t === 'thinking') return { type: 'thinking', text: String(block.text ?? block.thinking ?? ''), streaming: false };
+  if (t === 'audio' || t === 'tts_audio' || block.mimeType?.startsWith('audio/')) {
+    return {
+      type: 'audio',
+      workspaceRelativePath: block.workspaceRelativePath,
+      uri: block.uri ?? (typeof block.data === 'string' && block.data.startsWith('data:') ? block.data : undefined),
+      mimeType: block.mimeType,
+      name: block.name,
+      durationSeconds: block.durationSeconds,
+    };
+  }
+  if (t === 'image' || (typeof block.data === 'string' && typeof block.mimeType === 'string')) {
+    return wireImageBlockToContent(block);
+  }
   if (t === 'tool_use' || t === 'tool_call' || t === 'toolCall') {
     return {
       type: 'tool_use',
-      id: String(b.id ?? `tool-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),
-      name: String(b.name ?? (b.function as { name?: string } | undefined)?.name ?? 'tool'),
-      input: b.input ?? b.args ?? b.arguments ?? (b.function as { arguments?: unknown } | undefined)?.arguments,
-      status: (b.status === 'running' || b.status === 'error') ? b.status : 'done' as const,
-      result: b.result as string | undefined,
+      id: String(block.id ?? `tool-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),
+      name: String(block.name ?? block.function?.name ?? 'tool'),
+      input: block.input ?? block.args ?? block.arguments ?? block.function?.arguments,
+      status: (block.status === 'running' || block.status === 'error') ? block.status : 'done' as const,
+      result: block.result,
     };
   }
-  if (t === 'image') return { type: 'image', source: b.source as { data?: string } | undefined };
-  return { type: 'text', text: String(b.text ?? '') };
+  return { type: 'text', text: String(block.text ?? '') };
 }
 
 /** Normalize raw content to MessageContent[]. */
@@ -85,7 +144,8 @@ function normalizeContentBlocks(raw: unknown): MessageContent[] {
   if (!Array.isArray(raw)) return [{ type: 'text', text: String(raw) }];
   return raw
     .filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
-    .map(parseContentBlock);
+    .map(parseContentBlock)
+    .filter((block): block is MessageContent => block != null);
 }
 
 /** Build assistant content, including top-level tool_calls / toolCalls fields. */
@@ -214,6 +274,64 @@ function parseTimestamp(raw: string | number | undefined): number | undefined {
   return undefined;
 }
 
+function normalizeAttachments(raw: unknown): MessageAttachment[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out = raw
+    .filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
+    .map((item): MessageAttachment => ({
+      id: typeof item.id === 'string' ? item.id : undefined,
+      name: typeof item.name === 'string' ? item.name : undefined,
+      type: typeof item.type === 'string' ? item.type : undefined,
+      mimeType: typeof item.mimeType === 'string' ? item.mimeType : undefined,
+      size: typeof item.size === 'number' ? item.size : undefined,
+      content: typeof item.content === 'string' ? item.content : undefined,
+      data: typeof item.data === 'string' ? item.data : undefined,
+      preview: typeof item.preview === 'string' ? item.preview : undefined,
+      extractedText: typeof item.extractedText === 'string' ? item.extractedText : undefined,
+      workspaceRelativePath: typeof item.workspaceRelativePath === 'string' ? item.workspaceRelativePath : undefined,
+      durationSeconds: typeof item.durationSeconds === 'number' ? item.durationSeconds : undefined,
+    }));
+  return out.length ? out : undefined;
+}
+
+function isAudioAttachment(att: MessageAttachment): boolean {
+  return att.type === 'voice' || att.type === 'audio' || att.mimeType?.startsWith('audio/') === true;
+}
+
+function audioAttachmentToContent(att: MessageAttachment): MessageContent | null {
+  if (!isAudioAttachment(att)) return null;
+  const payload = att.preview || att.content || att.data;
+  const mimeType = att.mimeType || 'audio/mpeg';
+  return {
+    type: 'audio',
+    workspaceRelativePath: att.workspaceRelativePath,
+    uri: payload ? (payload.startsWith('data:') ? payload : `data:${mimeType};base64,${payload.replace(/\s/g, '')}`) : undefined,
+    mimeType,
+    name: att.name,
+    durationSeconds: att.durationSeconds,
+  };
+}
+
+function appendAudioAttachments(content: MessageContent[], attachments: MessageAttachment[] | undefined): MessageContent[] {
+  if (!attachments?.length) return content;
+  const existingKeys = new Set(
+    content
+      .filter((b) => b.type === 'audio')
+      .map((b) => b.workspaceRelativePath || b.uri || b.name || '')
+      .filter(Boolean),
+  );
+  const audioBlocks = attachments
+    .map(audioAttachmentToContent)
+    .filter((b): b is MessageContent => b != null)
+    .filter((b) => {
+      const key = b.type === 'audio' ? b.workspaceRelativePath || b.uri || b.name || '' : '';
+      if (!key || existingKeys.has(key)) return false;
+      existingKeys.add(key);
+      return true;
+    });
+  return audioBlocks.length ? [...content, ...audioBlocks] : content;
+}
+
 /**
  * Convert raw session messages (unknown content shape) to typed Message[].
  *
@@ -237,18 +355,22 @@ function parseSessionMessages(raw: Array<Record<string, unknown>>): Message[] {
     }
 
     if (role === 'user' || role === 'user-with-attachments') {
+      const attachments = normalizeAttachments(m.attachments);
       out.push({
         role,
-        content: normalizeContentBlocks(m.content),
+        content: appendAudioAttachments(normalizeContentBlocks(m.content), attachments),
+        attachments,
         timestamp: parseTimestamp(m.timestamp),
       });
       continue;
     }
 
     if (role === 'assistant') {
+      const attachments = normalizeAttachments(m.attachments);
       out.push({
         role: 'assistant',
-        content: buildAssistantContent(m),
+        content: appendAudioAttachments(buildAssistantContent(m), attachments),
+        attachments,
         timestamp: parseTimestamp(m.timestamp),
       });
       continue;
@@ -266,7 +388,6 @@ export default function ChatScreen() {
   const navigation = useNavigation();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const thinking = useGatewayStore((s) => s.thinking);
   const configured = useGatewayConfigured();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
@@ -281,12 +402,6 @@ export default function ChatScreen() {
   });
 
   const localDefaultAgentId = usePreferencesStore((s) => s.defaultAgentId);
-
-  const sessionsQuery = useQuery({
-    queryKey: queryKeys.sessions,
-    queryFn: fetchSessionsList,
-    enabled: configured && !sessionKey,
-  });
 
   const [creatingInitialSession, setCreatingInitialSession] = useState(false);
   const autoSessionStartedRef = useRef(false);
@@ -312,16 +427,74 @@ export default function ChatScreen() {
   const [streaming, setStreaming] = useState(false);
   const [progress, setProgress] = useState<ProgressState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [clarifyPrompt, setClarifyPrompt] = useState<ClarifyPromptState | null>(null);
+  const [clarifySubmitting, setClarifySubmitting] = useState(false);
+  const [clarifySubmitError, setClarifySubmitError] = useState<string | null>(null);
   const senderRef = useRef(new AgentMessageSender());
   const streamingRef = useRef(false);
+  const streamingMsgRef = useRef<Message | null>(null);
+  const streamingFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeSessionKeyRef = useRef(sessionKey);
+
+  const clearStreamingFlushTimer = useCallback(() => {
+    if (!streamingFlushTimerRef.current) return;
+    clearTimeout(streamingFlushTimerRef.current);
+    streamingFlushTimerRef.current = null;
+  }, []);
+
+  const flushStreamingMessage = useCallback(() => {
+    clearStreamingFlushTimer();
+    const message = streamingMsgRef.current;
+    setStreamingMsg(message ? cloneMessageForRender(message) : null);
+  }, [clearStreamingFlushTimer]);
+
+  const updateStreamingMessage = useCallback((update: (message: Message) => void, flushImmediately = false) => {
+    const message = ensureAssistantMessage(streamingMsgRef.current, Date.now());
+    update(message);
+    streamingMsgRef.current = message;
+
+    if (flushImmediately) {
+      flushStreamingMessage();
+      return;
+    }
+
+    if (streamingFlushTimerRef.current) return;
+    streamingFlushTimerRef.current = setTimeout(
+      flushStreamingMessage,
+      STREAMING_RENDER_THROTTLE_MS,
+    );
+  }, [flushStreamingMessage]);
+
+  const clearStreamingMessage = useCallback(() => {
+    clearStreamingFlushTimer();
+    streamingMsgRef.current = null;
+    setStreamingMsg(null);
+  }, [clearStreamingFlushTimer]);
 
   /** Optimistic user messages appended before the server responds. */
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
+  const [awaitingSessionRefresh, setAwaitingSessionRefresh] = useState(false);
+  const [sessionRefreshStartedAt, setSessionRefreshStartedAt] = useState(0);
+  const sessionDataUpdatedAtRef = useRef(0);
+
+  useEffect(() => {
+    sessionDataUpdatedAtRef.current = sessionQuery.dataUpdatedAt;
+  }, [sessionQuery.dataUpdatedAt]);
+
+  useEffect(() => {
+    activeSessionKeyRef.current = sessionKey;
+  }, [sessionKey]);
+
+  const invalidateSessionByKey = useCallback((targetSessionKey: string) => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.session(targetSessionKey) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoal(targetSessionKey) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoalRuns(targetSessionKey, 1) });
+  }, [queryClient]);
 
   const invalidateSession = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionKey) });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
-  }, [queryClient, sessionKey]);
+    invalidateSessionByKey(sessionKey);
+  }, [invalidateSessionByKey, sessionKey]);
 
   const sessionName = sessionQuery.data?.name?.trim() || '';
   const [renameVisible, setRenameVisible] = useState(false);
@@ -358,38 +531,75 @@ export default function ChatScreen() {
     return parseSessionMessages(raw);
   }, [sessionQuery.data?.messages]);
 
+  const sessionRefreshComplete = awaitingSessionRefresh
+    && sessionQuery.dataUpdatedAt > sessionRefreshStartedAt;
+
   /** Display messages: session history + optimistic user msgs + streaming assistant bubble. */
   const displayMessages = useMemo<Message[]>(() => {
+    if (sessionRefreshComplete) return sessionMessages;
+
     const base = optimisticMessages.length > 0
       ? [...sessionMessages, ...optimisticMessages]
       : sessionMessages;
     if (!streamingMsg) return base;
     return [...base, streamingMsg];
-  }, [sessionMessages, optimisticMessages, streamingMsg]);
+  }, [sessionRefreshComplete, sessionMessages, optimisticMessages, streamingMsg]);
 
-  /** Finalize a streaming turn: merge the streamed message into persisted state. */
-  const finalizeMessage = useCallback(() => {
-    setStreamingMsg(null);
+  /** Finalize a streaming turn and keep local messages visible until session refetch completes. */
+  const finalizeMessage = useCallback((targetSessionKey = sessionKey) => {
+    if (activeSessionKeyRef.current !== targetSessionKey) {
+      invalidateSessionByKey(targetSessionKey);
+      return;
+    }
+
     setStreaming(false);
     streamingRef.current = false;
     setProgress(null);
-    setOptimisticMessages([]);
-    invalidateSession();
-  }, [invalidateSession]);
+    setClarifyPrompt(null);
+    setClarifySubmitError(null);
+    setClarifySubmitting(false);
+    setAwaitingSessionRefresh(true);
+    setSessionRefreshStartedAt(sessionDataUpdatedAtRef.current);
+    invalidateSessionByKey(targetSessionKey);
+  }, [invalidateSessionByKey, sessionKey]);
 
-  function buildCallbacks(): MessagingCallbacks {
+  useEffect(() => {
+    if (!sessionRefreshComplete) return;
+
+    clearStreamingMessage();
+    setOptimisticMessages([]);
+    setAwaitingSessionRefresh(false);
+    setSessionRefreshStartedAt(0);
+  }, [sessionRefreshComplete, clearStreamingMessage]);
+
+  useEffect(() => {
+    clearStreamingMessage();
+    setStreaming(false);
+    streamingRef.current = false;
+    setProgress(null);
+    setClarifyPrompt(null);
+    setClarifySubmitError(null);
+    setClarifySubmitting(false);
+    setOptimisticMessages([]);
+    setAwaitingSessionRefresh(false);
+    setSessionRefreshStartedAt(0);
+  }, [sessionKey, clearStreamingMessage]);
+
+  function buildCallbacks(callbackSessionKey: string): MessagingCallbacks {
+    const isCurrentSession = () => activeSessionKeyRef.current === callbackSessionKey;
+
     return {
       onStreamStart: () => {
+        if (!isCurrentSession()) return;
         setStreaming(true);
         streamingRef.current = true;
         setError(null);
-        setStreamingMsg((prev) => cloneMessageForRender(ensureAssistantMessage(prev, Date.now())));
+        updateStreamingMessage(() => {}, true);
       },
       onToken: (delta) => {
-        setStreamingMsg((prev) => {
-          const msg = ensureAssistantMessage(prev, Date.now());
-          appendTextDelta(msg.content, delta);
-          return cloneMessageForRender(msg);
+        if (!isCurrentSession()) return;
+        updateStreamingMessage((message) => {
+          appendTextDelta(message.content, delta);
         });
         if (!streamingRef.current) {
           setStreaming(true);
@@ -397,58 +607,86 @@ export default function ChatScreen() {
         }
       },
       onThinking: (text, isDelta) => {
-        setStreamingMsg((prev) => {
-          const msg = ensureAssistantMessage(prev, Date.now());
-          if (!isDelta && text === '') startThinkingSegment(msg.content);
-          else appendThinkingDelta(msg.content, text, isDelta);
-          return cloneMessageForRender(msg);
+        if (!isCurrentSession()) return;
+        updateStreamingMessage((message) => {
+          if (!isDelta && text === '') startThinkingSegment(message.content);
+          else appendThinkingDelta(message.content, text, isDelta);
         });
       },
       onThinkingEnd: () => {
-        setStreamingMsg((prev) => {
-          if (!prev) return prev;
-          const msg = ensureAssistantMessage(prev, Date.now());
-          finalizeStreamingThinking(msg.content);
-          return cloneMessageForRender(msg);
-        });
+        if (!isCurrentSession() || !streamingMsgRef.current) return;
+        finalizeStreamingThinking(streamingMsgRef.current.content);
+        flushStreamingMessage();
       },
       onToolStart: (toolName, args) => {
-        setStreamingMsg((prev) => {
-          const msg = ensureAssistantMessage(prev, Date.now());
-          appendToolStart(msg.content, toolName, args);
-          return cloneMessageForRender(msg);
-        });
+        if (!isCurrentSession()) return;
+        updateStreamingMessage((message) => {
+          appendToolStart(message.content, toolName, args);
+        }, true);
         if (!streamingRef.current) {
           setStreaming(true);
           streamingRef.current = true;
         }
       },
       onToolEnd: (toolName, isErr, result) => {
-        setStreamingMsg((prev) => {
-          const msg = ensureAssistantMessage(prev, Date.now());
-          completeTool(msg.content, toolName, isErr, result);
-          return cloneMessageForRender(msg);
-        });
+        if (!isCurrentSession()) return;
+        updateStreamingMessage((message) => {
+          completeTool(message.content, toolName, isErr, result);
+        }, true);
       },
       onProgress: (p) => {
+        if (!isCurrentSession()) return;
         setProgress(p);
       },
+      onTtsAudio: (payload) => {
+        if (!isCurrentSession()) return;
+        updateStreamingMessage((message) => {
+          message.content.push({
+            type: 'audio',
+            workspaceRelativePath: payload.workspaceRelativePath,
+            mimeType: payload.mimeType,
+            name: payload.name,
+          });
+        }, true);
+        if (!streamingRef.current) {
+          setStreaming(true);
+          streamingRef.current = true;
+        }
+      },
+      onClarifyRequest: (payload) => {
+        if (!isCurrentSession()) return;
+        flushStreamingMessage();
+        setClarifyPrompt(payload);
+        setClarifySubmitError(null);
+        setClarifySubmitting(false);
+      },
       onResult: () => {
-        setStreamingMsg((prev) => {
-          if (prev) {
-            finalizeStreamingThinking(prev.content);
-            finalizeRunningTools(prev.content);
-          }
-          return prev;
-        });
-        finalizeMessage();
+        if (!isCurrentSession()) {
+          invalidateSessionByKey(callbackSessionKey);
+          return;
+        }
+        if (streamingMsgRef.current) {
+          finalizeStreamingThinking(streamingMsgRef.current.content);
+          finalizeRunningTools(streamingMsgRef.current.content);
+          flushStreamingMessage();
+        }
+        finalizeMessage(callbackSessionKey);
       },
       onError: (msg) => {
+        if (!isCurrentSession()) {
+          invalidateSessionByKey(callbackSessionKey);
+          return;
+        }
         setStreaming(false);
         streamingRef.current = false;
-        setStreamingMsg(null);
+        clearStreamingMessage();
         setProgress(null);
+        setClarifyPrompt(null);
+        setClarifySubmitError(null);
+        setClarifySubmitting(false);
         setError(msg);
+        setAwaitingSessionRefresh(false);
+        setSessionRefreshStartedAt(0);
         invalidateSession();
       },
     };
@@ -456,7 +694,7 @@ export default function ChatScreen() {
 
   const send = useCallback(
     async (text: string) => {
-      if (!text.trim() || !sessionKey || streaming) return;
+      if (!text.trim() || !sessionKey || streaming || awaitingSessionRefresh) return;
       // Optimistic: show user message immediately
       const userMsg: Message = {
         role: 'user',
@@ -464,36 +702,130 @@ export default function ChatScreen() {
         timestamp: Date.now(),
       };
       setOptimisticMessages([userMsg]);
-      setStreamingMsg(null);
+      clearStreamingMessage();
       setProgress(null);
+      setClarifyPrompt(null);
+      setClarifySubmitError(null);
+      setClarifySubmitting(false);
       setError(null);
+      setAwaitingSessionRefresh(false);
+      setSessionRefreshStartedAt(0);
       try {
         await senderRef.current.sendMessage(
           text,
           sessionKey,
-          buildCallbacks(),
-          thinking.trim() || undefined,
+          buildCallbacks(sessionKey),
         );
       } catch (e) {
+        if (activeSessionKeyRef.current !== sessionKey) {
+          invalidateSessionByKey(sessionKey);
+          return;
+        }
         setError(e instanceof Error ? e.message : String(e));
         setStreaming(false);
         streamingRef.current = false;
       }
     },
-    [sessionKey, streaming, thinking, finalizeMessage, invalidateSession],
+    [sessionKey, streaming, awaitingSessionRefresh, invalidateSessionByKey, clearStreamingMessage],
+  );
+
+  const sendVoice = useCallback(
+    async (payload: { uri: string; durationMillis: number; mimeType?: string }) => {
+      if (!payload.uri || !sessionKey || streaming || awaitingSessionRefresh) return;
+      const userMsg: Message = {
+        role: 'user-with-attachments',
+        content: [
+          {
+            type: 'audio',
+            uri: payload.uri,
+            mimeType: payload.mimeType,
+            name: 'voice.m4a',
+            durationSeconds: Math.round(payload.durationMillis / 1000),
+          },
+        ],
+        attachments: [
+          {
+            name: 'voice.m4a',
+            type: 'voice',
+            mimeType: payload.mimeType,
+            durationSeconds: Math.round(payload.durationMillis / 1000),
+          },
+        ],
+        timestamp: Date.now(),
+      };
+      setOptimisticMessages([userMsg]);
+      clearStreamingMessage();
+      setProgress({
+        stage: 'voice',
+        message: m.chat.voiceSending,
+        timestamp: Date.now(),
+      });
+      setClarifyPrompt(null);
+      setClarifySubmitError(null);
+      setClarifySubmitting(false);
+      setError(null);
+      setAwaitingSessionRefresh(false);
+      setSessionRefreshStartedAt(0);
+      try {
+        await senderRef.current.sendVoiceMessage(
+          payload,
+          sessionKey,
+          buildCallbacks(sessionKey),
+        );
+      } catch (e) {
+        if (activeSessionKeyRef.current !== sessionKey) {
+          invalidateSessionByKey(sessionKey);
+          return;
+        }
+        setError(e instanceof Error ? e.message : String(e));
+        setStreaming(false);
+        streamingRef.current = false;
+        setProgress(null);
+      }
+    },
+    [sessionKey, streaming, awaitingSessionRefresh, invalidateSessionByKey, clearStreamingMessage, m.chat.voiceSending],
   );
 
   const abort = useCallback(() => {
+    setClarifyPrompt(null);
+    setClarifySubmitError(null);
+    setClarifySubmitting(false);
     senderRef.current.abort();
-    setStreamingMsg((prev) => {
-      if (prev) {
-        finalizeStreamingThinking(prev.content);
-        finalizeRunningTools(prev.content);
-      }
-      return prev;
-    });
+    if (streamingMsgRef.current) {
+      finalizeStreamingThinking(streamingMsgRef.current.content);
+      finalizeRunningTools(streamingMsgRef.current.content);
+      flushStreamingMessage();
+    }
     finalizeMessage();
-  }, [finalizeMessage]);
+  }, [finalizeMessage, flushStreamingMessage]);
+
+  const submitClarifyAnswer = useCallback(async (answer: string) => {
+    if (!clarifyPrompt || clarifySubmitting) return;
+    setClarifySubmitting(true);
+    setClarifySubmitError(null);
+    try {
+      await submitClarifyResponse(clarifyPrompt.requestId, { answer });
+      setClarifyPrompt(null);
+    } catch (e) {
+      setClarifySubmitError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setClarifySubmitting(false);
+    }
+  }, [clarifyPrompt, clarifySubmitting]);
+
+  const skipClarifyAnswer = useCallback(async () => {
+    if (!clarifyPrompt || clarifySubmitting) return;
+    setClarifySubmitting(true);
+    setClarifySubmitError(null);
+    try {
+      await submitClarifyResponse(clarifyPrompt.requestId, { skip: true });
+      setClarifyPrompt(null);
+    } catch (e) {
+      setClarifySubmitError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setClarifySubmitting(false);
+    }
+  }, [clarifyPrompt, clarifySubmitting]);
 
   const pendingRunId = useMemo(() => {
     if (!sessionKey) return null;
@@ -508,41 +840,38 @@ export default function ChatScreen() {
   }, [sessionKey, streaming]);
 
   const resume = useCallback(async () => {
-    if (!sessionKey || !pendingRunId || streaming) return;
-    setStreamingMsg(null);
+    if (!sessionKey || !pendingRunId || streaming || awaitingSessionRefresh) return;
+    clearStreamingMessage();
     setProgress(null);
+    setAwaitingSessionRefresh(false);
+    setSessionRefreshStartedAt(0);
     try {
       await senderRef.current.resume(
         pendingRunId,
         sessionKey,
-        buildCallbacks(),
+        buildCallbacks(sessionKey),
       );
     } catch (e) {
+      if (activeSessionKeyRef.current !== sessionKey) {
+        invalidateSessionByKey(sessionKey);
+        return;
+      }
       setError(e instanceof Error ? e.message : String(e));
       setStreaming(false);
       streamingRef.current = false;
     }
-  }, [sessionKey, pendingRunId, streaming, finalizeMessage, invalidateSession]);
+  }, [sessionKey, pendingRunId, streaming, awaitingSessionRefresh, invalidateSessionByKey, clearStreamingMessage]);
 
   useEffect(() => {
-    return () => senderRef.current.abort();
-  }, []);
+    return () => {
+      senderRef.current.abort();
+      clearStreamingFlushTimer();
+    };
+  }, [clearStreamingFlushTimer]);
 
-  /** Open latest session (or create one) when landing on home without `k`. */
+  /** Create a fresh session when landing on home without `k`. */
   useEffect(() => {
-    if (sessionKey || !configured || autoSessionStartedRef.current) return;
-    if (sessionsQuery.isLoading || sessionsQuery.isFetching) return;
-
-    if (sessionsQuery.isError) return;
-
-    const sessions = sessionsQuery.data ?? [];
-    if (sessions.length > 0) {
-      autoSessionStartedRef.current = true;
-      router.setParams({ k: sessions[0].key });
-      return;
-    }
-
-    if (!sessionsQuery.isFetched || creatingInitialSession) return;
+    if (sessionKey || !configured || autoSessionStartedRef.current || creatingInitialSession) return;
 
     autoSessionStartedRef.current = true;
     setCreatingInitialSession(true);
@@ -550,7 +879,7 @@ export default function ChatScreen() {
     void createSession(agentId)
       .then((key) => {
         void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
-        router.setParams({ k: key });
+        router.replace({ pathname: '/', params: { k: key } });
       })
       .catch(() => {
         autoSessionStartedRef.current = false;
@@ -561,11 +890,6 @@ export default function ChatScreen() {
   }, [
     sessionKey,
     configured,
-    sessionsQuery.isLoading,
-    sessionsQuery.isFetching,
-    sessionsQuery.isFetched,
-    sessionsQuery.isError,
-    sessionsQuery.data,
     creatingInitialSession,
     agentsQuery.data,
     localDefaultAgentId,
@@ -575,12 +899,32 @@ export default function ChatScreen() {
 
   // ── New chat ─────────────────────────────────────────────
   const handleNewChat = useCallback(() => {
+    activeSessionKeyRef.current = '';
+    senderRef.current.abort();
+    clearStreamingMessage();
+    setStreaming(false);
+    streamingRef.current = false;
+    setProgress(null);
+    setClarifyPrompt(null);
+    setClarifySubmitError(null);
+    setClarifySubmitting(false);
+    setError(null);
+    setOptimisticMessages([]);
+    setAwaitingSessionRefresh(false);
+    setSessionRefreshStartedAt(0);
+
     const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
-    void createSession(agentId).then((key) => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
-      router.setParams({ k: key });
-    });
-  }, [agentsQuery.data, localDefaultAgentId, queryClient, router]);
+    void createSession(agentId, { forceNew: true })
+      .then((key) => {
+        activeSessionKeyRef.current = key;
+        void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+        router.replace({ pathname: '/', params: { k: key } });
+      })
+      .catch((e) => {
+        activeSessionKeyRef.current = sessionKey;
+        setError(e instanceof Error ? e.message : String(e));
+      });
+  }, [agentsQuery.data, localDefaultAgentId, queryClient, router, sessionKey, clearStreamingMessage]);
 
   // ── Open drawer ──────────────────────────────────────────
   const openDrawer = useCallback(() => {
@@ -603,13 +947,7 @@ export default function ChatScreen() {
     router.push('/agents');
   }, [router]);
 
-  const bootstrappingSession =
-    !sessionKey &&
-    configured &&
-    (sessionsQuery.isLoading ||
-      sessionsQuery.isFetching ||
-      creatingInitialSession ||
-      (sessionsQuery.isSuccess && (sessionsQuery.data?.length ?? 0) > 0));
+  const bootstrappingSession = !sessionKey && configured && creatingInitialSession;
 
   // ── Render: no session key → bootstrap or fallback ───────
   if (!sessionKey) {
@@ -679,6 +1017,8 @@ export default function ChatScreen() {
           </Banner>
         ) : null}
 
+        <GoalMissionCard sessionKey={sessionKey} agentBusy={streaming || awaitingSessionRefresh} />
+
         <View style={styles.listFill}>
           <MessageList
             messages={displayMessages}
@@ -697,10 +1037,18 @@ export default function ChatScreen() {
           offset={{ closed: 0, opened: 0 }}
           style={{ backgroundColor: canvasBg }}
         >
+          <ClarifyPrompt
+            prompt={clarifyPrompt}
+            submitting={clarifySubmitting}
+            submitError={clarifySubmitError}
+            onSubmit={(answer) => void submitClarifyAnswer(answer)}
+            onSkip={() => void skipClarifyAnswer()}
+          />
           <ChatComposer
-            disabled={sessionQuery.isLoading}
+            disabled={sessionQuery.isLoading || awaitingSessionRefresh}
             streaming={streaming}
             onSend={(text) => void send(text)}
+            onSendVoice={(payload) => void sendVoice(payload)}
             onAbort={abort}
             placeholder={m.chat.inputPlaceholder}
             suggestionDraft={composerSuggestion}

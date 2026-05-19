@@ -7,11 +7,9 @@ export const DEFAULT_GATEWAY_BASE_URL = 'http://localhost:18790';
 export type GatewayState = {
   baseUrl: string;
   token: string;
-  thinking: string;
   unauthorized: boolean;
   setBaseUrl: (v: string) => void;
   setToken: (v: string) => void;
-  setThinking: (v: string) => void;
   hydrateFromStorage: () => void;
   persist: () => void;
   onUnauthorized: () => void;
@@ -25,7 +23,6 @@ function normalizeBaseUrl(raw: string): string {
 export const useGatewayStore = create<GatewayState>((set, get) => ({
   baseUrl: '',
   token: '',
-  thinking: '',
   unauthorized: false,
 
   setBaseUrl: (v) => {
@@ -36,25 +33,18 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
     set({ token: v.trim(), unauthorized: false });
   },
 
-  setThinking: (v) => {
-    set({ thinking: v.trim() });
-  },
-
   hydrateFromStorage: () => {
     const baseUrl = storage.getString(KEYS.baseUrl) ?? '';
     const token = storage.getString(KEYS.token) ?? '';
-    const thinking = storage.getString(KEYS.thinking) ?? '';
-    set({ baseUrl: normalizeBaseUrl(baseUrl), token, thinking, unauthorized: false });
+    set({ baseUrl: normalizeBaseUrl(baseUrl), token, unauthorized: false });
   },
 
   persist: () => {
-    const { baseUrl, token, thinking } = get();
+    const { baseUrl, token } = get();
     if (baseUrl) storage.set(KEYS.baseUrl, baseUrl);
     else storage.delete(KEYS.baseUrl);
     if (token) storage.set(KEYS.token, token);
     else storage.delete(KEYS.token);
-    if (thinking) storage.set(KEYS.thinking, thinking);
-    else storage.delete(KEYS.thinking);
   },
 
   onUnauthorized: () => {

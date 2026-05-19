@@ -5,12 +5,20 @@
  * Assistant messages: left-aligned, markdown rendering, thinking/tool blocks.
  */
 import { memo, useMemo } from 'react';
-import { Image, StyleSheet, useColorScheme, View } from 'react-native';
+import { StyleSheet, useColorScheme, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
 import { AssistantStepsBlock, hasTextAfterIndex } from './AssistantStepsBlock';
+import { AttachmentRenderer } from './AttachmentRenderer';
+import { AudioMessageBlock } from './AudioMessageBlock';
 import { MarkdownView } from './MarkdownView';
-import type { Message, MessageContent, ProgressState, ThinkingContent, ToolUseContent } from './messages.types';
+import { WorkspaceArtifactStrip } from './WorkspaceArtifactStrip';
+import {
+  collectAssistantWorkspaceOutputPaths,
+  filterAssistantAttachmentsDedupedAgainstWorkspacePaths,
+  imageContentBlocksToAttachments,
+} from './assistant-message-artifacts';
+import type { ImageContent, Message, MessageContent, ProgressState, ThinkingContent, ToolUseContent } from './messages.types';
 import { chatColors, chatLayout } from './styles';
 
 function formatTime(ts: number): string {
@@ -93,6 +101,7 @@ function userContentText(content: MessageContent[]): string {
 function renderAssistantContent(
   content: MessageContent[],
   isStreaming: boolean,
+  sessionKey?: string | null,
 ) {
   const nodes: React.ReactNode[] = [];
   let i = 0;
@@ -142,19 +151,11 @@ function renderAssistantContent(
         }
       }
       i = j;
-    } else if (block.type === 'image' && block.source?.data) {
-      const uri = block.source.data.startsWith('data:')
-        ? block.source.data
-        : `data:image/png;base64,${block.source.data}`;
-      nodes.push(
-        <Image
-          key={`img-${i}`}
-          source={{ uri }}
-          style={imgStyles.image}
-          resizeMode="contain"
-          accessibilityLabel="Generated image"
-        />,
-      );
+    } else if (block.type === 'image') {
+      // Assistant images are shown in the dedicated artifact strip below the answer.
+      i++;
+    } else if (block.type === 'audio') {
+      nodes.push(<AudioMessageBlock key={`audio-${i}`} audio={block} sessionKey={sessionKey} />);
       i++;
     } else {
       i++;
@@ -177,18 +178,52 @@ export const MessageBubble = memo(function MessageBubble({
   message,
   isStreaming = false,
   progress,
+  sessionKey,
 }: {
   message: Message;
   isStreaming?: boolean;
   progress?: ProgressState | null;
+  sessionKey?: string;
 }) {
   const isDark = useColorScheme() === 'dark';
   const isUser = message.role === 'user' || message.role === 'user-with-attachments';
+  const isAssistant = message.role === 'assistant';
 
   const userText = useMemo(
     () => (isUser ? userContentText(message.content) : ''),
     [isUser, message.content],
   );
+
+  const displayContent = useMemo(
+    () => (isAssistant ? (message.content ?? []).filter((b) => b.type !== 'image') : (message.content ?? [])),
+    [isAssistant, message.content],
+  );
+
+  const assistantWorkspacePaths = useMemo(
+    () => (isAssistant ? collectAssistantWorkspaceOutputPaths(message.content) : []),
+    [isAssistant, message.content],
+  );
+
+  const assistantImageBlocks = useMemo(
+    () =>
+      isAssistant
+        ? (message.content ?? []).filter((b): b is ImageContent => b.type === 'image' && Boolean(b.source?.data))
+        : [],
+    [isAssistant, message.content],
+  );
+
+  const assistantImageAttachments = useMemo(
+    () => (isAssistant ? imageContentBlocksToAttachments(assistantImageBlocks) : []),
+    [isAssistant, assistantImageBlocks],
+  );
+
+  const showAssistantArtifacts =
+    isAssistant && (assistantWorkspacePaths.length > 0 || assistantImageAttachments.length > 0);
+
+  const attachmentsForBubble = useMemo(() => {
+    if (!isAssistant) return message.attachments;
+    return filterAssistantAttachmentsDedupedAgainstWorkspacePaths(message.attachments, assistantWorkspacePaths);
+  }, [isAssistant, message.attachments, assistantWorkspacePaths]);
 
   const showMeta =
     Boolean(message.timestamp) ||
@@ -231,20 +266,51 @@ export const MessageBubble = memo(function MessageBubble({
             },
           ]}
         >
-          <Text
-            selectable
-            style={{
-              color: isDark ? '#E5E7EB' : '#1F2937',
-              fontSize: 15,
-              lineHeight: 22,
-            }}
-          >
-            {userText}
-          </Text>
+          {userText ? (
+            <Text
+              selectable
+              style={{
+                color: isDark ? '#E5E7EB' : '#1F2937',
+                fontSize: 15,
+                lineHeight: 22,
+              }}
+            >
+              {userText}
+            </Text>
+          ) : null}
+          {attachmentsForBubble?.length ? (
+            <AttachmentRenderer attachments={attachmentsForBubble} sessionKey={sessionKey} compact />
+          ) : null}
         </View>
       ) : (
         <View style={[chatLayout.assistantBubbleContainer, chatLayout.assistantBubble]}>
-          {renderAssistantContent(message.content ?? [], isStreaming)}
+          {renderAssistantContent(displayContent, isStreaming, sessionKey)}
+
+          {showAssistantArtifacts ? (
+            <View
+              style={[
+                styles.artifactCard,
+                {
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB',
+                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB',
+                },
+              ]}
+            >
+              <Text style={[styles.artifactTitle, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>交付物</Text>
+              <View style={styles.artifactBody}>
+                {assistantWorkspacePaths.length > 0 ? (
+                  <WorkspaceArtifactStrip paths={assistantWorkspacePaths} sessionKey={sessionKey} />
+                ) : null}
+                {assistantImageAttachments.length > 0 ? (
+                  <AttachmentRenderer attachments={assistantImageAttachments} sessionKey={sessionKey} compact />
+                ) : null}
+              </View>
+            </View>
+          ) : null}
+
+          {attachmentsForBubble?.length ? (
+            <AttachmentRenderer attachments={attachmentsForBubble} sessionKey={sessionKey} />
+          ) : null}
         </View>
       )}
 
@@ -257,16 +323,6 @@ export const MessageBubble = memo(function MessageBubble({
       ) : null}
     </View>
   );
-});
-
-const imgStyles = StyleSheet.create({
-  image: {
-    width: '100%',
-    height: 200,
-    borderRadius: 8,
-    marginVertical: 4,
-    backgroundColor: '#F3F4F6',
-  },
 });
 
 const styles = StyleSheet.create({
@@ -298,6 +354,22 @@ const styles = StyleSheet.create({
     height: 14,
     borderRadius: 1,
     opacity: 0.7,
+  },
+  artifactCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 6,
+    gap: 8,
+  },
+  artifactTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
+  artifactBody: {
+    gap: 8,
   },
   usage: {
     color: chatColors.timestamp,

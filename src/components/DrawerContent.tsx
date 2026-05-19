@@ -125,11 +125,13 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
 
   const createMut = useMutation({
     mutationFn: (agentId?: string) =>
-      createSession(agentId ?? resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId)),
+      createSession(
+        agentId ?? resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId),
+        { forceNew: true },
+      ),
     onSuccess: (key) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
-      router.setParams({ k: key });
-      router.navigate({ pathname: '/', params: { k: key } });
+      router.replace({ pathname: '/', params: { k: key } });
       navigation.dispatch(DrawerActions.closeDrawer());
     },
   });
@@ -140,7 +142,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
 
   const handleSessionTap = useCallback(
     (session: SessionListItem) => {
-      router.navigate({ pathname: '/', params: { k: session.key } });
+      router.replace({ pathname: '/', params: { k: session.key } });
       navigation.dispatch(DrawerActions.closeDrawer());
     },
     [navigation, router],

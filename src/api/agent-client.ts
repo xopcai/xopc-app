@@ -7,11 +7,39 @@ import {
   type AgentSseDispatchOptions,
 } from '@xopcai/gateway-sse-client';
 
-import { apiFetch, buildAgentSseHeaders, formatApiHttpError, notifyUnauthorizedIfNeeded } from './client';
+import {
+  apiFetch,
+  buildAgentSseHeaders,
+  buildAgentSseMultipartHeaders,
+  formatApiHttpError,
+  notifyUnauthorizedIfNeeded,
+} from './client';
 import { useGatewayStore } from '../stores/gateway-store';
 import { pendingRunStorageKey, storage } from '../storage/mmkv';
 
 export type MessagingCallbacks = AgentSseCallbacks;
+
+export type VoiceMessagePayload = {
+  uri: string;
+  durationMillis: number;
+  mimeType?: string;
+  name?: string;
+};
+
+export async function submitClarifyResponse(
+  requestId: string,
+  payload: { answer: string } | { skip: true },
+): Promise<void> {
+  const res = await apiFetch(`/api/clarify/${encodeURIComponent(requestId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw new Error(formatApiHttpError(res.status, res.statusText, body.error?.message));
+  }
+}
 
 function wrapTerminalCallbacks(cb?: MessagingCallbacks): {
   wrapped: MessagingCallbacks | undefined;
@@ -74,7 +102,6 @@ export class AgentMessageSender {
     path: string,
     body: Record<string, unknown>,
     callbacks?: MessagingCallbacks,
-    thinkingLevel?: string,
   ): Promise<void> {
     this._abort = new AbortController();
     const chatId = typeof body.chatId === 'string' ? body.chatId : typeof body.sessionKey === 'string' ? body.sessionKey : '';
@@ -83,7 +110,6 @@ export class AgentMessageSender {
     const mergedBody = {
       ...body,
       channel: 'webchat',
-      ...(thinkingLevel?.trim() ? { thinking: thinkingLevel.trim() } : {}),
     };
     const bodyJson = JSON.stringify(mergedBody);
     const terminal = wrapTerminalCallbacks(callbacks);
@@ -140,8 +166,70 @@ export class AgentMessageSender {
     this._abort = undefined;
   }
 
+  async sendMultipart(
+    path: string,
+    formData: FormData,
+    sessionKey: string,
+    callbacks?: MessagingCallbacks,
+  ): Promise<void> {
+    this._abort = new AbortController();
+    this._sseChatId = sessionKey;
+
+    const terminal = wrapTerminalCallbacks(callbacks);
+    const opts = sseDispatchOptions(this._sseChatId);
+
+    if (shouldUseXhrForAgentSse()) {
+      const result = await consumeAgentSseXhr(
+        useGatewayStore.getState().apiUrl(path),
+        {
+          method: 'POST',
+          headers: buildAgentSseMultipartHeaders(),
+          body: formData,
+          signal: this._abort.signal,
+        },
+        terminal.wrapped,
+        opts,
+      );
+      notifyUnauthorizedIfNeeded(result.status);
+      if (!result.ok) {
+        const errBody = parseApiErrorBody(result.responseText);
+        throw new Error(formatApiHttpError(result.status, result.statusText, errBody));
+      }
+    } else {
+      const res = await apiFetch(path, {
+        method: 'POST',
+        headers: { Accept: 'text/event-stream' },
+        body: formData,
+        signal: this._abort.signal,
+      });
+
+      if (!res.ok) {
+        const errBody = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+        throw new Error(formatApiHttpError(res.status, res.statusText, errBody.error?.message));
+      }
+
+      if (isEventStreamResponse(res)) {
+        await consumeAgentSseResponse(res, terminal.wrapped, opts);
+      } else {
+        const json = (await res.json()) as { ok?: boolean; payload?: { content?: string } };
+        if (json.ok && json.payload?.content) {
+          callbacks?.onToken(json.payload.content);
+          callbacks?.onResult();
+        }
+      }
+    }
+
+    if (!terminal.sawTerminal && !this._abort?.signal.aborted) {
+      terminal.onMissingTerminal();
+    }
+
+    this._clearPendingRun();
+    this._abort = undefined;
+  }
+
   abort(): void {
     this._notifyServerAbort();
+    this._clearPendingRun();
     this._abort?.abort();
     this._abort = undefined;
   }
@@ -177,17 +265,36 @@ export class AgentMessageSender {
     message: string,
     sessionKey: string,
     callbacks?: MessagingCallbacks,
-    thinkingLevel?: string,
   ): Promise<void> {
     return this.send(
       '/api/agent',
       { message, sessionKey },
       callbacks,
-      thinkingLevel,
     );
   }
 
-  async resume(runId: string, chatId: string, callbacks?: MessagingCallbacks, _thinkingLevel?: string): Promise<void> {
+  async sendVoiceMessage(
+    payload: VoiceMessagePayload,
+    sessionKey: string,
+    callbacks?: MessagingCallbacks,
+  ): Promise<void> {
+    const mimeType = payload.mimeType || 'audio/mp4';
+    const name = payload.name || (mimeType.includes('mpeg') ? 'voice.mp3' : 'voice.m4a');
+    const formData = new FormData();
+    formData.append('sessionKey', sessionKey);
+    formData.append('channel', 'webchat');
+    formData.append('durationMillis', String(payload.durationMillis));
+    formData.append('mimeType', mimeType);
+    formData.append('file', {
+      uri: payload.uri,
+      name,
+      type: mimeType,
+    } as unknown as Blob);
+
+    return this.sendMultipart('/api/agent/voice', formData, sessionKey, callbacks);
+  }
+
+  async resume(runId: string, chatId: string, callbacks?: MessagingCallbacks): Promise<void> {
     this._abort = new AbortController();
     this._sseChatId = chatId;
     const terminal = wrapTerminalCallbacks(callbacks);
