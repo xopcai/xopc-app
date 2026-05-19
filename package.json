@@ -1,5 +1,5 @@
 {
-  "name": "xopc-app",
+  "name": "xopc",
   "version": "1.0.0",
   "private": true,
   "description": "Expo mobile client for the xopc gateway",
