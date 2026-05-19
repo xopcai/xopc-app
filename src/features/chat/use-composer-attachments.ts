@@ -29,6 +29,10 @@ export function useComposerAttachments(messages: ComposerAttachmentMessages) {
     setAttachments([]);
   }, []);
 
+  const restoreAttachments = useCallback((nextAttachments: ComposerAttachment[]) => {
+    setAttachments(nextAttachments);
+  }, []);
+
   const removeAttachment = useCallback((index: number) => {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   }, []);
@@ -63,13 +67,14 @@ export function useComposerAttachments(messages: ComposerAttachmentMessages) {
           if (e.code === 'too_large') {
             setSnack(
               messages.attachmentFileTooLarge
-                .replace('{{name}}', 'file')
+                .replace('{{name}}', e.fileName ?? 'file')
                 .replace('{{maxSize}}', formatAttachmentSize(MAX_WEBCHAT_ATTACHMENT_FILE_BYTES)),
             );
             return;
           }
         }
-        setSnack(messages.attachmentLoadFailed.replace('{{name}}', 'file'));
+        const fileName = e instanceof AttachmentFileError ? e.fileName : undefined;
+        setSnack(messages.attachmentLoadFailed.replace('{{name}}', fileName ?? 'file'));
       }
     },
     [messages],
@@ -89,6 +94,7 @@ export function useComposerAttachments(messages: ComposerAttachmentMessages) {
     addFromSource,
     removeAttachment,
     clearAttachments,
+    restoreAttachments,
     toWirePayload,
     dismissSnack,
     maxAttachments: MAX_CHAT_ATTACHMENTS,

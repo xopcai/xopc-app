@@ -1,6 +1,12 @@
 import type { ComposerAttachment } from './composer.types';
 import { mimeTypeFromFileName } from './tool-result-file-paths';
 
+export type AttachmentPickSource = 'camera' | 'photos' | 'document';
+
+export function shouldOpenNativeImageEditor(source: AttachmentPickSource): boolean {
+  return source === 'camera' || source === 'photos';
+}
+
 export function attachmentTypeFromMime(mimeType: string): 'image' | 'document' {
   return mimeType.startsWith('image/') ? 'image' : 'document';
 }

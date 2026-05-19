@@ -4,9 +4,9 @@
  * User messages: right-aligned, tinted background, plain text.
  * Assistant messages: left-aligned, markdown rendering, thinking/tool blocks.
  */
-import { memo, useMemo } from 'react';
-import { StyleSheet, useColorScheme, View } from 'react-native';
-import { Text } from 'react-native-paper';
+import { memo, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Menu, Text } from 'react-native-paper';
 
 import { AssistantStepsBlock, hasTextAfterIndex } from './AssistantStepsBlock';
 import { AttachmentRenderer } from './AttachmentRenderer';
@@ -19,6 +19,7 @@ import {
   imageContentBlocksToAttachments,
 } from './assistant-message-artifacts';
 import type { ImageContent, Message, MessageContent, ProgressState, ThinkingContent, ToolUseContent } from './messages.types';
+import { useMessages } from '../../i18n/messages';
 import { chatColors, chatLayout } from './styles';
 
 function formatTime(ts: number): string {
@@ -179,13 +180,26 @@ export const MessageBubble = memo(function MessageBubble({
   isStreaming = false,
   progress,
   sessionKey,
+  onUserMessageCopy,
+  onUserMessageEdit,
+  onUserMessageRetry,
+  onDeleteRound,
+  onAssistantCopy,
 }: {
   message: Message;
   isStreaming?: boolean;
   progress?: ProgressState | null;
   sessionKey?: string;
+  onUserMessageCopy?: (text: string) => void;
+  onUserMessageEdit?: (text: string) => void;
+  onUserMessageRetry?: (text: string) => void;
+  onDeleteRound?: (timestamp?: number) => void;
+  onAssistantCopy?: (text: string) => void;
 }) {
+  const m = useMessages();
   const isDark = useColorScheme() === 'dark';
+  const [userMenuVisible, setUserMenuVisible] = useState(false);
+  const [assistantMenuVisible, setAssistantMenuVisible] = useState(false);
   const isUser = message.role === 'user' || message.role === 'user-with-attachments';
   const isAssistant = message.role === 'assistant';
 
@@ -230,6 +244,43 @@ export const MessageBubble = memo(function MessageBubble({
     Boolean(progress?.message) ||
     (isStreaming && !message.content?.some((b) => b.type === 'thinking' && b.streaming));
 
+  const assistantPlainText = useMemo(() => {
+    if (!isAssistant) return '';
+    return message.content
+      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim();
+  }, [isAssistant, message.content]);
+
+  const closeUserMenu = () => setUserMenuVisible(false);
+  const closeAssistantMenu = () => setAssistantMenuVisible(false);
+
+  const copyUserText = () => {
+    closeUserMenu();
+    if (userText.trim()) onUserMessageCopy?.(userText);
+  };
+
+  const editUserText = () => {
+    closeUserMenu();
+    if (userText.trim()) onUserMessageEdit?.(userText);
+  };
+
+  const retryUserText = () => {
+    closeUserMenu();
+    if (userText.trim()) onUserMessageRetry?.(userText);
+  };
+
+  const deleteRound = () => {
+    closeUserMenu();
+    onDeleteRound?.(message.timestamp);
+  };
+
+  const copyAssistantText = () => {
+    closeAssistantMenu();
+    if (assistantPlainText) onAssistantCopy?.(assistantPlainText);
+  };
+
   return (
     <View style={chatLayout.messageBubbleRow}>
       {/* Timestamp / progress meta */}
@@ -255,63 +306,88 @@ export const MessageBubble = memo(function MessageBubble({
 
       {/* Bubble */}
       {isUser ? (
-        <View
-          style={[
-            chatLayout.userBubbleContainer,
-            chatLayout.userBubble,
-            {
-              backgroundColor: isDark
-                ? chatColors.userBubbleBgDark
-                : chatColors.userBubbleBg,
-            },
-          ]}
-        >
-          {userText ? (
-            <Text
-              selectable
-              style={{
-                color: isDark ? '#E5E7EB' : '#1F2937',
-                fontSize: 15,
-                lineHeight: 22,
-              }}
-            >
-              {userText}
-            </Text>
-          ) : null}
-          {attachmentsForBubble?.length ? (
-            <AttachmentRenderer attachments={attachmentsForBubble} sessionKey={sessionKey} compact />
-          ) : null}
-        </View>
-      ) : (
-        <View style={[chatLayout.assistantBubbleContainer, chatLayout.assistantBubble]}>
-          {renderAssistantContent(displayContent, isStreaming, sessionKey)}
-
-          {showAssistantArtifacts ? (
-            <View
+        <Menu
+          visible={userMenuVisible}
+          onDismiss={closeUserMenu}
+          anchor={
+            <Pressable
+              onLongPress={() => setUserMenuVisible(true)}
+              delayLongPress={260}
               style={[
-                styles.artifactCard,
+                chatLayout.userBubbleContainer,
+                chatLayout.userBubble,
                 {
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB',
-                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB',
+                  backgroundColor: isDark
+                    ? chatColors.userBubbleBgDark
+                    : chatColors.userBubbleBg,
                 },
               ]}
             >
-              <Text style={[styles.artifactTitle, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>交付物</Text>
-              <View style={styles.artifactBody}>
-                {assistantWorkspacePaths.length > 0 ? (
-                  <WorkspaceArtifactStrip paths={assistantWorkspacePaths} sessionKey={sessionKey} />
-                ) : null}
-                {assistantImageAttachments.length > 0 ? (
-                  <AttachmentRenderer attachments={assistantImageAttachments} sessionKey={sessionKey} compact />
-                ) : null}
-              </View>
-            </View>
-          ) : null}
+              {userText ? (
+                <Text
+                  selectable
+                  style={{
+                    color: isDark ? '#E5E7EB' : '#1F2937',
+                    fontSize: 15,
+                    lineHeight: 22,
+                  }}
+                >
+                  {userText}
+                </Text>
+              ) : null}
+              {attachmentsForBubble?.length ? (
+                <AttachmentRenderer attachments={attachmentsForBubble} sessionKey={sessionKey} compact />
+              ) : null}
+            </Pressable>
+          }
+        >
+          <Menu.Item title={m.chat.messageCopy} leadingIcon="content-copy" onPress={copyUserText} />
+          <Menu.Item title={m.chat.messageEdit} leadingIcon="pencil-outline" onPress={editUserText} />
+          <Menu.Item title={m.chat.messageRetry} leadingIcon="refresh" onPress={retryUserText} />
+          <Menu.Item title={m.chat.messageDeleteRound} leadingIcon="delete-outline" onPress={deleteRound} />
+        </Menu>
+      ) : (
+        <Menu
+          visible={assistantMenuVisible}
+          onDismiss={closeAssistantMenu}
+          anchor={
+            <Pressable
+              onLongPress={() => setAssistantMenuVisible(true)}
+              delayLongPress={260}
+              style={[chatLayout.assistantBubbleContainer, chatLayout.assistantBubble]}
+            >
+              {renderAssistantContent(displayContent, isStreaming, sessionKey)}
 
-          {attachmentsForBubble?.length ? (
-            <AttachmentRenderer attachments={attachmentsForBubble} sessionKey={sessionKey} />
-          ) : null}
-        </View>
+              {showAssistantArtifacts ? (
+                <View
+                  style={[
+                    styles.artifactCard,
+                    {
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB',
+                      borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB',
+                    },
+                  ]}
+                >
+                  <Text style={[styles.artifactTitle, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>交付物</Text>
+                  <View style={styles.artifactBody}>
+                    {assistantWorkspacePaths.length > 0 ? (
+                      <WorkspaceArtifactStrip paths={assistantWorkspacePaths} sessionKey={sessionKey} />
+                    ) : null}
+                    {assistantImageAttachments.length > 0 ? (
+                      <AttachmentRenderer attachments={assistantImageAttachments} sessionKey={sessionKey} compact />
+                    ) : null}
+                  </View>
+                </View>
+              ) : null}
+
+              {attachmentsForBubble?.length ? (
+                <AttachmentRenderer attachments={attachmentsForBubble} sessionKey={sessionKey} />
+              ) : null}
+            </Pressable>
+          }
+        >
+          <Menu.Item title={m.chat.messageCopy} leadingIcon="content-copy" onPress={copyAssistantText} />
+        </Menu>
       )}
 
       {/* Usage badge */}

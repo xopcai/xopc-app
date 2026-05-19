@@ -36,6 +36,7 @@ function buildCompletedSummary(blocks: Array<ThinkingContent | ToolUseContent>):
   const toolBlocks = blocks.filter((b): b is ToolUseContent => b.type === 'tool_use');
   const thinkingBlocks = blocks.filter((b): b is ThinkingContent => b.type === 'thinking');
 
+  // Ultra-compact: "Used 3 tools" or "Thought · Used tool_name +2"
   const parts: string[] = [];
 
   if (thinkingBlocks.length > 0) {
@@ -43,12 +44,13 @@ function buildCompletedSummary(blocks: Array<ThinkingContent | ToolUseContent>):
   }
 
   if (toolBlocks.length > 0) {
-    // Show first tool name + count
     const firstName = formatToolName(toolBlocks[0].name);
     if (toolBlocks.length === 1) {
-      parts.push(firstName);
+      parts.push(`Used ${firstName}`);
+    } else if (toolBlocks.length <= 3) {
+      parts.push(`Used ${firstName} +${toolBlocks.length - 1}`);
     } else {
-      parts.push(`${firstName} +${toolBlocks.length - 1}`);
+      parts.push(`Used ${toolBlocks.length} tools`);
     }
   }
 

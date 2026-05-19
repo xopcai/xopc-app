@@ -8,8 +8,16 @@
  */
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
-import { ActivityIndicator, Text } from 'react-native-paper';
+import {
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  useColorScheme,
+  View,
+} from 'react-native';
+import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 
 import { useKeyboardListPadding } from '../../hooks/use-keyboard-list-padding';
 import { MessageBubble } from './MessageBubble';
@@ -33,6 +41,11 @@ export const MessageList = memo(function MessageList({
   welcomeSubtitle,
   suggestions,
   onSuggestionPress,
+  onUserMessageCopy,
+  onUserMessageEdit,
+  onUserMessageRetry,
+  onDeleteRound,
+  onAssistantCopy,
 }: {
   messages: Message[];
   streaming: boolean;
@@ -44,6 +57,11 @@ export const MessageList = memo(function MessageList({
   welcomeSubtitle?: string;
   suggestions?: string[];
   onSuggestionPress?: (text: string) => void;
+  onUserMessageCopy?: (text: string) => void;
+  onUserMessageEdit?: (text: string) => void;
+  onUserMessageRetry?: (text: string) => void;
+  onDeleteRound?: (timestamp?: number) => void;
+  onAssistantCopy?: (text: string) => void;
 }) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -51,6 +69,7 @@ export const MessageList = memo(function MessageList({
   const listRef = useRef<FlashListRef<Message>>(null);
   const isAtBottomRef = useRef(true);
   const prevLengthRef = useRef(messages.length);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   /**
    * Monotonically increasing counter bumped on every sessionKey change.
@@ -121,10 +140,15 @@ export const MessageList = memo(function MessageList({
           isStreaming={isStreamRow}
           progress={isStreamRow ? progress : null}
           sessionKey={sessionKey}
+          onUserMessageCopy={onUserMessageCopy}
+          onUserMessageEdit={onUserMessageEdit}
+          onUserMessageRetry={onUserMessageRetry}
+          onDeleteRound={onDeleteRound}
+          onAssistantCopy={onAssistantCopy}
         />
       );
     },
-    [messages.length, streaming, progress, sessionKey],
+    [messages.length, onUserMessageCopy, onUserMessageEdit, onUserMessageRetry, onDeleteRound, onAssistantCopy, streaming, progress, sessionKey],
   );
 
   const keyExtractor = useCallback(
@@ -132,14 +156,22 @@ export const MessageList = memo(function MessageList({
     [],
   );
 
-  const onScrollEnd = useCallback(
-    (e: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) => {
-      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+  const updateScrollPosition = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
       const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
-      isAtBottomRef.current = distanceFromBottom < 60;
+      const nextIsAtBottom = distanceFromBottom < 80;
+      isAtBottomRef.current = nextIsAtBottom;
+      setShowScrollToBottom(!nextIsAtBottom && messages.length > 0);
     },
-    [],
+    [messages.length],
   );
+
+  const scrollToBottom = useCallback(() => {
+    listRef.current?.scrollToEnd({ animated: true });
+    isAtBottomRef.current = true;
+    setShowScrollToBottom(false);
+  }, []);
 
   if (loading) {
     return (
@@ -198,20 +230,33 @@ export const MessageList = memo(function MessageList({
   }
 
   return (
-    <FlashList
-      key={listKey}
-      ref={listRef}
-      style={styles.listFlex}
-      data={messages}
-      renderItem={renderItem}
-      keyExtractor={keyExtractor}
-      contentContainerStyle={listContentStyle}
-      onMomentumScrollEnd={onScrollEnd}
-      onScrollEndDrag={onScrollEnd}
-      showsVerticalScrollIndicator={false}
-      keyboardDismissMode="interactive"
-      keyboardShouldPersistTaps="handled"
-    />
+    <View style={styles.listFlex}>
+      <FlashList
+        key={listKey}
+        ref={listRef}
+        style={styles.listFlex}
+        data={messages}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        contentContainerStyle={listContentStyle}
+        onScroll={updateScrollPosition}
+        onMomentumScrollEnd={updateScrollPosition}
+        onScrollEndDrag={updateScrollPosition}
+        scrollEventThrottle={80}
+        showsVerticalScrollIndicator={false}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+      />
+      {showScrollToBottom ? (
+        <IconButton
+          icon="arrow-down"
+          mode="contained"
+          size={20}
+          style={styles.scrollToBottomButton}
+          onPress={scrollToBottom}
+        />
+      ) : null}
+    </View>
   );
 });
 
@@ -280,5 +325,15 @@ const styles = StyleSheet.create({
   chipText: {
     textAlign: 'left',
     lineHeight: 20,
+  },
+  scrollToBottomButton: {
+    position: 'absolute',
+    right: 16,
+    bottom: 16,
+    elevation: 4,
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
 });

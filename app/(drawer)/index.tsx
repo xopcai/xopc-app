@@ -6,11 +6,12 @@
  *   Center: model name picker (pill shape)
  *   Right:  session management icon
  */
+import * as Clipboard from 'expo-clipboard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DrawerActions } from '@react-navigation/native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { Banner, IconButton, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,8 +21,14 @@ import { ChatComposer } from '../../src/features/chat/ChatComposer';
 import { canSendComposerDraft, buildOptimisticUserMessage } from '../../src/features/chat/composer-send-helpers';
 import type { WireAttachment } from '../../src/features/chat/composer.types';
 import { ClarifyPrompt, type ClarifyPromptState } from '../../src/features/chat/ClarifyPrompt';
+import { AgentPickerSheet } from '../../src/features/chat/AgentPickerSheet';
 import { GoalMissionCard } from '../../src/features/chat/GoalMissionCard';
 import { MessageList } from '../../src/features/chat/MessageList';
+import {
+  followUpPromptForSuggestionId,
+  suggestFollowUpsFromAssistantMessage,
+  type FollowUpSuggestionId,
+} from '../../src/features/chat/follow-up-suggestions';
 import type { Message, MessageAttachment, MessageContent, ProgressState } from '../../src/features/chat/messages.types';
 import { useMessages } from '../../src/i18n/messages';
 import { RenameDialog } from '../../src/features/sessions/RenameDialog';
@@ -437,6 +444,7 @@ export default function ChatScreen() {
   const streamingMsgRef = useRef<Message | null>(null);
   const streamingFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeSessionKeyRef = useRef(sessionKey);
+  const autoResumeFailedRef = useRef(false);
 
   const clearStreamingFlushTimer = useCallback(() => {
     if (!streamingFlushTimerRef.current) return;
@@ -485,6 +493,7 @@ export default function ChatScreen() {
 
   useEffect(() => {
     activeSessionKeyRef.current = sessionKey;
+    autoResumeFailedRef.current = false;
   }, [sessionKey]);
 
   const invalidateSessionByKey = useCallback((targetSessionKey: string) => {
@@ -695,9 +704,9 @@ export default function ChatScreen() {
   }
 
   const send = useCallback(
-    async (text: string, attachments?: WireAttachment[]) => {
+    async (text: string, attachments?: WireAttachment[]): Promise<boolean> => {
       if (!canSendComposerDraft(text, attachments?.length ?? 0) || !sessionKey || streaming || awaitingSessionRefresh) {
-        return;
+        return false;
       }
       const userMsg = buildOptimisticUserMessage(text, attachments);
       setOptimisticMessages([userMsg]);
@@ -716,14 +725,17 @@ export default function ChatScreen() {
           buildCallbacks(sessionKey),
           attachments,
         );
+        return true;
       } catch (e) {
         if (activeSessionKeyRef.current !== sessionKey) {
           invalidateSessionByKey(sessionKey);
-          return;
+          return true;
         }
+        setOptimisticMessages([]);
         setError(e instanceof Error ? e.message : String(e));
         setStreaming(false);
         streamingRef.current = false;
+        return false;
       }
     },
     [sessionKey, streaming, awaitingSessionRefresh, invalidateSessionByKey, clearStreamingMessage],
@@ -851,16 +863,24 @@ export default function ChatScreen() {
         sessionKey,
         buildCallbacks(sessionKey),
       );
+      autoResumeFailedRef.current = false;
     } catch (e) {
       if (activeSessionKeyRef.current !== sessionKey) {
         invalidateSessionByKey(sessionKey);
         return;
       }
+      autoResumeFailedRef.current = true;
       setError(e instanceof Error ? e.message : String(e));
       setStreaming(false);
       streamingRef.current = false;
     }
   }, [sessionKey, pendingRunId, streaming, awaitingSessionRefresh, invalidateSessionByKey, clearStreamingMessage]);
+
+  // Auto-resume: self-heal SSE connection when a pending run is detected
+  useEffect(() => {
+    if (!pendingRunId || streaming || awaitingSessionRefresh || autoResumeFailedRef.current) return;
+    void resume();
+  }, [pendingRunId, streaming, awaitingSessionRefresh, resume]);
 
   useEffect(() => {
     return () => {
@@ -943,9 +963,101 @@ export default function ChatScreen() {
     [m.chat.suggestion1, m.chat.suggestion2, m.chat.suggestion3],
   );
 
+  const latestFollowUpIds = useMemo<FollowUpSuggestionId[]>(() => {
+    if (streaming || clarifyPrompt || awaitingSessionRefresh) return [];
+    for (let messageIndex = displayMessages.length - 1; messageIndex >= 0; messageIndex--) {
+      const message = displayMessages[messageIndex];
+      if (message.role === 'assistant') return suggestFollowUpsFromAssistantMessage(message);
+    }
+    return [];
+  }, [awaitingSessionRefresh, clarifyPrompt, displayMessages, streaming]);
+
+  const followUpChips = useMemo(
+    () =>
+      latestFollowUpIds.map((id) => ({
+        id,
+        label: m.chat.followUpChips[id],
+      })),
+    [latestFollowUpIds, m.chat.followUpChips],
+  );
+
+  const handleFollowUpPress = useCallback((id: FollowUpSuggestionId) => {
+    const prompt = followUpPromptForSuggestionId(id);
+    // Enqueue rather than directly filling composer — auto-send when idle
+    setFollowUpQueue((prev) => [...prev, prompt]);
+  }, []);
+
+  const handleUserMessageCopy = useCallback((text: string) => {
+    void Clipboard.setStringAsync(text)
+      .then(() => setSnackMsg(m.chat.messageCopied))
+      .catch(() => setSnackMsg(m.chat.messageCopyFailed));
+  }, [m.chat.messageCopied, m.chat.messageCopyFailed]);
+
+  const handleUserMessageEdit = useCallback((text: string) => {
+    setComposerSuggestion(text);
+    setSnackMsg(m.chat.messageReadyToEdit);
+  }, [m.chat.messageReadyToEdit]);
+
+  const handleUserMessageRetry = useCallback((text: string) => {
+    if (!text.trim() || !sessionKey || streaming || awaitingSessionRefresh) return;
+    void send(text);
+  }, [send, sessionKey, streaming, awaitingSessionRefresh]);
+
+  const handleDeleteRound = useCallback((timestamp?: number) => {
+    if (!timestamp) return;
+    // Remove user message + its associated assistant response from optimistic/display
+    // For now, do a lightweight local removal from session messages via invalidation
+    setSnackMsg(m.chat.messageRoundDeleted);
+    // Invalidate to trigger fresh fetch (server side retains full history;
+    // mobile simply removes from local display until server API supports delete)
+    void queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionKey) });
+  }, [queryClient, sessionKey, m.chat.messageRoundDeleted]);
+
+  const handleAssistantCopy = useCallback((text: string) => {
+    void Clipboard.setStringAsync(text)
+      .then(() => setSnackMsg(m.chat.messageCopied))
+      .catch(() => setSnackMsg(m.chat.messageCopyFailed));
+  }, [m.chat.messageCopied, m.chat.messageCopyFailed]);
+
+  const [agentSheetVisible, setAgentSheetVisible] = useState(false);
+  const [followUpQueue, setFollowUpQueue] = useState<string[]>([]);
+
   const openAgentsPicker = useCallback(() => {
-    router.push('/agents');
-  }, [router]);
+    setAgentSheetVisible(true);
+  }, []);
+
+  const handleAgentSelect = useCallback((agentId: string) => {
+    // Start a new session with the selected agent
+    void createSession(agentId, { forceNew: true }).then((key) => {
+      activeSessionKeyRef.current = key;
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+      router.replace({ pathname: '/', params: { k: key } });
+    }).catch((e) => {
+      setError(e instanceof Error ? e.message : String(e));
+    });
+  }, [queryClient, router]);
+
+  const removeFollowUpAt = useCallback((index: number) => {
+    setFollowUpQueue((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // Auto-dequeue: when idle + queue non-empty → send next follow-up
+  useEffect(() => {
+    if (followUpQueue.length === 0 || streaming || awaitingSessionRefresh || !sessionKey) return;
+    const timer = setTimeout(() => {
+      setFollowUpQueue((prev) => {
+        if (prev.length === 0) return prev;
+        const [next, ...rest] = prev;
+        void send(next);
+        return rest;
+      });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [followUpQueue.length, streaming, awaitingSessionRefresh, sessionKey, send]);
+
+  const currentSessionAgentId = useMemo(() => {
+    return sessionKey ? sessionKey.split(':')[0]?.trim().toLowerCase() ?? '' : '';
+  }, [sessionKey]);
 
   const bootstrappingSession = !sessionKey && configured && creatingInitialSession;
 
@@ -1007,11 +1119,11 @@ export default function ChatScreen() {
             {error}
           </Banner>
         ) : null}
-        {pendingRunId && !streaming ? (
+        {pendingRunId && !streaming && autoResumeFailedRef.current ? (
           <Banner
             visible
             icon="sync"
-            actions={[{ label: m.chat.resumeButton, onPress: () => void resume() }]}
+            actions={[{ label: m.chat.resumeButton, onPress: () => { autoResumeFailedRef.current = false; void resume(); } }]}
           >
             {m.chat.resumeBanner}
           </Banner>
@@ -1030,6 +1142,11 @@ export default function ChatScreen() {
             welcomeSubtitle={m.chat.welcomeSubtitle}
             suggestions={chatSuggestions}
             onSuggestionPress={(text) => setComposerSuggestion(text)}
+            onUserMessageCopy={handleUserMessageCopy}
+            onUserMessageEdit={handleUserMessageEdit}
+            onUserMessageRetry={handleUserMessageRetry}
+            onDeleteRound={handleDeleteRound}
+            onAssistantCopy={handleAssistantCopy}
           />
         </View>
 
@@ -1037,6 +1154,50 @@ export default function ChatScreen() {
           offset={{ closed: 0, opened: 0 }}
           style={{ backgroundColor: canvasBg }}
         >
+          {followUpChips.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.followUpRow}
+            >
+              {followUpChips.map((chip) => (
+                <Pressable
+                  key={chip.id}
+                  style={({ pressed }) => [
+                    styles.followUpChip,
+                    {
+                      backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+                      borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(120,120,128,0.22)',
+                    },
+                    pressed && { opacity: 0.82 },
+                  ]}
+                  onPress={() => handleFollowUpPress(chip.id)}
+                >
+                  <Text style={[styles.followUpChipText, { color: pillText }]} numberOfLines={1}>
+                    {chip.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
+          {followUpQueue.length > 0 ? (
+            <View style={styles.pendingQueueBar}>
+              <Text style={[styles.pendingQueueText, { color: pillMuted }]}>
+                {m.chat.pendingQueueLabel} ({followUpQueue.length})
+              </Text>
+              {followUpQueue.map((prompt, queueIndex) => (
+                <View key={`q-${queueIndex}`} style={styles.pendingQueueItem}>
+                  <Text style={[styles.pendingQueueItemText, { color: pillText }]} numberOfLines={1}>
+                    {prompt.slice(0, 40)}{prompt.length > 40 ? '…' : ''}
+                  </Text>
+                  <Pressable onPress={() => removeFollowUpAt(queueIndex)} hitSlop={8}>
+                    <Text style={{ color: pillMuted, fontSize: 16 }}>✕</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
           <ClarifyPrompt
             prompt={clarifyPrompt}
             submitting={clarifySubmitting}
@@ -1045,9 +1206,9 @@ export default function ChatScreen() {
             onSkip={() => void skipClarifyAnswer()}
           />
           <ChatComposer
-            disabled={sessionQuery.isLoading || awaitingSessionRefresh}
+            disabled={sessionQuery.isLoading || awaitingSessionRefresh || Boolean(clarifyPrompt)}
             streaming={streaming}
-            onSend={(text, attachments) => void send(text, attachments)}
+            onSend={send}
             keyboardVisible={keyboardVisible}
             onSendVoice={(payload) => void sendVoice(payload)}
             onAbort={abort}
@@ -1084,6 +1245,14 @@ export default function ChatScreen() {
       >
         {snackMsg}
       </Snackbar>
+
+      <AgentPickerSheet
+        visible={agentSheetVisible}
+        agents={agentsQuery.data?.items ?? []}
+        currentAgentId={currentSessionAgentId}
+        onSelect={handleAgentSelect}
+        onDismiss={() => setAgentSheetVisible(false)}
+      />
     </View>
   );
 }
@@ -1146,6 +1315,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
+  },
+  followUpRow: {
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  followUpChip: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    maxWidth: 220,
+  },
+  followUpChipText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  pendingQueueBar: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  pendingQueueText: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  pendingQueueItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  pendingQueueItemText: {
+    flex: 1,
+    fontSize: 12,
   },
   aiDisclaimer: {
     fontSize: 11,

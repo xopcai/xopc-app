@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { composerAttachmentFromBase64, formatAttachmentSize } from '../attachment-file-io-core';
+import {
+  composerAttachmentFromBase64,
+  formatAttachmentSize,
+  shouldOpenNativeImageEditor,
+} from '../attachment-file-io-core';
 
 describe('composerAttachmentFromBase64', () => {
   it('classifies image mime as image type', () => {
@@ -43,5 +47,13 @@ describe('formatAttachmentSize', () => {
     expect(formatAttachmentSize(500)).toBe('500 B');
     expect(formatAttachmentSize(2048)).toBe('2.0 KB');
     expect(formatAttachmentSize(5 * 1024 * 1024)).toBe('5.0 MB');
+  });
+});
+
+describe('shouldOpenNativeImageEditor', () => {
+  it('opens the native editor for camera and photo library images only', () => {
+    expect(shouldOpenNativeImageEditor('camera')).toBe(true);
+    expect(shouldOpenNativeImageEditor('photos')).toBe(true);
+    expect(shouldOpenNativeImageEditor('document')).toBe(false);
   });
 });

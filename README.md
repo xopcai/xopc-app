@@ -1,4 +1,4 @@
-# xopc-app
+# xopc
 
 Standalone Expo (React Native) app for the [xopc](https://github.com/xopcai/xopc) gateway. Run an xopc gateway (HTTP/WebSocket) with your API keys and optional token auth; configure the app to point at that gateway base URL.
 

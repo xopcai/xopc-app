@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { capAttachments, MAX_CHAT_ATTACHMENTS } from '../chat-limits';
-import { composerAttachmentsToWire, type ComposerAttachment } from '../composer.types';
+import { composerAttachmentsToWire } from '../composer.types';
+import {
+  estimateComposerInputHeight,
+  MAX_COMPOSER_INPUT_HEIGHT,
+  MIN_COMPOSER_INPUT_HEIGHT,
+} from '../composer-layout';
 import {
   buildOptimisticUserMessage,
   buildUserMessageContent,
@@ -47,6 +52,22 @@ describe('canSendComposerDraft', () => {
     expect(canSendComposerDraft('hi', 0)).toBe(true);
     expect(canSendComposerDraft('  ', 1)).toBe(true);
     expect(canSendComposerDraft('', 1)).toBe(true);
+  });
+});
+
+describe('estimateComposerInputHeight', () => {
+  it('keeps short drafts at the compact height', () => {
+    expect(estimateComposerInputHeight('hi', 320)).toBe(MIN_COMPOSER_INPUT_HEIGHT);
+  });
+
+  it('expands long recommendation drafts before native content-size events fire', () => {
+    const height = estimateComposerInputHeight(
+      '根据我的日程和待办，帮我规划接下来优先做什么，并说明每件事为什么应该现在处理',
+      280,
+    );
+
+    expect(height).toBeGreaterThan(MIN_COMPOSER_INPUT_HEIGHT);
+    expect(height).toBeLessThanOrEqual(MAX_COMPOSER_INPUT_HEIGHT);
   });
 });
 

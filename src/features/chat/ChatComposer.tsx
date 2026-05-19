@@ -4,6 +4,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
+  type LayoutChangeEvent,
   PanResponder,
   Platform,
   Pressable,
@@ -22,6 +23,12 @@ import { AttachmentSourceSheet } from './attachment-source-sheet';
 import { ComposerAttachmentStrip } from './composer-attachment-strip';
 import { CommandPaletteBar } from './CommandPaletteBar';
 import { SlashTokenInput } from './SlashTokenInput';
+import {
+  clampComposerInputHeight,
+  estimateComposerInputHeight,
+  MAX_COMPOSER_INPUT_HEIGHT,
+  MIN_COMPOSER_INPUT_HEIGHT,
+} from './composer-layout';
 import { useCommandPalette } from './useCommandPalette';
 import { useComposerAttachments } from './use-composer-attachments';
 import { VoiceMeterBars } from './VoiceMeterBars';
@@ -35,8 +42,6 @@ import {
   type ExpoRecording,
 } from './voiceRecording';
 
-const MAX_INPUT_HEIGHT = 120;
-const MIN_INPUT_HEIGHT = 36;
 const SWIPE_CANCEL_PX = 56;
 const MIN_VOICE_MS = 380;
 
@@ -55,7 +60,7 @@ export const ChatComposer = memo(function ChatComposer({
 }: {
   disabled: boolean;
   streaming: boolean;
-  onSend: (text: string, attachments?: WireAttachment[]) => void;
+  onSend: (text: string, attachments?: WireAttachment[]) => Promise<boolean>;
   onSendVoice?: (payload: { uri: string; durationMillis: number; mimeType?: string }) => void | Promise<void>;
   onAbort: () => void;
   placeholder?: string;
@@ -69,7 +74,8 @@ export const ChatComposer = memo(function ChatComposer({
 
   const [mode, setMode] = useState<InputMode>('text');
   const [draft, setDraft] = useState('');
-  const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
+  const [inputHeight, setInputHeight] = useState(MIN_COMPOSER_INPUT_HEIGHT);
+  const [inputWidth, setInputWidth] = useState(0);
   const [cursorPos, setCursorPos] = useState(0);
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
@@ -111,13 +117,22 @@ export const ChatComposer = memo(function ChatComposer({
     }
   }, [streaming, mode]);
 
+  const updateDraft = useCallback(
+    (nextDraft: string) => {
+      setDraft(nextDraft);
+      setCursorPos(nextDraft.length);
+      setInputHeight(estimateComposerInputHeight(nextDraft, inputWidth || undefined));
+    },
+    [inputWidth],
+  );
+
   useEffect(() => {
     if (suggestionDraft == null || suggestionDraft === '') return;
-    setDraft(suggestionDraft);
+    updateDraft(suggestionDraft);
     setMode('text');
     onConsumeSuggestionDraft?.();
     requestAnimationFrame(() => inputRef.current?.focus());
-  }, [suggestionDraft, onConsumeSuggestionDraft]);
+  }, [suggestionDraft, onConsumeSuggestionDraft, updateDraft]);
 
   const canSend = canSendComposerDraft(draft, att.attachments.length) && !streaming && !disabled;
 
@@ -241,24 +256,38 @@ export const ChatComposer = memo(function ChatComposer({
 
   const handlePaletteSelect = useCallback(
     (item: import('./command-palette.types').PaletteItem) => {
-      const newDraft = palette.applyItem(item);
-      setDraft(newDraft);
-      setCursorPos(newDraft.length);
+      updateDraft(palette.applyItem(item));
       requestAnimationFrame(() => inputRef.current?.focus());
     },
-    [palette],
+    [palette, updateDraft],
   );
 
   const handleSend = useCallback(() => {
     if (!canSend) return;
+
+    const previousDraft = draft;
+    const previousAttachments = att.attachments;
     const wire = att.toWirePayload();
-    onSend(draft.trim(), wire.length ? wire : undefined);
+
     setDraft('');
     setCursorPos(0);
-    setInputHeight(MIN_INPUT_HEIGHT);
+    setInputHeight(MIN_COMPOSER_INPUT_HEIGHT);
     att.clearAttachments();
     inputRef.current?.blur();
-  }, [att, canSend, draft, onSend]);
+
+    void onSend(previousDraft.trim(), wire.length ? wire : undefined)
+      .then((accepted) => {
+        if (accepted) return;
+        updateDraft(previousDraft);
+        att.restoreAttachments(previousAttachments);
+        requestAnimationFrame(() => inputRef.current?.focus());
+      })
+      .catch(() => {
+        updateDraft(previousDraft);
+        att.restoreAttachments(previousAttachments);
+        requestAnimationFrame(() => inputRef.current?.focus());
+      });
+  }, [att, canSend, draft, onSend, updateDraft]);
 
   const handleAbort = useCallback(() => {
     onAbort();
@@ -266,10 +295,20 @@ export const ChatComposer = memo(function ChatComposer({
 
   const onContentSizeChange = useCallback(
     (e: { nativeEvent: { contentSize: { height: number } } }) => {
-      const h = Math.min(Math.max(e.nativeEvent.contentSize.height, MIN_INPUT_HEIGHT), MAX_INPUT_HEIGHT);
-      setInputHeight(h);
+      setInputHeight(clampComposerInputHeight(e.nativeEvent.contentSize.height));
     },
     [],
+  );
+
+  const handleInputLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const nextInputWidth = event.nativeEvent.layout.width;
+      setInputWidth(nextInputWidth);
+      if (draft.length > 0) {
+        setInputHeight(estimateComposerInputHeight(draft, nextInputWidth));
+      }
+    },
+    [draft],
   );
 
   const surface = scheme === 'dark' ? '#1C1C1E' : '#F5F5F7';
@@ -355,10 +394,7 @@ export const ChatComposer = memo(function ChatComposer({
     placeholder: placeholder ?? 'Message',
     placeholderTextColor: '#8E8E93',
     value: draft,
-    onChangeText: (text: string) => {
-      setDraft(text);
-      setCursorPos(text.length);
-    },
+    onChangeText: updateDraft,
     onCursorChange: setCursorPos,
     cursorPos,
     isDark: scheme === 'dark',
@@ -406,13 +442,13 @@ export const ChatComposer = memo(function ChatComposer({
         {mode === 'text' ? (
           isExpanded ? (
             <>
-              <View style={styles.expandedInput}>
+              <View style={styles.expandedInput} onLayout={handleInputLayout}>
                 <SlashTokenInput
                   ref={inputRef}
                   style={[
                     styles.input,
                     styles.inputExpanded,
-                    { color: scheme === 'dark' ? '#F5F5F7' : '#1C1C1E', height: inputHeight },
+                    { color: scheme === 'dark' ? '#F5F5F7' : '#1C1C1E', minHeight: inputHeight },
                   ]}
                   {...textInputProps}
                 />
@@ -432,7 +468,7 @@ export const ChatComposer = memo(function ChatComposer({
                 style={[
                   styles.input,
                   styles.inputCompact,
-                  { color: scheme === 'dark' ? '#F5F5F7' : '#1C1C1E', height: MIN_INPUT_HEIGHT },
+                  { color: scheme === 'dark' ? '#F5F5F7' : '#1C1C1E', height: MIN_COMPOSER_INPUT_HEIGHT },
                 ]}
                 {...textInputProps}
               />
@@ -558,12 +594,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#1C1C1E',
   },
   input: {
-    flex: 1,
     fontSize: 15,
     lineHeight: 20,
     paddingHorizontal: 4,
     paddingVertical: Platform.OS === 'ios' ? 5 : 4,
-    maxHeight: MAX_INPUT_HEIGHT,
+    maxHeight: MAX_COMPOSER_INPUT_HEIGHT,
     borderWidth: 0,
     ...Platform.select({
       web: { outlineStyle: 'none' } as Record<string, string>,
@@ -571,10 +606,12 @@ const styles = StyleSheet.create({
     }),
   },
   inputCompact: {
-    minHeight: MIN_INPUT_HEIGHT,
+    flex: 1,
+    minHeight: MIN_COMPOSER_INPUT_HEIGHT,
   },
   inputExpanded: {
-    minHeight: MIN_INPUT_HEIGHT,
+    alignSelf: 'stretch',
+    minHeight: MIN_COMPOSER_INPUT_HEIGHT,
   },
   holdPad: {
     justifyContent: 'center',
@@ -583,7 +620,7 @@ const styles = StyleSheet.create({
   },
   holdPadCompact: {
     flex: 1,
-    minHeight: MIN_INPUT_HEIGHT,
+    minHeight: MIN_COMPOSER_INPUT_HEIGHT,
     marginVertical: 1,
   },
   holdPadExpanded: {

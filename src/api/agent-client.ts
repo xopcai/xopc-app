@@ -106,6 +106,7 @@ export class AgentMessageSender {
     callbacks?: MessagingCallbacks,
   ): Promise<void> {
     this._abort = new AbortController();
+    const abortController = this._abort;
     const chatId = typeof body.chatId === 'string' ? body.chatId : typeof body.sessionKey === 'string' ? body.sessionKey : '';
     this._sseChatId = chatId;
 
@@ -117,55 +118,59 @@ export class AgentMessageSender {
     const terminal = wrapTerminalCallbacks(callbacks);
     const opts = sseDispatchOptions(this._sseChatId);
 
-    if (shouldUseXhrForAgentSse()) {
-      const result = await consumeAgentSseXhr(
-        useGatewayStore.getState().apiUrl(path),
-        {
-          method: 'POST',
-          headers: buildAgentSseHeaders(),
-          body: bodyJson,
-          signal: this._abort.signal,
-        },
-        terminal.wrapped,
-        opts,
-      );
-      notifyUnauthorizedIfNeeded(result.status);
-      if (!result.ok) {
-        const errBody = parseApiErrorBody(result.responseText);
-        throw new Error(formatApiHttpError(result.status, result.statusText, errBody));
-      }
-    } else {
-      const res = await apiFetch(path, {
-        method: 'POST',
-        headers: { Accept: 'text/event-stream' },
-        body: bodyJson,
-        signal: this._abort.signal,
-      });
-
-      if (!res.ok) {
-        const errBody = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-        throw new Error(formatApiHttpError(res.status, res.statusText, errBody.error?.message));
-      }
-
-      await Promise.resolve();
-
-      if (isEventStreamResponse(res)) {
-        await consumeAgentSseResponse(res, terminal.wrapped, opts);
+    try {
+      if (shouldUseXhrForAgentSse()) {
+        const result = await consumeAgentSseXhr(
+          useGatewayStore.getState().apiUrl(path),
+          {
+            method: 'POST',
+            headers: buildAgentSseHeaders(),
+            body: bodyJson,
+            signal: abortController.signal,
+          },
+          terminal.wrapped,
+          opts,
+        );
+        notifyUnauthorizedIfNeeded(result.status);
+        if (!result.ok) {
+          const errBody = parseApiErrorBody(result.responseText);
+          throw new Error(formatApiHttpError(result.status, result.statusText, errBody));
+        }
       } else {
-        const json = (await res.json()) as { ok?: boolean; payload?: { content?: string } };
-        if (json.ok && json.payload?.content) {
-          callbacks?.onToken(json.payload.content);
-          callbacks?.onResult();
+        const res = await apiFetch(path, {
+          method: 'POST',
+          headers: { Accept: 'text/event-stream' },
+          body: bodyJson,
+          signal: abortController.signal,
+        });
+
+        if (!res.ok) {
+          const errBody = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+          throw new Error(formatApiHttpError(res.status, res.statusText, errBody.error?.message));
+        }
+
+        await Promise.resolve();
+
+        if (isEventStreamResponse(res)) {
+          await consumeAgentSseResponse(res, terminal.wrapped, opts);
+        } else {
+          const json = (await res.json()) as { ok?: boolean; payload?: { content?: string } };
+          if (json.ok && json.payload?.content) {
+            callbacks?.onToken(json.payload.content);
+            callbacks?.onResult();
+          }
         }
       }
-    }
 
-    if (!terminal.sawTerminal && !this._abort?.signal.aborted) {
-      terminal.onMissingTerminal();
+      if (!terminal.sawTerminal && !abortController.signal.aborted) {
+        terminal.onMissingTerminal();
+      }
+    } finally {
+      this._clearPendingRun();
+      if (this._abort === abortController) {
+        this._abort = undefined;
+      }
     }
-
-    this._clearPendingRun();
-    this._abort = undefined;
   }
 
   async sendMultipart(
@@ -175,58 +180,63 @@ export class AgentMessageSender {
     callbacks?: MessagingCallbacks,
   ): Promise<void> {
     this._abort = new AbortController();
+    const abortController = this._abort;
     this._sseChatId = sessionKey;
 
     const terminal = wrapTerminalCallbacks(callbacks);
     const opts = sseDispatchOptions(this._sseChatId);
 
-    if (shouldUseXhrForAgentSse()) {
-      const result = await consumeAgentSseXhr(
-        useGatewayStore.getState().apiUrl(path),
-        {
-          method: 'POST',
-          headers: buildAgentSseMultipartHeaders(),
-          body: formData,
-          signal: this._abort.signal,
-        },
-        terminal.wrapped,
-        opts,
-      );
-      notifyUnauthorizedIfNeeded(result.status);
-      if (!result.ok) {
-        const errBody = parseApiErrorBody(result.responseText);
-        throw new Error(formatApiHttpError(result.status, result.statusText, errBody));
-      }
-    } else {
-      const res = await apiFetch(path, {
-        method: 'POST',
-        headers: { Accept: 'text/event-stream' },
-        body: formData,
-        signal: this._abort.signal,
-      });
-
-      if (!res.ok) {
-        const errBody = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-        throw new Error(formatApiHttpError(res.status, res.statusText, errBody.error?.message));
-      }
-
-      if (isEventStreamResponse(res)) {
-        await consumeAgentSseResponse(res, terminal.wrapped, opts);
+    try {
+      if (shouldUseXhrForAgentSse()) {
+        const result = await consumeAgentSseXhr(
+          useGatewayStore.getState().apiUrl(path),
+          {
+            method: 'POST',
+            headers: buildAgentSseMultipartHeaders(),
+            body: formData,
+            signal: abortController.signal,
+          },
+          terminal.wrapped,
+          opts,
+        );
+        notifyUnauthorizedIfNeeded(result.status);
+        if (!result.ok) {
+          const errBody = parseApiErrorBody(result.responseText);
+          throw new Error(formatApiHttpError(result.status, result.statusText, errBody));
+        }
       } else {
-        const json = (await res.json()) as { ok?: boolean; payload?: { content?: string } };
-        if (json.ok && json.payload?.content) {
-          callbacks?.onToken(json.payload.content);
-          callbacks?.onResult();
+        const res = await apiFetch(path, {
+          method: 'POST',
+          headers: { Accept: 'text/event-stream' },
+          body: formData,
+          signal: abortController.signal,
+        });
+
+        if (!res.ok) {
+          const errBody = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+          throw new Error(formatApiHttpError(res.status, res.statusText, errBody.error?.message));
+        }
+
+        if (isEventStreamResponse(res)) {
+          await consumeAgentSseResponse(res, terminal.wrapped, opts);
+        } else {
+          const json = (await res.json()) as { ok?: boolean; payload?: { content?: string } };
+          if (json.ok && json.payload?.content) {
+            callbacks?.onToken(json.payload.content);
+            callbacks?.onResult();
+          }
         }
       }
-    }
 
-    if (!terminal.sawTerminal && !this._abort?.signal.aborted) {
-      terminal.onMissingTerminal();
+      if (!terminal.sawTerminal && !abortController.signal.aborted) {
+        terminal.onMissingTerminal();
+      }
+    } finally {
+      this._clearPendingRun();
+      if (this._abort === abortController) {
+        this._abort = undefined;
+      }
     }
-
-    this._clearPendingRun();
-    this._abort = undefined;
   }
 
   abort(): void {
