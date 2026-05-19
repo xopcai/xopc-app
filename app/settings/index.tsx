@@ -1,5 +1,4 @@
 import Constants from 'expo-constants';
-import { useQuery } from '@tanstack/react-query';
 import { useNavigation, useRouter } from 'expo-router';
 import { useLayoutEffect, useMemo } from 'react';
 import { Linking, ScrollView, StyleSheet, View } from 'react-native';
@@ -12,8 +11,6 @@ import {
 } from '../../src/features/settings/settings-ui';
 import { useMessages } from '../../src/i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '../../src/lib/navigation';
-import { fetchChatAgents } from '../../src/query/agents';
-import { queryKeys } from '../../src/query/keys';
 import { useGatewayConfigured } from '../../src/query/sessions';
 import {
   type Language,
@@ -43,19 +40,6 @@ export default function SettingsIndexScreen() {
   const baseUrl = useGatewayStore((st) => st.baseUrl);
   const language = usePreferencesStore((st) => st.language);
   const themePreference = usePreferencesStore((st) => st.themePreference);
-
-  const agentsQuery = useQuery({
-    queryKey: queryKeys.agents,
-    queryFn: fetchChatAgents,
-    enabled: configured,
-  });
-
-  const defaultAgentName = useMemo(() => {
-    if (!agentsQuery.data) return '—';
-    const id = agentsQuery.data.defaultId ?? 'main';
-    return agentsQuery.data.items.find((a) => a.id === id)?.name?.trim() || id;
-  }, [agentsQuery.data]);
-
   const gatewayValue = useMemo(() => {
     if (!configured || !baseUrl) return s.gatewayNotConfigured;
     try {
@@ -90,15 +74,8 @@ export default function SettingsIndexScreen() {
           iconColor="#5856D6"
           label={s.gateway}
           value={gatewayValue}
-          onPress={() => router.push('/settings/gateway')}
-        />
-        <SettingsRow
-          icon="robot-outline"
-          iconColor="#007AFF"
-          label={s.defaultAgent}
-          value={defaultAgentName}
           isLast
-          onPress={() => router.push('/agents')}
+          onPress={() => router.push('/settings/gateway')}
         />
       </SettingsSection>
 

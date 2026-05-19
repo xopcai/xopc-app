@@ -32,12 +32,13 @@ import {
   finalizeStreamingThinking,
   startThinkingSegment,
 } from '../../src/features/chat/streaming';
-import { fetchChatAgents } from '../../src/query/agents';
+import { fetchChatAgents, resolveEffectiveDefaultAgentId } from '../../src/query/agents';
 import { queryKeys } from '../../src/query/keys';
 import { createSession, fetchSession, renameSession, useGatewayConfigured } from '../../src/query/sessions';
 import { pendingRunStorageKey, storage } from '../../src/storage/mmkv';
 import { useKeyboardVisible } from '../../src/hooks/use-keyboard-visible';
 import { useGatewayStore } from '../../src/stores/gateway-store';
+import { usePreferencesStore } from '../../src/stores/preferences-store';
 
 // ── Session wire → UI message helpers (ported from web/src/features/chat/agent-messages.ts) ──
 
@@ -273,15 +274,17 @@ export default function ChatScreen() {
     enabled: configured,
   });
 
+  const localDefaultAgentId = usePreferencesStore((s) => s.defaultAgentId);
+
   const modelName = useMemo(() => {
     const agents = agentsQuery.data?.items ?? [];
-    const defaultId = agentsQuery.data?.defaultId ?? 'main';
+    const defaultId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
     // Extract agentId from session key (format: {agentId}:{source}:{accountId}:{peerKind}:{peerId})
     const sessionAgentId = sessionKey ? sessionKey.split(':')[0]?.trim().toLowerCase() : null;
     const targetId = sessionAgentId || defaultId;
     const agent = agents.find((a) => a.id === targetId);
     return agent?.name ?? agent?.id ?? targetId;
-  }, [agentsQuery.data, sessionKey]);
+  }, [agentsQuery.data, localDefaultAgentId, sessionKey]);
 
   // ── Session data ─────────────────────────────────────────
   const sessionQuery = useQuery({
@@ -512,11 +515,12 @@ export default function ChatScreen() {
 
   // ── New chat ─────────────────────────────────────────────
   const handleNewChat = useCallback(() => {
-    void createSession(undefined).then((key) => {
+    const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
+    void createSession(agentId).then((key) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
       router.setParams({ k: key });
     });
-  }, [queryClient, router]);
+  }, [agentsQuery.data, localDefaultAgentId, queryClient, router]);
 
   // ── Open drawer ──────────────────────────────────────────
   const openDrawer = useCallback(() => {

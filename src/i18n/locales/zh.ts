@@ -191,7 +191,7 @@ export const zh: MessageBundle = {
     themeSystem: '跟随系统',
     // Agent
     agents: 'Agents',
-    defaultAgent: '默认 Agent',
+    defaultAgent: '默认智能体',
     agentListEmpty: '网关上未配置任何 Agent。',
     agentLoadFailed: '加载 Agent 失败。',
     retry: '重试',
@@ -202,6 +202,7 @@ export const zh: MessageBundle = {
     title: '智能体',
     empty: '网关上未配置任何智能体。',
     loadFailed: '加载智能体失败。',
+    listHint: '点击一行设为默认智能体；点击右侧图标开始对话。',
     defaultBadge: '默认',
     model: '模型',
     chatWith: '对话',

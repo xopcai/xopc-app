@@ -28,11 +28,13 @@ import { useGatewayConnectLanding } from '../features/gateway/gateway-connect-co
 import { useMessages, t } from '../i18n/messages';
 import { fetchChatAgents } from '../query/agents';
 import { queryKeys } from '../query/keys';
+import { resolveEffectiveDefaultAgentId } from '../query/agents';
 import {
   createSession,
   fetchSessionsList,
   useGatewayConfigured,
 } from '../query/sessions';
+import { usePreferencesStore } from '../stores/preferences-store';
 import type { SessionListItem } from '../query/sessions';
 
 function groupSessions(
@@ -92,8 +94,10 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
     enabled: configured,
   });
 
+  const localDefaultAgentId = usePreferencesStore((s) => s.defaultAgentId);
+
   const sessions = sessionsQuery.data ?? [];
-  const defaultAgentId = agentsQuery.data?.defaultId ?? 'main';
+  const defaultAgentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
   const defaultAgentName =
     agentsQuery.data?.items.find((a) => a.id === defaultAgentId)?.name?.trim() || defaultAgentId;
 
@@ -120,7 +124,8 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
   const appVersion = Constants.expoConfig?.version ?? '1.0.0';
 
   const createMut = useMutation({
-    mutationFn: (_agentId?: string) => createSession(_agentId),
+    mutationFn: (agentId?: string) =>
+      createSession(agentId ?? resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId)),
     onSuccess: (key) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
       router.setParams({ k: key });

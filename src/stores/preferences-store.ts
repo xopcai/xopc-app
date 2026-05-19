@@ -19,9 +19,12 @@ export type PreferencesState = {
   themePreference: ThemePreference;
   /** The resolved effective theme (after applying "system" preference). */
   resolvedTheme: 'light' | 'dark';
+  /** App override for default agent; null = follow gateway defaultId. */
+  defaultAgentId: string | null;
 
   setLanguage: (lang: Language) => void;
   setThemePreference: (pref: ThemePreference) => void;
+  setDefaultAgentId: (agentId: string | null) => void;
   /** Call once at app startup to hydrate from MMKV. */
   hydrate: () => void;
 };
@@ -55,6 +58,7 @@ export const usePreferencesStore = create<PreferencesState>((set, _get) => ({
   language: 'en',
   themePreference: 'system',
   resolvedTheme: resolveTheme('system'),
+  defaultAgentId: null,
 
   setLanguage: (language) => {
     storage.set(KEYS.language, language);
@@ -68,13 +72,27 @@ export const usePreferencesStore = create<PreferencesState>((set, _get) => ({
     set({ themePreference, resolvedTheme });
   },
 
+  setDefaultAgentId: (defaultAgentId) => {
+    const normalized = defaultAgentId?.trim().toLowerCase() || null;
+    if (normalized) storage.set(KEYS.defaultAgentId, normalized);
+    else storage.delete(KEYS.defaultAgentId);
+    set({ defaultAgentId: normalized });
+  },
+
   hydrate: () => {
     const langRaw = storage.getString(KEYS.language);
     const themeRaw = storage.getString(KEYS.themePreference);
+    const agentRaw = storage.getString(KEYS.defaultAgentId);
     const language = isValidLanguage(langRaw) ? langRaw : 'en';
     const themePreference = isValidThemePref(themeRaw) ? themeRaw : 'system';
+    const defaultAgentId = agentRaw?.trim().toLowerCase() || null;
     syncAppearance(themePreference);
-    set({ language, themePreference, resolvedTheme: resolveTheme(themePreference) });
+    set({
+      language,
+      themePreference,
+      resolvedTheme: resolveTheme(themePreference),
+      defaultAgentId,
+    });
   },
 }));
 

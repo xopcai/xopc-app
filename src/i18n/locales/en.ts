@@ -201,6 +201,7 @@ export const en = {
     title: 'Agents',
     empty: 'No agents configured on the gateway.',
     loadFailed: 'Failed to load agents.',
+    listHint: 'Tap a row to set the default agent. Use the chat icon to start a conversation.',
     defaultBadge: 'Default',
     model: 'Model',
     chatWith: 'Chat',

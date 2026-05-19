@@ -7,6 +7,7 @@ export const KEYS = {
   pendingRunPrefix: 'xopc:pendingRun:',
   language: 'prefs.language',
   themePreference: 'prefs.themePreference',
+  defaultAgentId: 'prefs.defaultAgentId',
 } as const;
 
 export type KeyValueStorage = {

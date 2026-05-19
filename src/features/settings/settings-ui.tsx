@@ -80,12 +80,19 @@ export function SettingsRow({
 
 type SettingsOptionRowProps = {
   label: string;
+  description?: string;
   selected?: boolean;
   isLast?: boolean;
   onPress: () => void;
 };
 
-export function SettingsOptionRow({ label, selected, isLast, onPress }: SettingsOptionRowProps) {
+export function SettingsOptionRow({
+  label,
+  description,
+  selected,
+  isLast,
+  onPress,
+}: SettingsOptionRowProps) {
   const colors = useSettingsColors();
   return (
     <Pressable
@@ -96,9 +103,74 @@ export function SettingsOptionRow({ label, selected, isLast, onPress }: Settings
         pressed && styles.rowPressed,
       ]}
     >
-      <Text style={[styles.optionLabel, { color: colors.text }]}>{label}</Text>
+      <View style={styles.optionText}>
+        <Text style={[styles.optionLabel, { color: colors.text }]}>{label}</Text>
+        {description ? (
+          <Text style={[styles.optionDescription, { color: colors.textMuted }]} numberOfLines={2}>
+            {description}
+          </Text>
+        ) : null}
+      </View>
       {selected ? <Icon source="check" size={20} color={colors.accent} /> : null}
     </Pressable>
+  );
+}
+
+type SettingsAgentRowProps = {
+  name: string;
+  agentId: string;
+  description?: string;
+  selected?: boolean;
+  isLast?: boolean;
+  chatLoading?: boolean;
+  onSelect: () => void;
+  onChat: () => void;
+};
+
+export function SettingsAgentRow({
+  name,
+  agentId,
+  description,
+  selected,
+  isLast,
+  chatLoading,
+  onSelect,
+  onChat,
+}: SettingsAgentRowProps) {
+  const colors = useSettingsColors();
+  return (
+    <View
+      style={[
+        styles.agentRow,
+        !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+      ]}
+    >
+      <Pressable
+        onPress={onSelect}
+        style={({ pressed }) => [styles.agentRowMain, pressed && styles.rowPressed]}
+      >
+        <View style={[styles.iconWrap, { backgroundColor: '#007AFF18' }]}>
+          <Icon source="robot-outline" size={18} color={colors.accent} />
+        </View>
+        <View style={styles.optionText}>
+          <Text style={[styles.optionLabel, { color: colors.text }]} numberOfLines={1}>
+            {name}
+          </Text>
+          <Text style={[styles.optionDescription, { color: colors.textMuted }]} numberOfLines={1}>
+            {description || agentId}
+          </Text>
+        </View>
+        {selected ? <Icon source="check-circle" size={22} color={colors.accent} /> : null}
+      </Pressable>
+      <Pressable
+        onPress={onChat}
+        disabled={chatLoading}
+        style={({ pressed }) => [styles.agentChatBtn, pressed && styles.rowPressed]}
+        hitSlop={8}
+      >
+        <Icon source="chat-outline" size={22} color={colors.accent} />
+      </Pressable>
+    </View>
   );
 }
 
@@ -152,5 +224,33 @@ const styles = StyleSheet.create({
   },
   optionLabel: {
     fontSize: 16,
+  },
+  optionText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  optionDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  agentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 6,
+  },
+  agentRowMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 14,
+    paddingVertical: 12,
+    gap: 12,
+    minWidth: 0,
+  },
+  agentChatBtn: {
+    padding: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
