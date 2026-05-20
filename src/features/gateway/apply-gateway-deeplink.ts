@@ -76,10 +76,14 @@ export async function tryConsumeGatewayDeeplink(
   const parsed = parseGatewayQrPayload(embedded ?? rawUrl);
   if (!parsed.baseUrl && !parsed.token) return false;
 
-  const { setBaseUrl, setToken, persist } = useGatewayStore.getState();
+  const { setBaseUrl, setLanUrl, setToken, persist, refreshActiveBaseUrl } =
+    useGatewayStore.getState();
   if (parsed.baseUrl) setBaseUrl(parsed.baseUrl);
+  if (parsed.lanUrl) setLanUrl(parsed.lanUrl);
+  else setLanUrl(null);
   if (parsed.token != null) setToken(parsed.token);
   persist();
+  await refreshActiveBaseUrl();
 
   await queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
   await queryClient.invalidateQueries({ queryKey: queryKeys.agents });

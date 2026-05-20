@@ -1,6 +1,7 @@
 /** Parsed fields from a QR payload (URL, JSON, or plain gateway URL). */
 export type ParsedGatewayQr = {
   baseUrl?: string;
+  lanUrl?: string;
   token?: string;
 };
 
@@ -40,7 +41,7 @@ function isMobileConnectPath(pathname: string): boolean {
 /**
  * Interpret QR / deep-link text for gateway onboarding.
  * Supports:
- * - `xopc://gateway/mobile-connect?baseUrl=<encoded>&token=…` (desktop console QR)
+ * - `xopc://gateway/mobile-connect?baseUrl=<encoded>&lanUrl=<encoded>&token=…` (desktop console QR)
  * - JSON `{"baseUrl","token"}`, http(s) URLs with optional query params, plain URLs.
  */
 export function parseGatewayQrPayload(raw: string): ParsedGatewayQr {
@@ -77,12 +78,15 @@ export function parseGatewayQrPayload(raw: string): ParsedGatewayQr {
       isMobileConnectPath(u.pathname)
     ) {
       const encBase = u.searchParams.get('baseUrl') ?? '';
+      const encLan = u.searchParams.get('lanUrl') ?? '';
       const token = u.searchParams.get('token') ?? u.searchParams.get('bearer') ?? '';
       const baseDecoded = decodeLayeredURIComponent(encBase);
+      const lanDecoded = decodeLayeredURIComponent(encLan);
       const out: ParsedGatewayQr = {};
       if (baseDecoded && isHttpUrl(baseDecoded)) out.baseUrl = trimBase(baseDecoded);
+      if (lanDecoded && isHttpUrl(lanDecoded)) out.lanUrl = trimBase(lanDecoded);
       if (token) out.token = token.trim();
-      if (out.baseUrl || out.token) return out;
+      if (out.baseUrl || out.lanUrl || out.token) return out;
     }
   } catch {
     /* fall through */

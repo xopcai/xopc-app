@@ -12,6 +12,7 @@ import { tryConsumeGatewayDeeplink } from '../src/features/gateway/apply-gateway
 import { themedStackScreenOptions } from '../src/lib/stack-screen-theme';
 import { GatewayConnectLandingContext } from '../src/features/gateway/gateway-connect-context';
 import { GatewayConnectLandingModal } from '../src/features/gateway/GatewayConnectLandingModal';
+import { useGatewayConnectionWatch } from '../src/features/gateway/use-gateway-connection-watch';
 import { useGatewaySse } from '../src/features/gateway/use-gateway-sse';
 import { useMessages } from '../src/i18n/messages';
 import { queryClient } from '../src/query/query-client';
@@ -33,6 +34,7 @@ export default function RootLayout() {
   const [userDismissedConnect, setUserDismissedConnect] = useState(false);
 
   useGatewaySse();
+  useGatewayConnectionWatch(configured);
 
   const isDark = resolvedTheme === 'dark';
   const paperTheme = isDark ? MD3DarkTheme : MD3LightTheme;

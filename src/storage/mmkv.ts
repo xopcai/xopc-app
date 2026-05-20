@@ -2,6 +2,7 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 
 export const KEYS = {
   baseUrl: 'gateway.baseUrl',
+  lanUrl: 'gateway.lanUrl',
   token: 'gateway.token',
   pendingRunPrefix: 'xopc:pendingRun:',
   language: 'prefs.language',

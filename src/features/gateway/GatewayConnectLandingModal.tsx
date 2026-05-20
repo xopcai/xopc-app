@@ -43,8 +43,10 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
 
   const unauthorized = useGatewayStore((st) => st.unauthorized);
   const setBaseUrl = useGatewayStore((st) => st.setBaseUrl);
+  const setLanUrl = useGatewayStore((st) => st.setLanUrl);
   const setToken = useGatewayStore((st) => st.setToken);
   const persist = useGatewayStore((st) => st.persist);
+  const refreshActiveBaseUrl = useGatewayStore((st) => st.refreshActiveBaseUrl);
 
   const [baseUrl, setBaseUrlField] = useState(DEFAULT_GATEWAY_BASE_URL);
   const [token, setTokenField] = useState('');
@@ -85,7 +87,9 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
   const applyParsed = useCallback((parsed: ReturnType<typeof parseGatewayQrPayload>) => {
     if (parsed.baseUrl) setBaseUrlField(parsed.baseUrl);
     if (parsed.token != null) setTokenField(parsed.token);
-  }, []);
+    if (parsed.lanUrl) setLanUrl(parsed.lanUrl);
+    else setLanUrl(null);
+  }, [setLanUrl]);
 
   const openScanner = useCallback(async () => {
     if (!camPermission?.granted) {
@@ -132,6 +136,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
       setBaseUrl(parsed.data.baseUrl);
       setToken(parsed.data.token);
       persist();
+      await refreshActiveBaseUrl();
 
       const nav = await openDefaultSessionAfterConnect(router.replace);
       if (!nav.ok) {
@@ -154,7 +159,9 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
     persist,
     queryClient,
     router.replace,
+    refreshActiveBaseUrl,
     setBaseUrl,
+    setLanUrl,
     setToken,
   ]);
 
