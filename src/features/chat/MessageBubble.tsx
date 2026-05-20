@@ -108,6 +108,7 @@ function renderAssistantContent(
   content: MessageContent[],
   isStreaming: boolean,
   sessionKey?: string | null,
+  allowTrailingMargin = false,
 ) {
   const nodes: React.ReactNode[] = [];
   let i = 0;
@@ -153,7 +154,14 @@ function renderAssistantContent(
             </Text>,
           );
         } else {
-          nodes.push(<MarkdownView key={`text-${i}`} content={merged} streaming={isStreaming} />);
+          nodes.push(
+            <MarkdownView
+              key={`text-${i}`}
+              content={merged}
+              streaming={isStreaming}
+              allowTrailingMargin={allowTrailingMargin}
+            />,
+          );
         }
       }
       i = j;
@@ -360,47 +368,52 @@ export const MessageBubble = memo(function MessageBubble({
           <Menu.Item title={m.chat.messageDeleteRound} leadingIcon="delete-outline" onPress={deleteRound} />
         </Menu>
       ) : (
-        <Menu
-          visible={assistantMenuVisible}
-          onDismiss={closeAssistantMenu}
-          anchor={
-            <Pressable
-              onLongPress={() => setAssistantMenuVisible(true)}
-              delayLongPress={260}
-              style={[chatLayout.assistantBubbleContainer, chatLayout.assistantBubble]}
+        <View style={chatLayout.assistantBubbleContainer}>
+          <Menu
+            visible={assistantMenuVisible}
+            onDismiss={closeAssistantMenu}
+            anchor={
+              <Pressable
+                onLongPress={() => setAssistantMenuVisible(true)}
+                delayLongPress={260}
+                style={[
+                  chatLayout.assistantBubble,
+                  showAssistantArtifacts ? styles.markdownAboveArtifacts : null,
+                ]}
+              >
+                {renderAssistantContent(displayContent, isStreaming, sessionKey, showAssistantArtifacts)}
+
+                {attachmentsForBubble?.length ? (
+                  <AttachmentRenderer attachments={attachmentsForBubble} sessionKey={sessionKey} />
+                ) : null}
+              </Pressable>
+            }
+          >
+            <Menu.Item title={m.chat.messageCopy} leadingIcon="content-copy" onPress={copyAssistantText} />
+          </Menu>
+
+          {showAssistantArtifacts ? (
+            <View
+              style={[
+                styles.artifactCard,
+                {
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB',
+                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB',
+                },
+              ]}
             >
-              {renderAssistantContent(displayContent, isStreaming, sessionKey)}
-
-              {showAssistantArtifacts ? (
-                <View
-                  style={[
-                    styles.artifactCard,
-                    {
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB',
-                      borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB',
-                    },
-                  ]}
-                >
-                  <Text style={[styles.artifactTitle, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>交付物</Text>
-                  <View style={styles.artifactBody}>
-                    {assistantWorkspacePaths.length > 0 ? (
-                      <WorkspaceArtifactStrip paths={assistantWorkspacePaths} sessionKey={sessionKey} />
-                    ) : null}
-                    {assistantImageAttachments.length > 0 ? (
-                      <AttachmentRenderer attachments={assistantImageAttachments} sessionKey={sessionKey} compact />
-                    ) : null}
-                  </View>
-                </View>
-              ) : null}
-
-              {attachmentsForBubble?.length ? (
-                <AttachmentRenderer attachments={attachmentsForBubble} sessionKey={sessionKey} />
-              ) : null}
-            </Pressable>
-          }
-        >
-          <Menu.Item title={m.chat.messageCopy} leadingIcon="content-copy" onPress={copyAssistantText} />
-        </Menu>
+              <Text style={[styles.artifactTitle, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>交付物</Text>
+              <View style={styles.artifactBody}>
+                {assistantWorkspacePaths.length > 0 ? (
+                  <WorkspaceArtifactStrip paths={assistantWorkspacePaths} sessionKey={sessionKey} />
+                ) : null}
+                {assistantImageAttachments.length > 0 ? (
+                  <AttachmentRenderer attachments={assistantImageAttachments} sessionKey={sessionKey} compact />
+                ) : null}
+              </View>
+            </View>
+          ) : null}
+        </View>
       )}
 
       {/* Usage badge */}
@@ -444,12 +457,15 @@ const styles = StyleSheet.create({
     borderRadius: 1,
     opacity: 0.7,
   },
+  markdownAboveArtifacts: {
+    paddingBottom: 4,
+  },
   artifactCard: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    marginTop: 6,
+    marginTop: 10,
     gap: 8,
   },
   artifactTitle: {

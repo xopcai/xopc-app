@@ -165,6 +165,7 @@ type EnrichedProps = {
   streamingAnimation: boolean;
   onLinkPress: (e: { url: string }) => void;
   selectable: boolean;
+  allowTrailingMargin?: boolean;
 };
 
 function isExpoGo(): boolean {
@@ -225,10 +226,16 @@ const PlainMarkdownFallback = memo(function PlainMarkdownFallback({
 export const MarkdownView = memo(function MarkdownView({
   content,
   streaming = false,
+  allowTrailingMargin = false,
 }: {
   content: string;
   /** When true, enables the streaming fade-in animation for new tokens (native renderer only). */
   streaming?: boolean;
+  /**
+   * When true, keeps marginBottom on the last markdown block in Yoga layout.
+   * Use when another view (e.g. deliverables) sits directly below the markdown.
+   */
+  allowTrailingMargin?: boolean;
 }) {
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
@@ -253,6 +260,7 @@ export const MarkdownView = memo(function MarkdownView({
       streamingAnimation={streaming}
       onLinkPress={handleLinkPress}
       selectable
+      allowTrailingMargin={allowTrailingMargin}
     />
   );
 });
