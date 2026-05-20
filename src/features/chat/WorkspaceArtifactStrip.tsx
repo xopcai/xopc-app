@@ -1,14 +1,21 @@
 import * as Clipboard from 'expo-clipboard';
+import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
 import { useGatewayStore } from '../../stores/gateway-store';
+import { mapManageRouteToAppPath } from './file-reference-routes';
 import { FilePreviewModal, type PreviewableFile } from './FilePreviewModal';
 import type { ExtractedFilePath } from './tool-result-file-paths';
 import { isImageMimeType } from './tool-result-file-paths';
-import { resolveWorkspaceFileReference, type WorkspaceFileReference } from './workspace-api';
+import {
+  resolveWorkspaceFileReference,
+  type FileReferenceLocationKind,
+  type FileReferenceScope,
+  type WorkspaceFileReference,
+} from './workspace-api';
 
 type ResolvedArtifact = ExtractedFilePath & { refInfo: WorkspaceFileReference };
 type VisiblePath = ResolvedArtifact & { rel: string };
@@ -33,13 +40,28 @@ function toPreviewable(path: VisiblePath): PreviewableFile {
   };
 }
 
+function isOffWorkspaceScope(scope: FileReferenceScope): boolean {
+  return scope === 'external' || scope === 'agent-profile' || scope === 'session-artifact';
+}
+
+function locationKindBadgeLabel(
+  kind: FileReferenceLocationKind | undefined,
+  m: ReturnType<typeof useMessages>,
+): string {
+  if (!kind) return m.chat.fileReferenceExternalBadge;
+  return m.chat.fileReferenceLocationKind[kind] ?? m.chat.fileReferenceExternalBadge;
+}
+
 function fileReferenceDescription(refInfo: WorkspaceFileReference, m: ReturnType<typeof useMessages>) {
   if (refInfo.scope === 'missing') return m.chat.fileReferenceMissingDescription;
   if (refInfo.scope === 'invalid') return m.chat.fileReferenceInvalidDescription;
+  if (isOffWorkspaceScope(refInfo.scope) && refInfo.exists) {
+    return m.chat.fileReferenceOffWorkspaceBaseDescription;
+  }
   return m.chat.fileReferenceExternalDescription;
 }
 
-function ExternalArtifactCard({
+function OffWorkspaceArtifactCard({
   path,
   refInfo,
   border,
@@ -54,43 +76,72 @@ function ExternalArtifactCard({
   textColor: string;
   muted: string;
 }) {
+  const router = useRouter();
   const m = useMessages();
   const displayPath = refInfo.absolutePath ?? path.absolutePath;
   const isMissingOrInvalid = refInfo.scope === 'missing' || refInfo.scope === 'invalid';
+  const offWorkspace = isOffWorkspaceScope(refInfo.scope) && refInfo.exists;
   const icon = isMissingOrInvalid ? 'alert-circle-outline' : 'file-outline';
   const iconColor = isMissingOrInvalid ? '#F59E0B' : muted;
+  const appRoute = mapManageRouteToAppPath(refInfo.manageRoute);
+  const showSettingsHint =
+    refInfo.manageRoute && !appRoute && (refInfo.locationKind === 'xopc-skills' || refInfo.locationKind === 'xopc-sessions');
 
   const copyPath = () => {
     void Clipboard.setStringAsync(displayPath);
   };
 
   return (
-    <View style={[styles.externalCard, { borderColor: border, backgroundColor: chipBg }]}>
+    <View
+      style={[
+        styles.externalCard,
+        {
+          borderColor: isMissingOrInvalid ? 'rgba(245,158,11,0.35)' : border,
+          backgroundColor: isMissingOrInvalid ? 'rgba(245,158,11,0.08)' : chipBg,
+        },
+      ]}
+    >
       <View style={styles.externalHeader}>
         <Icon source={icon} size={16} color={iconColor} />
         <Text style={[styles.externalTitle, { color: textColor }]} numberOfLines={1}>
           {path.fileName || refInfo.displayName}
         </Text>
-        {refInfo.scope === 'external' ? (
+        {offWorkspace || refInfo.scope === 'external' || refInfo.scope === 'agent-profile' ? (
           <Text style={[styles.badge, { color: muted, borderColor: border }]}>
-            {m.chat.fileReferenceExternalBadge}
+            {locationKindBadgeLabel(refInfo.locationKind, m)}
           </Text>
         ) : null}
       </View>
       <Text style={[styles.externalDescription, { color: muted }]}>
         {fileReferenceDescription(refInfo, m)}
       </Text>
-      {refInfo.capabilities.includes('copyPath') ? (
-        <Pressable
-          style={({ pressed }) => [styles.copyButton, { borderColor: border }, pressed && styles.pressed]}
-          onPress={copyPath}
-          accessibilityRole="button"
-          accessibilityLabel={m.chat.fileReferenceCopyPath}
-        >
-          <Icon source="content-copy" size={14} color={muted} />
-          <Text style={[styles.copyText, { color: textColor }]}>{m.chat.fileReferenceCopyPath}</Text>
-        </Pressable>
+      {showSettingsHint ? (
+        <Text style={[styles.externalDescription, { color: muted }]}>{m.chat.fileReferenceManageOnDesktop}</Text>
       ) : null}
+      <View style={styles.actionRow}>
+        {appRoute ? (
+          <Pressable
+            style={({ pressed }) => [styles.copyButton, { borderColor: border }, pressed && styles.pressed]}
+            onPress={() => router.push(appRoute as never)}
+            accessibilityRole="button"
+            accessibilityLabel={m.chat.fileReferenceOpenInSettings}
+          >
+            <Icon source="cog-outline" size={14} color={muted} />
+            <Text style={[styles.copyText, { color: textColor }]}>{m.chat.fileReferenceOpenInSettings}</Text>
+          </Pressable>
+        ) : null}
+        {refInfo.capabilities.includes('copyPath') ? (
+          <Pressable
+            style={({ pressed }) => [styles.copyButton, { borderColor: border }, pressed && styles.pressed]}
+            onPress={copyPath}
+            accessibilityRole="button"
+            accessibilityLabel={m.chat.fileReferenceCopyPath}
+          >
+            <Icon source="content-copy" size={14} color={muted} />
+            <Text style={[styles.copyText, { color: textColor }]}>{m.chat.fileReferenceCopyPath}</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -184,7 +235,7 @@ export function WorkspaceArtifactStrip({
           </Pressable>
         ))}
         {nonWorkspacePaths.map((p) => (
-          <ExternalArtifactCard
+          <OffWorkspaceArtifactCard
             key={p.absolutePath}
             path={p}
             refInfo={p.refInfo}
@@ -266,6 +317,11 @@ const styles = StyleSheet.create({
   externalDescription: {
     fontSize: 11,
     lineHeight: 16,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   copyButton: {
     alignSelf: 'flex-start',

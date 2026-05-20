@@ -5,12 +5,15 @@
  * - **standalone** (default): wrapped in its own card with left border accent.
  * - **inline** (`inline={true}`): compact row inside an AssistantStepsBlock timeline.
  */
-import { memo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 
+import { TOOL_NAMES_WITH_WORKSPACE_OUTPUT } from './assistant-message-artifacts';
 import type { ToolUseContent } from './messages.types';
 import { chatColors } from './styles';
+import { extractFilePathsFromToolResult } from './tool-result-file-paths';
+import { WorkspaceArtifactStrip } from './WorkspaceArtifactStrip';
 
 /** Human-readable tool name: convert snake_case to Title Case. */
 function formatToolName(name: string): string {
@@ -56,10 +59,12 @@ function statusColor(status: ToolUseContent['status']) {
 export const ToolUseBlock = memo(function ToolUseBlock({
   block,
   inline,
+  sessionKey,
 }: {
   block: ToolUseContent;
   /** When true, renders as a compact row inside AssistantStepsBlock. */
   inline?: boolean;
+  sessionKey?: string | null;
 }) {
   const isDark = useColorScheme() === 'dark';
   const [expanded, setExpanded] = useState(false);
@@ -77,6 +82,26 @@ export const ToolUseBlock = memo(function ToolUseBlock({
   const resultPreview = resultText.length > 200 ? resultText.slice(0, 200) + '…' : resultText;
 
   const detailLine = getKeyDetail(block.input);
+
+  const extractedFilePaths = useMemo(() => {
+    if (block.status === 'running' || block.status === 'error') {
+      return [];
+    }
+    if (!TOOL_NAMES_WITH_WORKSPACE_OUTPUT.has(block.name)) {
+      return [];
+    }
+    if (!resultText.trim()) {
+      return [];
+    }
+    return extractFilePathsFromToolResult(resultText);
+  }, [block.name, block.status, resultText]);
+
+  const fileLinks =
+    extractedFilePaths.length > 0 ? (
+      <View style={styles.fileLinks}>
+        <WorkspaceArtifactStrip paths={extractedFilePaths} sessionKey={sessionKey} />
+      </View>
+    ) : null;
 
   // ── Inline mode: compact row for AssistantStepsBlock timeline ──
   if (inline) {
@@ -119,6 +144,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
               {detailLine}
             </Text>
           ) : null}
+          {fileLinks}
         </View>
       </View>
     );
@@ -175,6 +201,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
           >
             {resultPreview}
           </Text>
+          {fileLinks}
         </View>
       ) : null}
     </View>
@@ -234,5 +261,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
     fontFamily: 'monospace',
+  },
+  fileLinks: {
+    marginTop: 8,
   },
 });

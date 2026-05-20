@@ -61,6 +61,7 @@ export const AssistantStepsBlock = memo(function AssistantStepsBlock({
   blocks,
   isMessageStreaming,
   finalAnswerStarted,
+  sessionKey,
 }: {
   /** Consecutive thinking + tool_use content blocks. */
   blocks: Array<ThinkingContent | ToolUseContent>;
@@ -68,6 +69,7 @@ export const AssistantStepsBlock = memo(function AssistantStepsBlock({
   isMessageStreaming: boolean;
   /** True once assistant text content appears after these step blocks. */
   finalAnswerStarted: boolean;
+  sessionKey?: string | null;
 }) {
   const isDark = useColorScheme() === 'dark';
   const anyActive = isAnyBlockActive(blocks);
@@ -164,6 +166,7 @@ export const AssistantStepsBlock = memo(function AssistantStepsBlock({
                 key={`tool-${block.id || i}`}
                 block={block}
                 inline
+                sessionKey={sessionKey}
               />
             );
           })}

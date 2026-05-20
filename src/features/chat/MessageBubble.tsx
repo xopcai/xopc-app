@@ -135,6 +135,7 @@ function renderAssistantContent(
             blocks={stepBlocks}
             isMessageStreaming={isStreaming}
             finalAnswerStarted={finalAnswerStarted}
+            sessionKey={sessionKey}
           />,
         );
       }
@@ -402,7 +403,9 @@ export const MessageBubble = memo(function MessageBubble({
                 },
               ]}
             >
-              <Text style={[styles.artifactTitle, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>交付物</Text>
+              <Text style={[styles.artifactTitle, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>
+                {m.chat.messageArtifactsHeading}
+              </Text>
               <View style={styles.artifactBody}>
                 {assistantWorkspacePaths.length > 0 ? (
                   <WorkspaceArtifactStrip paths={assistantWorkspacePaths} sessionKey={sessionKey} />
