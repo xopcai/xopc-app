@@ -43,7 +43,7 @@ export const MessageList = memo(function MessageList({
   welcomeTitle,
   welcomeSubtitle,
   suggestions,
-  onSuggestionPress,
+  onSuggestionSend,
   onUserMessageCopy,
   onUserMessageEdit,
   onUserMessageRetry,
@@ -62,7 +62,7 @@ export const MessageList = memo(function MessageList({
   welcomeTitle?: string;
   welcomeSubtitle?: string;
   suggestions?: string[];
-  onSuggestionPress?: (text: string) => void;
+  onSuggestionSend?: (text: string) => void;
   onUserMessageCopy?: (text: string) => void;
   onUserMessageEdit?: (text: string) => void;
   onUserMessageRetry?: (text: string) => void;
@@ -253,7 +253,7 @@ export const MessageList = memo(function MessageList({
                   },
                   pressed && { opacity: 0.88, backgroundColor: isDark ? '#2C2C2E' : '#F5F5F7' },
                 ]}
-                onPress={() => onSuggestionPress?.(label)}
+                onPress={() => onSuggestionSend?.(label)}
               >
                 <Text variant="bodySmall" style={[styles.chipText, { color: isDark ? '#E5E5EA' : '#1C1C1E' }]} numberOfLines={2}>
                   {label}

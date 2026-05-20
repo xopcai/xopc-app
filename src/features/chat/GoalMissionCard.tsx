@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { StyleSheet, useColorScheme, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
@@ -24,15 +24,21 @@ import { goalUiPhase, shouldShowGoal } from './goal-utils';
 type Props = {
   sessionKey: string;
   agentBusy: boolean;
+  /** Increment to force-expand the card (e.g. when user taps /goal with an active mission). */
+  expandSignal?: number;
 };
 
-export const GoalMissionCard = memo(function GoalMissionCard({ sessionKey, agentBusy }: Props) {
+export const GoalMissionCard = memo(function GoalMissionCard({ sessionKey, agentBusy, expandSignal = 0 }: Props) {
   const queryClient = useQueryClient();
   const m = useMessages();
   const t = m.chat.goal;
   const language = usePreferencesStore((s) => s.language);
   const isDark = useColorScheme() === 'dark';
   const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (expandSignal > 0) setCollapsed(false);
+  }, [expandSignal]);
   const [mutationBusy, setMutationBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
