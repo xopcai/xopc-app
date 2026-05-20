@@ -3,6 +3,8 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import { useGatewayStore } from '../../stores/gateway-store';
 
+import { syncGatewayAfterConnectivityChange } from './gateway-connection-sync';
+
 const REFRESH_MS = 60_000;
 
 /**
@@ -18,8 +20,12 @@ export function useGatewayConnectionWatch(enabled: boolean): void {
 
     let intervalId: ReturnType<typeof setInterval> | undefined;
 
-    const run = () => {
-      void refreshActiveBaseUrl();
+    const run = async () => {
+      const prev = useGatewayStore.getState().activeBaseUrl;
+      const next = await refreshActiveBaseUrl();
+      if (prev && next && prev !== next) {
+        syncGatewayAfterConnectivityChange();
+      }
     };
 
     run();

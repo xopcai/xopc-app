@@ -51,8 +51,8 @@ export class GatewayHealthMonitor {
   }
 
   async checkNow(): Promise<boolean> {
-    const { baseUrl, token } = useGatewayStore.getState();
-    if (!baseUrl.trim()) return false;
+    const { baseUrl, activeBaseUrl, token } = useGatewayStore.getState();
+    if (!baseUrl.trim() && !activeBaseUrl.trim()) return false;
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), this.timeoutMs);

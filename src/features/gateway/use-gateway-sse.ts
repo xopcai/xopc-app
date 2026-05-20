@@ -13,10 +13,14 @@ let sharedConnection: GatewaySseConnection | null = null;
 export function useGatewaySse(): void {
   const configured = useGatewayConfigured();
   const token = useGatewayStore((s) => s.token);
+  const activeBaseUrl = useGatewayStore((s) => s.activeBaseUrl);
+  const baseUrl = useGatewayStore((s) => s.baseUrl);
   const connRef = useRef<GatewaySseConnection | null>(null);
 
+  const gatewayEndpoint = activeBaseUrl || baseUrl;
+
   useEffect(() => {
-    if (!configured || !token) {
+    if (!configured || !token || !gatewayEndpoint) {
       connRef.current?.disconnect();
       connRef.current = null;
       sharedConnection = null;
@@ -38,7 +42,7 @@ export function useGatewaySse(): void {
       if (sharedConnection === conn) sharedConnection = null;
       connRef.current = null;
     };
-  }, [configured, token]);
+  }, [configured, token, gatewayEndpoint]);
 }
 
 export function getSharedGatewaySseConnection(): GatewaySseConnection | null {
