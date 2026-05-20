@@ -23,13 +23,10 @@ import type { WireAttachment } from '../../src/features/chat/composer.types';
 import { ClarifyPrompt, type ClarifyPromptState } from '../../src/features/chat/ClarifyPrompt';
 import { AgentPickerSheet } from '../../src/features/chat/AgentPickerSheet';
 import { ChatEmptyShortcutsBar } from '../../src/features/chat/ChatEmptyShortcutsBar';
-import { EMPTY_CHAT_SHORTCUTS, type EmptyChatShortcutId } from '../../src/features/chat/chat-empty-shortcuts';
+import { EMPTY_CHAT_GOAL_PREFILL } from '../../src/features/chat/chat-empty-shortcuts';
 import { GoalMissionCard } from '../../src/features/chat/GoalMissionCard';
-import { GoalStartSheet } from '../../src/features/chat/GoalStartSheet';
 import { MessageList } from '../../src/features/chat/MessageList';
 import { sendOrQueueMessage } from '../../src/features/chat/send-or-queue';
-import { SkillPickerSheet } from '../../src/features/chat/SkillPickerSheet';
-import { shouldShowGoal } from '../../src/features/chat/goal-utils';
 import {
   FOLLOW_UP_AUTO_SEND_IDLE_MS,
   MAX_PENDING_FOLLOW_UPS,
@@ -66,7 +63,6 @@ import {
 } from '../../src/features/chat/streaming';
 import { fetchChatAgents, resolveEffectiveDefaultAgentId } from '../../src/query/agents';
 import { queryKeys } from '../../src/query/keys';
-import { fetchWebchatGoal } from '../../src/query/goals';
 import {
   createSession,
   fetchSession,
@@ -1119,57 +1115,10 @@ export default function ChatScreen() {
     [queueFollowUpOrSend],
   );
 
-  const handleShortcutPress = useCallback(
-    async (id: EmptyChatShortcutId) => {
-      if (composerDisabled || !sessionKey) return;
-
-      const def = EMPTY_CHAT_SHORTCUTS.find((s) => s.id === id);
-      if (!def) return;
-
-      if (id === 'goal') {
-        try {
-          const data = await fetchWebchatGoal(sessionKey, {
-            uiLocale: usePreferencesStore.getState().language,
-          });
-          if (shouldShowGoal(data.persistentGoal)) {
-            setGoalCardExpandSignal((n) => n + 1);
-            setSnackMsg(m.chat.emptyShortcuts.goalAlreadyActive);
-            return;
-          }
-        } catch {
-          // Fall through — user can still try to start a goal via sheet.
-        }
-        setGoalSheetVisible(true);
-        return;
-      }
-
-      if (id === 'skill') {
-        setSkillSheetVisible(true);
-        return;
-      }
-
-      if (def.action === 'sendTemplate' && def.templateKey) {
-        const body = m.chat.emptyShortcuts[def.templateKey];
-        if (body) queueFollowUpOrSend(body);
-      }
-    },
-    [composerDisabled, sessionKey, queueFollowUpOrSend, m.chat.emptyShortcuts],
-  );
-
-  const handleGoalSheetSubmit = useCallback(
-    (goalText: string) => {
-      setGoalSheetVisible(false);
-      queueFollowUpOrSend(`/goal ${goalText}`);
-    },
-    [queueFollowUpOrSend],
-  );
-
-  const handleSkillSelect = useCallback(
-    (skillName: string) => {
-      queueFollowUpOrSend(`/skill:${skillName} `);
-    },
-    [queueFollowUpOrSend],
-  );
+  const handleGoalShortcutPress = useCallback(() => {
+    if (composerDisabled) return;
+    setComposerSuggestion(EMPTY_CHAT_GOAL_PREFILL);
+  }, [composerDisabled]);
 
   const handleUserMessageCopy = useCallback((text: string) => {
     void Clipboard.setStringAsync(text)
@@ -1204,10 +1153,6 @@ export default function ChatScreen() {
   }, [m.chat.messageCopied, m.chat.messageCopyFailed]);
 
   const [agentSheetVisible, setAgentSheetVisible] = useState(false);
-  const [goalSheetVisible, setGoalSheetVisible] = useState(false);
-  const [skillSheetVisible, setSkillSheetVisible] = useState(false);
-  const [goalCardExpandSignal, setGoalCardExpandSignal] = useState(0);
-
   const openAgentsPicker = useCallback(() => {
     setAgentSheetVisible(true);
   }, []);
@@ -1297,11 +1242,7 @@ export default function ChatScreen() {
           </Banner>
         ) : null}
 
-        <GoalMissionCard
-          sessionKey={sessionKey}
-          agentBusy={streaming || awaitingSessionRefresh}
-          expandSignal={goalCardExpandSignal}
-        />
+        <GoalMissionCard sessionKey={sessionKey} agentBusy={streaming || awaitingSessionRefresh} />
 
         <View style={styles.listFill}>
           <MessageList
@@ -1343,7 +1284,7 @@ export default function ChatScreen() {
           {isEmptyChat ? (
             <ChatEmptyShortcutsBar
               disabled={composerDisabled}
-              onPressShortcut={(id) => void handleShortcutPress(id)}
+              onPressGoal={handleGoalShortcutPress}
             />
           ) : null}
           <ChatComposer
@@ -1406,17 +1347,6 @@ export default function ChatScreen() {
         onDismiss={() => setAgentSheetVisible(false)}
       />
 
-      <GoalStartSheet
-        visible={goalSheetVisible}
-        onDismiss={() => setGoalSheetVisible(false)}
-        onSubmit={handleGoalSheetSubmit}
-      />
-
-      <SkillPickerSheet
-        visible={skillSheetVisible}
-        onDismiss={() => setSkillSheetVisible(false)}
-        onSelect={handleSkillSelect}
-      />
     </View>
   );
 }

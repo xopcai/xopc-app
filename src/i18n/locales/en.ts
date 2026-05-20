@@ -198,21 +198,6 @@ export const en = {
     welcomeSubtitle: 'Tap a starter to send instantly, or type your own question.',
     emptyShortcuts: {
       goal: '/goal',
-      thinking: 'Deep think',
-      plan: 'Plan',
-      skill: 'Skill',
-      goalSheetTitle: 'Set a goal to accomplish',
-      goalSheetHint: 'Describe what you want the agent to work toward over multiple turns.',
-      goalSheetPlaceholder: 'e.g. Ship the MVP acceptance checklist this week',
-      goalSheetSubmit: 'Start goal mission',
-      goalAlreadyActive: 'A goal mission is already active — see the card above.',
-      skillSheetTitle: 'Pick a skill',
-      skillSheetEmpty: 'No enabled skills on this gateway.',
-      skillSheetLoadFailed: 'Could not load skills.',
-      templateThinking:
-        'Please use deep, step-by-step reasoning before giving your final answer.',
-      templatePlan:
-        'Break this into an actionable step list with priorities and rough time estimates.',
     },
     suggestion1: 'Find today’s top tech news and summarize what matters most',
     suggestion2: 'Review my schedule and todos, then suggest what to do next',
