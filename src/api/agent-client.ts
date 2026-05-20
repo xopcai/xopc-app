@@ -16,7 +16,12 @@ import {
 import { readUriAsBase64 } from '../features/chat/attachment-file-io';
 import { capAttachments } from '../features/chat/chat-limits';
 import type { WireAttachment } from '../features/chat/composer.types';
-import { clearPendingAgentRun, setPendingAgentRun } from '../features/gateway/pending-agent-run';
+import {
+  clearPendingAgentRun,
+  readPendingAgentRunId,
+  setPendingAgentRun,
+} from '../features/gateway/pending-agent-run';
+import { isTransientNetworkError } from '../features/chat/network-errors';
 import { useGatewayStore } from '../stores/gateway-store';
 import { pendingRunStorageKey, storage } from '../storage/mmkv';
 
@@ -178,8 +183,13 @@ export class AgentMessageSender {
       if (!terminal.sawTerminal && !abortController.signal.aborted) {
         terminal.onMissingTerminal();
       }
+    } catch (e) {
+      this._preservePendingRunForRecovery(e, abortController.signal.aborted, terminal.sawTerminal);
+      throw e;
     } finally {
-      this._clearPendingRun();
+      if (terminal.sawTerminal || abortController.signal.aborted) {
+        this._clearPendingRun();
+      }
       if (this._abort === abortController) {
         this._abort = undefined;
       }
@@ -287,55 +297,79 @@ export class AgentMessageSender {
   async resume(runId: string, chatId: string, callbacks?: MessagingCallbacks): Promise<void> {
     this._trackedRunId = undefined;
     this._abort = new AbortController();
+    const abortController = this._abort;
     this._sseChatId = chatId;
     this.trackPendingRunId(runId);
     const terminal = wrapTerminalCallbacks(callbacks);
     const opts = sseDispatchOptions(chatId, this);
     const bodyJson = JSON.stringify({ runId, chatId });
 
-    if (shouldUseXhrForAgentSse()) {
-      const result = await consumeAgentSseXhr(
-        useGatewayStore.getState().apiUrl('/api/agent/resume'),
-        {
+    try {
+      if (shouldUseXhrForAgentSse()) {
+        const result = await consumeAgentSseXhr(
+          useGatewayStore.getState().apiUrl('/api/agent/resume'),
+          {
+            method: 'POST',
+            headers: buildAgentSseHeaders(),
+            body: bodyJson,
+            signal: abortController.signal,
+          },
+          terminal.wrapped,
+          opts,
+        );
+        notifyUnauthorizedIfNeeded(result.status);
+        if (!result.ok) {
+          return;
+        }
+      } else {
+        const res = await apiFetch('/api/agent/resume', {
           method: 'POST',
-          headers: buildAgentSseHeaders(),
+          headers: { Accept: 'text/event-stream' },
           body: bodyJson,
-          signal: this._abort.signal,
-        },
-        terminal.wrapped,
-        opts,
-      );
-      notifyUnauthorizedIfNeeded(result.status);
-      if (!result.ok) {
-        this._clearPendingRun();
-        this._abort = undefined;
-        return;
-      }
-    } else {
-      const res = await apiFetch('/api/agent/resume', {
-        method: 'POST',
-        headers: { Accept: 'text/event-stream' },
-        body: bodyJson,
-        signal: this._abort.signal,
-      });
+          signal: abortController.signal,
+        });
 
-      if (!res.ok) {
-        this._clearPendingRun();
-        this._abort = undefined;
-        return;
+        if (!res.ok) {
+          return;
+        }
+
+        if (isEventStreamResponse(res)) {
+          await consumeAgentSseResponse(res, terminal.wrapped, opts);
+        }
       }
 
-      if (isEventStreamResponse(res)) {
-        await consumeAgentSseResponse(res, terminal.wrapped, opts);
+      if (!terminal.sawTerminal && !abortController.signal.aborted) {
+        terminal.onMissingTerminal();
+      }
+    } catch (e) {
+      this._preservePendingRunForRecovery(e, abortController.signal.aborted, terminal.sawTerminal);
+      throw e;
+    } finally {
+      if (terminal.sawTerminal || abortController.signal.aborted) {
+        this._clearPendingRun();
+      }
+      if (this._abort === abortController) {
+        this._abort = undefined;
       }
     }
+  }
 
-    if (!terminal.sawTerminal && !this._abort?.signal.aborted) {
-      terminal.onMissingTerminal();
+  private _preservePendingRunForRecovery(
+    error: unknown,
+    aborted: boolean,
+    sawTerminal: boolean,
+  ): void {
+    if (aborted || sawTerminal) return;
+    const message = error instanceof Error ? error.message : String(error);
+    if (!isTransientNetworkError(message)) return;
+    const chatId = this._sseChatId;
+    const runId =
+      this._trackedRunId?.trim() ||
+      (chatId ? readPendingAgentRunId(chatId) : null) ||
+      undefined;
+    if (chatId && runId) {
+      setPendingAgentRun(chatId, runId);
     }
-
-    this._clearPendingRun();
-    this._abort = undefined;
   }
 }
 

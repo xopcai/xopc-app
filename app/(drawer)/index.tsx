@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AgentMessageSender, submitClarifyResponse, type MessagingCallbacks } from '../../src/api/agent-client';
 import { ChatComposer } from '../../src/features/chat/ChatComposer';
+import { ChatStreamNotice } from '../../src/features/chat/ChatStreamNotice';
 import { canSendComposerDraft, buildOptimisticUserMessage } from '../../src/features/chat/composer-send-helpers';
 import type { WireAttachment } from '../../src/features/chat/composer.types';
 import { ClarifyPrompt, type ClarifyPromptState } from '../../src/features/chat/ClarifyPrompt';
@@ -36,6 +37,8 @@ import {
   useAgentStreamResume,
   type AgentStreamResumeOptions,
 } from '../../src/features/chat/use-agent-stream-resume';
+import { useAgentStreamRecovery } from '../../src/features/chat/use-agent-stream-recovery';
+import { isTransientNetworkError } from '../../src/features/chat/network-errors';
 import { GatewayOfflineBanner } from '../../src/features/gateway/GatewayOfflineBanner';
 import { subscribeGatewayEvent } from '../../src/features/gateway/gateway-event-bus';
 import { useGatewayHealth } from '../../src/features/gateway/use-gateway-health';
@@ -439,6 +442,7 @@ export default function ChatScreen() {
   const autoSessionAttemptedRef = useRef(false);
   const autoSessionInFlightRef = useRef(false);
   const prevGatewayOnlineRef = useRef(gatewayOnline);
+  const prevGatewayOnlineForStreamRef = useRef(gatewayOnline);
 
   const modelName = useMemo(() => {
     const agents = agentsQuery.data?.items ?? [];
@@ -459,8 +463,10 @@ export default function ChatScreen() {
 
   const [streamingMsg, setStreamingMsg] = useState<Message | null>(null);
   const [streaming, setStreaming] = useState(false);
+  const [streamReconnecting, setStreamReconnecting] = useState(false);
+  const [resumePromptVisible, setResumePromptVisible] = useState(false);
   const [progress, setProgress] = useState<ProgressState | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [snackMsg, setSnackMsg] = useState('');
   const [clarifyPrompt, setClarifyPrompt] = useState<ClarifyPromptState | null>(null);
   const [clarifySubmitting, setClarifySubmitting] = useState(false);
   const [clarifySubmitError, setClarifySubmitError] = useState<string | null>(null);
@@ -474,6 +480,11 @@ export default function ChatScreen() {
   const streamingFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeSessionKeyRef = useRef(sessionKey);
   const autoResumeFailedRef = useRef(false);
+  const streamRecoveryRef = useRef({
+    handleRecoverableFailure: (_error: unknown): boolean => false,
+    markRecoverySucceeded: () => {},
+    cancelRecovery: () => {},
+  });
   const displayMessagesRef = useRef<Message[]>([]);
   const sendRef = useRef<(text: string, attachments?: WireAttachment[]) => Promise<boolean>>(
     async () => false,
@@ -528,6 +539,8 @@ export default function ChatScreen() {
   useEffect(() => {
     activeSessionKeyRef.current = sessionKey;
     autoResumeFailedRef.current = false;
+    setResumePromptVisible(false);
+    setStreamReconnecting(false);
   }, [sessionKey]);
 
   const invalidateSessionByKey = useCallback((targetSessionKey: string) => {
@@ -544,7 +557,6 @@ export default function ChatScreen() {
   const sessionName = sessionQuery.data?.name?.trim() || '';
   const [renameVisible, setRenameVisible] = useState(false);
   const [renameLoading, setRenameLoading] = useState(false);
-  const [snackMsg, setSnackMsg] = useState('');
   const [composerSuggestion, setComposerSuggestion] = useState<string | undefined>(undefined);
 
   // ── Header: hide default, use custom ─────────────────────
@@ -661,9 +673,10 @@ export default function ChatScreen() {
     return {
       onStreamStart: () => {
         if (!isCurrentSession()) return;
+        streamRecoveryRef.current.markRecoverySucceeded();
+        setStreamReconnecting(false);
         setStreaming(true);
         streamingRef.current = true;
-        setError(null);
         updateStreamingMessage(() => {}, true);
       },
       onToken: (delta) => {
@@ -773,6 +786,12 @@ export default function ChatScreen() {
           invalidateSessionByKey(callbackSessionKey);
           return;
         }
+        if (isTransientNetworkError(msg) && streamRecoveryRef.current.handleRecoverableFailure(msg)) {
+          sendingRef.current = false;
+          streamActiveRef.current = streamingRef.current;
+          runBusyRef.current = streamingRef.current || awaitingSessionRefresh;
+          return;
+        }
         sendingRef.current = false;
         setStreaming(false);
         streamingRef.current = false;
@@ -784,7 +803,7 @@ export default function ChatScreen() {
         setClarifyPrompt(null);
         setClarifySubmitError(null);
         setClarifySubmitting(false);
-        setError(msg);
+        setSnackMsg(msg);
         setAwaitingSessionRefresh(false);
         setSessionRefreshStartedAt(0);
         invalidateSession();
@@ -808,7 +827,7 @@ export default function ChatScreen() {
       setClarifyPrompt(null);
       setClarifySubmitError(null);
       setClarifySubmitting(false);
-      setError(null);
+      streamRecoveryRef.current.cancelRecovery();
       setAwaitingSessionRefresh(false);
       setSessionRefreshStartedAt(0);
       try {
@@ -824,8 +843,14 @@ export default function ChatScreen() {
           invalidateSessionByKey(sessionKey);
           return true;
         }
+        if (streamRecoveryRef.current.handleRecoverableFailure(e)) {
+          sendingRef.current = false;
+          streamActiveRef.current = streamingRef.current;
+          runBusyRef.current = streamingRef.current || awaitingSessionRefresh;
+          return true;
+        }
         setOptimisticMessages([]);
-        setError(e instanceof Error ? e.message : String(e));
+        setSnackMsg(e instanceof Error ? e.message : String(e));
         setStreaming(false);
         streamingRef.current = false;
         sendingRef.current = false;
@@ -865,7 +890,7 @@ export default function ChatScreen() {
       setClarifyPrompt(null);
       setClarifySubmitError(null);
       setClarifySubmitting(false);
-      setError(null);
+      streamRecoveryRef.current.cancelRecovery();
       setAwaitingSessionRefresh(false);
       setSessionRefreshStartedAt(0);
       try {
@@ -879,7 +904,10 @@ export default function ChatScreen() {
           invalidateSessionByKey(sessionKey);
           return;
         }
-        setError(e instanceof Error ? e.message : String(e));
+        if (streamRecoveryRef.current.handleRecoverableFailure(e)) {
+          return;
+        }
+        setSnackMsg(e instanceof Error ? e.message : String(e));
         setStreaming(false);
         streamingRef.current = false;
         setProgress(null);
@@ -889,6 +917,9 @@ export default function ChatScreen() {
   );
 
   const abort = useCallback(() => {
+    streamRecoveryRef.current.cancelRecovery();
+    setStreamReconnecting(false);
+    setResumePromptVisible(false);
     setClarifyPrompt(null);
     setClarifySubmitError(null);
     setClarifySubmitting(false);
@@ -962,19 +993,32 @@ export default function ChatScreen() {
     setProgress(null);
     setStreaming(true);
     streamingRef.current = true;
-    setError(null);
     try {
       await senderRef.current.resume(runId, sessionKey, buildCallbacks(sessionKey));
       autoResumeFailedRef.current = false;
+      setResumePromptVisible(false);
+      streamRecoveryRef.current.markRecoverySucceeded();
     } catch (e) {
       if (activeSessionKeyRef.current !== sessionKey) {
         invalidateSessionByKey(sessionKey);
         return;
       }
+      const message = e instanceof Error ? e.message : String(e);
+      if (background && isTransientNetworkError(message)) {
+        throw e;
+      }
+      if (!background && streamRecoveryRef.current.handleRecoverableFailure(e)) {
+        setStreaming(false);
+        streamingRef.current = false;
+        return;
+      }
       autoResumeFailedRef.current = true;
-      setError(e instanceof Error ? e.message : String(e));
+      setResumePromptVisible(true);
       setStreaming(false);
       streamingRef.current = false;
+      if (!background) {
+        setSnackMsg(message);
+      }
     }
   }, [
     sessionKey,
@@ -992,6 +1036,21 @@ export default function ChatScreen() {
     tryResume: resume,
     streaming,
   });
+
+  const streamRecovery = useAgentStreamRecovery({
+    sessionKey,
+    activeSessionKeyRef,
+    tryResume: resume,
+    autoResumeFailedRef,
+    onReconnectingChange: setStreamReconnecting,
+    onRecoveryExhausted: () => {
+      setResumePromptVisible(true);
+      if (!readPendingAgentRunId(sessionKey)) {
+        setSnackMsg(m.chat.streamRecoveryFailed);
+      }
+    },
+  });
+  streamRecoveryRef.current = streamRecovery;
 
   // Auto-resume when a pending run id appears (e.g. stored from POST `status` before clear race).
   useEffect(() => {
@@ -1073,6 +1132,19 @@ export default function ChatScreen() {
     startAutoSession();
   }, [gatewayOnline, bootstrapError, sessionKey, configured, startAutoSession]);
 
+  /** Resume in-flight agent streams when gateway connectivity returns. */
+  useEffect(() => {
+    const wasOffline = !prevGatewayOnlineForStreamRef.current;
+    prevGatewayOnlineForStreamRef.current = gatewayOnline;
+    if (!wasOffline || !gatewayOnline || !sessionKey || streaming) return;
+    if (!pendingRunId && !streamReconnecting && !resumePromptVisible) return;
+    autoResumeFailedRef.current = false;
+    setResumePromptVisible(false);
+    if (pendingRunId || streamReconnecting || resumePromptVisible) {
+      streamRecoveryRef.current.handleRecoverableFailure(new Error('Network request failed'));
+    }
+  }, [gatewayOnline, sessionKey, streaming, pendingRunId, streamReconnecting, resumePromptVisible]);
+
   // ── New chat ─────────────────────────────────────────────
   const handleNewChat = useCallback(() => {
     activeSessionKeyRef.current = '';
@@ -1084,7 +1156,7 @@ export default function ChatScreen() {
     setClarifyPrompt(null);
     setClarifySubmitError(null);
     setClarifySubmitting(false);
-    setError(null);
+    streamRecoveryRef.current.cancelRecovery();
     setOptimisticMessages([]);
     setAwaitingSessionRefresh(false);
     setSessionRefreshStartedAt(0);
@@ -1098,7 +1170,7 @@ export default function ChatScreen() {
       })
       .catch((e) => {
         activeSessionKeyRef.current = sessionKey;
-        setError(e instanceof Error ? e.message : String(e));
+        setSnackMsg(e instanceof Error ? e.message : String(e));
       });
   }, [agentsQuery.data, localDefaultAgentId, queryClient, router, sessionKey, clearStreamingMessage]);
 
@@ -1197,7 +1269,7 @@ export default function ChatScreen() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
       router.replace({ pathname: '/', params: { k: key } });
     }).catch((e) => {
-      setError(e instanceof Error ? e.message : String(e));
+      setSnackMsg(e instanceof Error ? e.message : String(e));
     });
   }, [queryClient, router]);
 
@@ -1278,20 +1350,19 @@ export default function ChatScreen() {
 
       <View style={[styles.chatBody, { backgroundColor: canvasBg }]}>
         <GatewayOfflineBanner visible={configured && !gatewayOnline} />
-        {error ? (
-          <Banner visible icon="alert" actions={[{ label: m.chat.dismiss, onPress: () => setError(null) }]}>
-            {error}
-          </Banner>
-        ) : null}
-        {pendingRunId && !streaming && autoResumeFailedRef.current ? (
-          <Banner
-            visible
-            icon="sync"
-            actions={[{ label: m.chat.resumeButton, onPress: () => { autoResumeFailedRef.current = false; void resume({ background: true }); } }]}
-          >
-            {m.chat.resumeBanner}
-          </Banner>
-        ) : null}
+        <ChatStreamNotice
+          isDark={isDark}
+          reconnecting={streamReconnecting}
+          reconnectingLabel={m.chat.streamReconnecting}
+          resumeVisible={Boolean(pendingRunId && !streaming && resumePromptVisible && !streamReconnecting)}
+          resumeLabel={m.chat.resumeBanner}
+          resumeActionLabel={m.chat.resumeButton}
+          onResume={() => {
+            autoResumeFailedRef.current = false;
+            setResumePromptVisible(false);
+            void resume({ background: true });
+          }}
+        />
 
         <GoalMissionCard sessionKey={sessionKey} agentBusy={streaming || awaitingSessionRefresh} />
 

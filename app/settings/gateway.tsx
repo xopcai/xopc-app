@@ -1,14 +1,18 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useCameraPermissions } from 'expo-camera';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, HelperText, Snackbar, Text, TextInput } from 'react-native-paper';
 
-import { resolvePreferredBaseUrl } from '../../src/api/connection-strategy';
 import { type GatewaySettingsForm, gatewaySettingsSchema } from '../../src/config/schema';
+import { GatewayConnectionCard } from '../../src/features/gateway/GatewayConnectionCard';
+import { GatewayTunnelStatusCard } from '../../src/features/gateway/GatewayTunnelStatusCard';
+import { syncGatewayUrlsFromTunnelQr } from '../../src/features/gateway/apply-tunnel-qr-from-api';
 import { syncAfterGatewaySettingsSave } from '../../src/features/gateway/gateway-connection-sync';
+import { useGatewayHealth } from '../../src/features/gateway/use-gateway-health';
 import {
   GatewayQrScannerModal,
   requestGatewayQrCameraAccess,
@@ -16,6 +20,7 @@ import {
 import type { ParsedGatewayQr } from '../../src/features/gateway/parse-gateway-qr';
 import { useSettingsColors } from '../../src/features/settings/settings-ui';
 import { useMessages } from '../../src/i18n/messages';
+import { useGatewayConfigured } from '../../src/query/sessions';
 import { DEFAULT_GATEWAY_BASE_URL, useGatewayStore } from '../../src/stores/gateway-store';
 
 function normalizeBaseUrl(raw: string): string {
@@ -32,12 +37,13 @@ export default function GatewaySettingsScreen() {
 
   const baseUrl = useGatewayStore((st) => st.baseUrl);
   const token = useGatewayStore((st) => st.token);
-  const lanUrl = useGatewayStore((st) => st.lanUrl);
-  const activeBaseUrl = useGatewayStore((st) => st.activeBaseUrl);
   const setBaseUrl = useGatewayStore((st) => st.setBaseUrl);
   const setLanUrl = useGatewayStore((st) => st.setLanUrl);
   const setToken = useGatewayStore((st) => st.setToken);
   const persist = useGatewayStore((st) => st.persist);
+  const refreshActiveBaseUrl = useGatewayStore((st) => st.refreshActiveBaseUrl);
+  const configured = useGatewayConfigured();
+  const { gatewayOnline } = useGatewayHealth();
 
   const [testing, setTesting] = useState(false);
   const [testMessage, setTestMessage] = useState<string | null>(null);
@@ -46,6 +52,7 @@ export default function GatewaySettingsScreen() {
   const [scanNotice, setScanNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [camPermission, requestCamPermission] = useCameraPermissions();
+  const [tunnelStatusRefreshToken, setTunnelStatusRefreshToken] = useState(0);
 
   const {
     control,
@@ -60,12 +67,17 @@ export default function GatewaySettingsScreen() {
     },
   });
 
-  const connectionModeLabel =
-    lanUrl && activeBaseUrl === lanUrl.replace(/\/+$/, '')
-      ? g.connectionModeLan
-      : lanUrl
-        ? g.connectionModeTunnel
-        : null;
+  useFocusEffect(
+    useCallback(() => {
+      const tunnel = useGatewayStore.getState().baseUrl.trim();
+      if (tunnel) void syncGatewayUrlsFromTunnelQr();
+      setTunnelStatusRefreshToken((n) => n + 1);
+    }, []),
+  );
+
+  useEffect(() => {
+    setValue('baseUrl', baseUrl || DEFAULT_GATEWAY_BASE_URL);
+  }, [baseUrl, setValue]);
 
   const applyParsedQr = useCallback(
     (parsed: ParsedGatewayQr) => {
@@ -97,7 +109,8 @@ export default function GatewaySettingsScreen() {
     setTestMessage(null);
     setTestOk(null);
     try {
-      const active = await resolvePreferredBaseUrl(tunnel, st.lanUrl ?? undefined);
+      const active = await refreshActiveBaseUrl();
+      if (!active) return;
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);
       const headers: Record<string, string> = {};
@@ -117,7 +130,7 @@ export default function GatewaySettingsScreen() {
     } finally {
       setTesting(false);
     }
-  }, [g.testFailed, g.testOk]);
+  }, [g.testFailed, g.testOk, refreshActiveBaseUrl]);
 
   const onSubmit = async (data: GatewaySettingsForm) => {
     const prevBaseUrl = normalizeBaseUrl(useGatewayStore.getState().baseUrl);
@@ -151,10 +164,13 @@ export default function GatewaySettingsScreen() {
           {s.gatewayHint}
         </Text>
 
-        {connectionModeLabel ? (
-          <Text variant="bodySmall" style={[styles.modeLine, { color: colors.textMuted }]}>
-            {connectionModeLabel}
-          </Text>
+        <GatewayConnectionCard
+          gatewayReachable={gatewayOnline}
+          onSyncNotice={(message) => setScanNotice(message)}
+        />
+
+        {configured ? (
+          <GatewayTunnelStatusCard refreshToken={tunnelStatusRefreshToken} />
         ) : null}
 
         {Platform.OS !== 'web' ? (
@@ -255,10 +271,6 @@ const styles = StyleSheet.create({
   hint: {
     marginBottom: 16,
     lineHeight: 20,
-  },
-  modeLine: {
-    marginBottom: 12,
-    lineHeight: 18,
   },
   scanRow: {
     marginBottom: 12,

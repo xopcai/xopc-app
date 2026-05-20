@@ -11,13 +11,16 @@ import {
 } from '../../src/features/settings/settings-ui';
 import { useMessages } from '../../src/i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '../../src/lib/navigation';
+import {
+  connectionKindLabel,
+  useGatewayConnectionView,
+} from '../../src/features/gateway/use-gateway-connection-view';
 import { useGatewayConfigured } from '../../src/query/sessions';
 import {
   type Language,
   type ThemePreference,
   usePreferencesStore,
 } from '../../src/stores/preferences-store';
-import { useGatewayStore } from '../../src/stores/gateway-store';
 
 function themeLabel(pref: ThemePreference, s: ReturnType<typeof useMessages>['settings']): string {
   if (pref === 'light') return s.themeLight;
@@ -37,18 +40,18 @@ export default function SettingsIndexScreen() {
   const colors = useSettingsColors();
 
   const configured = useGatewayConfigured();
-  const baseUrl = useGatewayStore((st) => st.baseUrl);
+  const connectionView = useGatewayConnectionView();
   const language = usePreferencesStore((st) => st.language);
   const themePreference = usePreferencesStore((st) => st.themePreference);
+  const mGateway = m.gateway;
   const gatewayValue = useMemo(() => {
-    if (!configured || !baseUrl) return s.gatewayNotConfigured;
-    try {
-      const u = new URL(baseUrl);
-      return u.host;
-    } catch {
-      return baseUrl;
+    if (!configured || connectionView.connectionKind === 'unconfigured') {
+      return s.gatewayNotConfigured;
     }
-  }, [baseUrl, configured, s.gatewayNotConfigured]);
+    const host = connectionView.activeHost || connectionView.tunnelHost;
+    const kind = connectionKindLabel(connectionView.connectionKind, mGateway);
+    return host ? `${host} · ${kind}` : kind;
+  }, [configured, connectionView, mGateway, s.gatewayNotConfigured]);
 
   const appVersion = Constants.expoConfig?.version ?? '1.0.0';
 
