@@ -67,6 +67,8 @@ export const zh: MessageBundle = {
     testFailed: '无法连接 gateway。',
     connectionModeLan: '局域网',
     connectionModeTunnel: '隧道',
+    qrApplied: '已从二维码填入，请检查后保存。',
+    applyImmediatelyHint: '保存后立即生效，无需重启应用。',
   },
 
   // ── 网关连接引导（首次弹层）──────────────────────────────

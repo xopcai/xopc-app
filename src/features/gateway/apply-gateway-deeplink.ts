@@ -1,10 +1,9 @@
-import type { QueryClient } from '@tanstack/react-query';
 import type { Router } from 'expo-router';
 
-import { queryKeys } from '../../query/keys';
 import { useGatewayStore } from '../../stores/gateway-store';
 import { openDefaultSessionAfterConnect } from './navigate-after-gateway-connect';
 import { parseGatewayQrPayload } from './parse-gateway-qr';
+import { syncAfterGatewaySettingsSave } from './gateway-connection-sync';
 
 /**
  * Expo / dev-client URLs sometimes embed the real link after `/--/` or in `?url=`.
@@ -60,7 +59,6 @@ export function extractGatewayLinkCandidate(raw: string): string | null {
 export async function tryConsumeGatewayDeeplink(
   rawUrl: string,
   router: Router,
-  queryClient: QueryClient,
 ): Promise<boolean> {
   // On Web, Linking.getInitialURL() returns the current page URL (e.g. http://localhost:8082/).
   // This is NOT a gateway deep link — skip it to prevent writing the dev server origin as baseUrl.
@@ -76,17 +74,13 @@ export async function tryConsumeGatewayDeeplink(
   const parsed = parseGatewayQrPayload(embedded ?? rawUrl);
   if (!parsed.baseUrl && !parsed.token) return false;
 
-  const { setBaseUrl, setLanUrl, setToken, persist, refreshActiveBaseUrl } =
-    useGatewayStore.getState();
+  const { setBaseUrl, setLanUrl, setToken, persist } = useGatewayStore.getState();
   if (parsed.baseUrl) setBaseUrl(parsed.baseUrl);
   if (parsed.lanUrl) setLanUrl(parsed.lanUrl);
   else setLanUrl(null);
   if (parsed.token != null) setToken(parsed.token);
   persist();
-  await refreshActiveBaseUrl();
-
-  await queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
-  await queryClient.invalidateQueries({ queryKey: queryKeys.agents });
+  await syncAfterGatewaySettingsSave();
 
   router.replace('/');
   await openDefaultSessionAfterConnect(router.replace);

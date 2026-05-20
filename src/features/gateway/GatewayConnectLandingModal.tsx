@@ -2,15 +2,14 @@
  * Full-screen connect flow when no gateway base URL is stored (mirrors web GatewayConnectLanding).
  */
 import { useQueryClient } from '@tanstack/react-query';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   BackHandler,
   KeyboardAvoidingView,
   Modal,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   useColorScheme,
@@ -23,7 +22,12 @@ import { gatewaySettingsSchema } from '../../config/schema';
 import { useMessages } from '../../i18n/messages';
 import { queryKeys } from '../../query/keys';
 import { DEFAULT_GATEWAY_BASE_URL, useGatewayStore } from '../../stores/gateway-store';
-import { parseGatewayQrPayload } from './parse-gateway-qr';
+import { syncAfterGatewaySettingsSave } from './gateway-connection-sync';
+import {
+  GatewayQrScannerModal,
+  requestGatewayQrCameraAccess,
+} from './GatewayQrScannerModal';
+import type { ParsedGatewayQr } from './parse-gateway-qr';
 import { openDefaultSessionAfterConnect } from './navigate-after-gateway-connect';
 
 export type GatewayConnectLandingModalProps = {
@@ -46,7 +50,6 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
   const setLanUrl = useGatewayStore((st) => st.setLanUrl);
   const setToken = useGatewayStore((st) => st.setToken);
   const persist = useGatewayStore((st) => st.persist);
-  const refreshActiveBaseUrl = useGatewayStore((st) => st.refreshActiveBaseUrl);
 
   const [baseUrl, setBaseUrlField] = useState(DEFAULT_GATEWAY_BASE_URL);
   const [token, setTokenField] = useState('');
@@ -56,7 +59,6 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
 
   const [scannerOpen, setScannerOpen] = useState(false);
   const [camPermission, requestCamPermission] = useCameraPermissions();
-  const scanCooldown = useRef(0);
 
   useEffect(() => {
     if (!visible) return;
@@ -84,7 +86,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
     dangerBorder: isDark ? 'rgba(255,59,48,0.35)' : 'rgba(255,59,48,0.3)',
   };
 
-  const applyParsed = useCallback((parsed: ReturnType<typeof parseGatewayQrPayload>) => {
+  const applyParsed = useCallback((parsed: ParsedGatewayQr) => {
     if (parsed.baseUrl) setBaseUrlField(parsed.baseUrl);
     if (parsed.token != null) setTokenField(parsed.token);
     if (parsed.lanUrl) setLanUrl(parsed.lanUrl);
@@ -92,27 +94,13 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
   }, [setLanUrl]);
 
   const openScanner = useCallback(async () => {
-    if (!camPermission?.granted) {
-      const r = await requestCamPermission();
-      if (!r.granted) {
-        setSaveError(l.cameraDenied);
-        return;
-      }
-    }
-    setScannerOpen(true);
-  }, [camPermission?.granted, l.cameraDenied, requestCamPermission]);
-
-  const onBarcodeScanned = useCallback(
-    (ev: { data: string }) => {
-      if (Date.now() - scanCooldown.current < 1200) return;
-      scanCooldown.current = Date.now();
-      const parsed = parseGatewayQrPayload(ev.data);
-      if (!parsed.baseUrl && !parsed.token) return;
-      applyParsed(parsed);
-      setScannerOpen(false);
-    },
-    [applyParsed],
-  );
+    const ok = await requestGatewayQrCameraAccess(
+      camPermission,
+      requestCamPermission,
+      () => setSaveError(l.cameraDenied),
+    );
+    if (ok) setScannerOpen(true);
+  }, [camPermission, l.cameraDenied, requestCamPermission]);
 
   const handleSave = useCallback(async () => {
     setSaveError('');
@@ -136,7 +124,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
       setBaseUrl(parsed.data.baseUrl);
       setToken(parsed.data.token);
       persist();
-      await refreshActiveBaseUrl();
+      await syncAfterGatewaySettingsSave();
 
       const nav = await openDefaultSessionAfterConnect(router.replace);
       if (!nav.ok) {
@@ -159,7 +147,6 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
     persist,
     queryClient,
     router.replace,
-    refreshActiveBaseUrl,
     setBaseUrl,
     setLanUrl,
     setToken,
@@ -280,38 +267,17 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
     </KeyboardAvoidingView>
   );
 
-  const scannerContent = (
-    <View style={[styles.scannerRoot, { paddingTop: insets.top, backgroundColor: '#000' }]}>
-      <View style={styles.scannerBar}>
-        <Pressable onPress={() => setScannerOpen(false)} hitSlop={12}>
-          <Text style={styles.scannerBack}>{l.close}</Text>
-        </Pressable>
-        <Text style={styles.scannerTitle}>{l.scannerTitle}</Text>
-        <View style={{ width: 48 }} />
-      </View>
-      <View style={styles.scannerCameraWrap}>
-        {camPermission?.granted ? (
-          <CameraView
-            style={styles.scannerCamera}
-            facing="back"
-            active={scannerOpen}
-            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            onBarcodeScanned={onBarcodeScanned}
-          />
-        ) : null}
-      </View>
-      <View style={[styles.scannerFooter, { paddingBottom: insets.bottom + 16 }]}>
-        <Text style={styles.scannerHint}>{l.scannerHint}</Text>
-      </View>
-    </View>
-  );
-
   if (Platform.OS === 'web') {
     if (!visible) return null;
     return (
       <View style={styles.webOverlay}>
         {landingContent}
-        {scannerOpen ? <View style={styles.webOverlay}>{scannerContent}</View> : null}
+        <GatewayQrScannerModal
+          visible={scannerOpen}
+          onRequestClose={() => setScannerOpen(false)}
+          onScanned={applyParsed}
+          onCameraDenied={() => setSaveError(l.cameraDenied)}
+        />
       </View>
     );
   }
@@ -324,9 +290,12 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
       onRequestClose={requestClose}
     >
       {landingContent}
-      <Modal visible={scannerOpen} animationType="fade" onRequestClose={() => setScannerOpen(false)}>
-        {scannerContent}
-      </Modal>
+      <GatewayQrScannerModal
+        visible={scannerOpen}
+        onRequestClose={() => setScannerOpen(false)}
+        onScanned={applyParsed}
+        onCameraDenied={() => setSaveError(l.cameraDenied)}
+      />
     </Modal>
   );
 }
@@ -401,44 +370,5 @@ const styles = StyleSheet.create({
   },
   actionsSingle: {
     justifyContent: 'flex-end',
-  },
-  scannerRoot: {
-    flex: 1,
-  },
-  scannerCameraWrap: {
-    flex: 1,
-    overflow: 'hidden',
-  },
-  scannerCamera: {
-    flex: 1,
-    width: '100%',
-  },
-  scannerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    zIndex: 2,
-  },
-  scannerBack: {
-    color: '#fff',
-    fontSize: 17,
-    padding: 8,
-  },
-  scannerTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  scannerFooter: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  scannerHint: {
-    color: 'rgba(255,255,255,0.85)',
-    textAlign: 'center',
-    fontSize: 14,
-    lineHeight: 20,
   },
 });

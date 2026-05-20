@@ -58,7 +58,7 @@ export default function RootLayout() {
   useEffect(() => {
     let alive = true;
     const run = (url: string) => {
-      void tryConsumeGatewayDeeplink(url, router, queryClient);
+      void tryConsumeGatewayDeeplink(url, router);
     };
     void Linking.getInitialURL().then((url) => {
       if (alive && url) run(url);

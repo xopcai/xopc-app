@@ -65,6 +65,8 @@ export const en = {
     testFailed: 'Could not reach the gateway.',
     connectionModeLan: 'LAN',
     connectionModeTunnel: 'Tunnel',
+    qrApplied: 'Filled from QR code — review and save.',
+    applyImmediatelyHint: 'Changes apply immediately after saving — no app restart needed.',
   },
 
   // ── Gateway connect landing (first-run modal) ────────────
