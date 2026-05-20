@@ -15,7 +15,24 @@ import { buildFollowUpContextPack } from './follow-up-context';
 
 type FollowUpFamily = 'code' | 'web' | 'email' | 'date' | 'generic' | 'meta' | 'ops' | 'workflow' | 'learn';
 
+/** Minimum score for a chip to be shown (conservative — omit weak matches). */
+const MIN_CHIP_SCORE = 22;
+
+/** `what_next` only appears alongside at least one domain chip above this bar. */
+const MIN_WHAT_NEXT_SCORE = 14;
+
 const ALL_IDS = FOLLOW_UP_SUGGESTION_IDS;
+
+type UserIntent =
+  | 'chitchat'
+  | 'translation'
+  | 'creative'
+  | 'compare'
+  | 'code'
+  | 'ops'
+  | 'email'
+  | 'research'
+  | 'unknown';
 
 function familyOf(id: FollowUpSuggestionId): FollowUpFamily {
   if (id.startsWith('code_')) return 'code';
@@ -73,10 +90,12 @@ type DerivedSignals = ContentSignals & {
   anyToolError: boolean;
   taskEducational: boolean;
   hasRealCode: boolean;
+  userIntent: UserIntent;
+  userWantsFormattedOutput: boolean;
 };
 
 const CODE_KEYWORD_RE =
-  /\b(function|class|const |def |import |export |async |await |interface |type |public |private |protected |#include|namespace )\b/;
+  /\b(function|class|const |def |import |export |async |await |interface |public |private |protected |#include|namespace )\b/;
 
 const CODE_KEYWORD_RE2 = /\b(return |if \(|for \(|while \(|\.map\(|\.filter\(|fn )\b/;
 
@@ -118,7 +137,7 @@ function detectContentSignals(slice: string, lower: string): ContentSignals {
   const web =
     /https?:\/\//i.test(slice) ||
     /\bwww\.[a-z0-9][a-z0-9.-]*\.[a-z]{2,}\b/i.test(lower) ||
-    /\[[^\]]+\]\([^)]+\)/.test(slice) ||
+    /\[[^\]]+\]\(https?:[^)]+\)/.test(slice) ||
     /\bRFC\s*\d+/i.test(slice) ||
     /\bdocs?\.[a-z0-9.-]+\.[a-z]{2,}\b/i.test(lower) ||
     /wikipedia\.org/i.test(lower) ||
@@ -137,16 +156,90 @@ function detectContentSignals(slice: string, lower: string): ContentSignals {
   const date =
     /\d{4}-\d{2}-\d{2}/.test(slice) ||
     /\d{4}年\d{1,2}月/.test(slice) ||
-    /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(
-      slice,
-    ) ||
-    /q[1-4]\b|\bquarter\b|本季度|上周|本周|下周|昨天|今天|明天|deadline|timeline/i.test(slice);
+    /q[1-4]\b|\bquarter\b|本季度|deadline|timeline|时间线|排期|里程碑|截止日期/i.test(slice);
 
   const list = /^[-*•]|\n[-*•]|\n\d+\.\s/.test(slice.trim());
   const table = /\|[^\n]+\|[^\n]+\|/.test(slice);
-  const substantial = slice.length > 80;
+  const substantial = slice.length > 120;
 
   return { code, web, email, date, list, table, substantial };
+}
+
+function detectUserIntent(ctx: FollowUpContextPack): UserIntent {
+  const user = ctx.userText.trim();
+  const userLower = user.toLowerCase();
+  const assistantLen = ctx.assistantText.trim().length;
+  const combinedLen = user.length + assistantLen;
+
+  if (
+    /^(好的|嗯+|ok|okay|谢谢|感谢|收到|明白了|知道了|没问题|就按|可以的|好滴|got it|thanks|thank you)[，。!！?\s]*$/i.test(
+      user,
+    )
+  ) {
+    return 'chitchat';
+  }
+  if (/^(hi|hello|hey|你好|在吗|早上好|晚上好)[，。!！?\s]*$/i.test(user)) {
+    return 'chitchat';
+  }
+  if (user.length > 0 && combinedLen < 100 && user.length < 25 && assistantLen < 60) {
+    return 'chitchat';
+  }
+
+  if (/翻译|译成|翻译成|translate|translation|翻成|译成英文|译成中文/i.test(user)) {
+    return 'translation';
+  }
+
+  if (
+    /还是|对比|vs\.?|versus|哪个好|利弊|相比较|有什么区别|区别是什么|difference between/i.test(user) ||
+    /\bcompare\b/i.test(userLower)
+  ) {
+    return 'compare';
+  }
+
+  if (
+    /xopc\.json|agents\.list|channels\.|gateway\.|cron\.enabled|botToken/i.test(user) ||
+    (/telegram|weixin|微信/i.test(user) && /通道|channel|配置|机器人/i.test(user))
+  ) {
+    return 'ops';
+  }
+
+  if (
+    detectHasRealCode(user, userLower) ||
+    /\b(debug|fix|implement|refactor|bug)\b/i.test(userLower) ||
+    /代码|函数|接口|组件|报错|堆栈|TypeError|SyntaxError/i.test(user)
+  ) {
+    return 'code';
+  }
+
+  if (/写邮件|邮件模板|润色邮件|email draft|起草邮件|正文/i.test(user) || /dear .+,/i.test(user)) {
+    return 'email';
+  }
+
+  if (/查一下|搜索|检索|find sources|look up|资料来源|帮我查|网上查/i.test(user)) {
+    return 'research';
+  }
+
+  if (/帮我想|标题|文案|起名|头脑风暴|slogan|广告语|公众号/i.test(user)) {
+    return 'creative';
+  }
+
+  return 'unknown';
+}
+
+function userWantsFormattedOutput(userText: string): boolean {
+  return /总结|要点|列表|表格|summarize|bullet|table format|整理成|列出来/i.test(userText);
+}
+
+function mergeContentSignals(user: ContentSignals, assistant: ContentSignals): ContentSignals {
+  return {
+    code: user.code || assistant.code,
+    web: user.web || assistant.web,
+    email: user.email || assistant.email,
+    date: user.date || assistant.date,
+    list: false,
+    table: false,
+    substantial: assistant.substantial,
+  };
 }
 
 function cjkRatio(text: string): number {
@@ -158,12 +251,22 @@ function cjkRatio(text: string): number {
   return cjk / text.length;
 }
 
-function detectDerived(ctx: FollowUpContextPack, content: ContentSignals): DerivedSignals {
+function detectDerived(
+  ctx: FollowUpContextPack,
+  userContent: ContentSignals,
+  assistantContent: ContentSignals,
+  intent: UserIntent,
+): DerivedSignals {
   const combined = [ctx.userText, ctx.assistantText, ...ctx.recentUserTexts, ctx.recentAssistantSnippet]
     .filter(Boolean)
     .join('\n');
   const assistantLower = ctx.assistantText.toLowerCase();
   const userLower = ctx.userText.toLowerCase();
+  const wantsFormat = userWantsFormattedOutput(ctx.userText);
+
+  const content = mergeContentSignals(userContent, assistantContent);
+  content.list = assistantContent.list && wantsFormat;
+  content.table = assistantContent.table && wantsFormat;
 
   const toolsUsedWebSearch = ctx.assistantToolUses.some(
     (t) => t.name === 'web_search' && t.status === 'done',
@@ -194,24 +297,28 @@ function detectDerived(ctx: FollowUpContextPack, content: ContentSignals): Deriv
     /\bdiff\b|pull request|\bPR\b|改动文件|代码审查/i.test(assistantLower);
 
   const taskEducational = detectEducational(combined, ctx.assistantText);
-  const hasRealCode = detectHasRealCode(combined, combined.toLowerCase());
+  const hasRealCode =
+    detectHasRealCode(ctx.userText, ctx.userText.toLowerCase()) ||
+    detectHasRealCode(ctx.assistantText, ctx.assistantText.toLowerCase());
 
   const taskPlan =
     (/\b(plan|steps|how to|roadmap|计划|步骤|怎么做|方案)\b/i.test(userLower) ||
-      /\n\s*\d+\.\s/.test(ctx.assistantText)) &&
+      (/\n\s*\d+\.\s/.test(ctx.assistantText) && wantsFormat)) &&
     !taskEducational;
 
   const taskConfig =
-    /xopc\.json|agents\.list|providers|gateway\.|channels\.|cron\.enabled|配置|通道|telegram|weixin/i.test(
-      combined,
-    );
+    /xopc\.json|agents\.list|providers|gateway\.|channels\.|cron\.enabled|botToken/i.test(combined) &&
+    intent === 'ops';
 
   const taskResearch =
     toolsUsedWebSearch ||
+    intent === 'research' ||
     /\b(search|look up|find sources|资料|查一下|检索|来源)\b/i.test(userLower);
 
   const taskCompare =
-    /\b(compare|versus|\bvs\.?\b|which is better|哪个好|还是|对比|利弊)\b/i.test(userLower) ||
+    intent === 'compare' ||
+    /\b(compare|versus|vs\.?|which is better)\b/i.test(userLower) ||
+    /(哪个好|对比|利弊|还是|有什么区别|区别是什么)/.test(ctx.userText) ||
     /\b(option a|option b|either\b)/i.test(assistantLower);
 
   const taskTest =
@@ -253,6 +360,8 @@ function detectDerived(ctx: FollowUpContextPack, content: ContentSignals): Deriv
     toolsUsedShell,
     toolsUsedBrowser,
     anyToolError,
+    userIntent: intent,
+    userWantsFormattedOutput: wantsFormat,
   };
 }
 
@@ -271,6 +380,10 @@ function familyMaxForSignals(s: DerivedSignals): Record<FollowUpFamily, number> 
     m.code = 0;
     m.learn = 2;
   }
+  if (s.userIntent === 'compare') {
+    m.workflow = 1;
+    m.generic = 0;
+  }
   return m;
 }
 
@@ -286,12 +399,52 @@ function isIdAllowed(id: FollowUpSuggestionId, ctx: FollowUpContextPack, d: Deri
     if (!cap.capShell && !d.toolsUsedWrite) return false;
   }
   if (id === 'ops_schedule_cron' && !cap.capCron) return false;
+
+  if (d.userIntent === 'translation' || d.userIntent === 'chitchat') return false;
+
+  if (d.userIntent === 'creative') {
+    if (id.startsWith('code_') || id.startsWith('ops_') || id.startsWith('date_')) return false;
+    if (id === 'research_deeper' || id.startsWith('web_')) return false;
+  }
+
+  if (d.userIntent === 'compare' && id.startsWith('generic_')) return false;
+
+  if (
+    (d.userIntent === 'unknown' || d.userIntent === 'creative') &&
+    id.startsWith('generic_') &&
+    !d.taskEducational &&
+    !d.taskPlan &&
+    !d.userWantsFormattedOutput
+  ) {
+    return false;
+  }
+
   return true;
 }
 
 function multiply(m: Map<FollowUpSuggestionId, number>, id: FollowUpSuggestionId, factor: number) {
   if (!m.has(id)) return;
   m.set(id, (m.get(id) ?? 0) * factor);
+}
+
+function hasStrongDomainSignal(d: DerivedSignals): boolean {
+  return (
+    (d.code && d.hasRealCode) ||
+    d.web ||
+    d.email ||
+    d.date ||
+    d.taskDebug ||
+    d.taskCompare ||
+    d.taskEducational ||
+    d.taskConfig ||
+    d.taskGit ||
+    d.taskTest ||
+    d.taskImplement ||
+    d.taskResearch ||
+    d.toolsUsedWrite ||
+    d.toolsUsedWebSearch ||
+    d.anyToolError
+  );
 }
 
 function scoreIds(ctx: FollowUpContextPack, d: DerivedSignals): Map<FollowUpSuggestionId, number> {
@@ -335,30 +488,11 @@ function scoreIds(ctx: FollowUpContextPack, d: DerivedSignals): Map<FollowUpSugg
   if (d.list) {
     add('generic_bullet_points', 28);
     add('generic_create_table', 26);
-    add('generic_simpler_terms', 18);
     add('generic_action_checklist', 24);
   }
-  if (d.table) {
-    add('generic_bullet_points', 22);
-    add('generic_simpler_terms', 20);
-    add('generic_create_table', 16);
-    add('generic_action_checklist', 18);
-  }
-
-  if (d.substantial) {
-    add('generic_simpler_terms', 14);
-    add('generic_concrete_example', 12);
-    add('generic_bullet_points', 10);
-    add('generic_assumptions', 10);
-    add('generic_action_checklist', 12);
-  } else {
-    add('generic_simpler_terms', 8);
-    add('generic_concrete_example', 6);
-  }
-
-  if (!d.code && !d.web && !d.email && !d.date && !d.list && !d.table) {
-    add('generic_concrete_example', 6);
-    add('research_deeper', 5);
+  if (d.table && d.userWantsFormattedOutput) {
+    add('generic_create_table', 22);
+    add('generic_bullet_points', 18);
   }
 
   if (d.taskDebug) {
@@ -395,8 +529,10 @@ function scoreIds(ctx: FollowUpContextPack, d: DerivedSignals): Map<FollowUpSugg
     add('learn_build_walkthrough', 49);
     add('learn_compare_alternatives', 48);
     add('generic_concrete_example', 42);
-    add('research_deeper', 38);
-    add('web_more_details', 36);
+    if (d.taskResearch || d.web) {
+      add('research_deeper', 38);
+      add('web_more_details', 36);
+    }
     if (/技术实现|实现细节|原理|架构/i.test(ctx.assistantText) || /技术实现/i.test(ctx.userText)) {
       add('learn_technical_detail', 12);
     }
@@ -407,7 +543,10 @@ function scoreIds(ctx: FollowUpContextPack, d: DerivedSignals): Map<FollowUpSugg
       add('learn_compare_alternatives', 10);
     }
   }
-  if (d.taskCompare) add('wf_compare_options', 24);
+  if (d.taskCompare) {
+    add('wf_compare_options', 40);
+    add('learn_compare_alternatives', 12);
+  }
   if (d.taskTest) {
     add('wf_run_checks', 20);
     add('code_add_tests', 12);
@@ -428,41 +567,36 @@ function scoreIds(ctx: FollowUpContextPack, d: DerivedSignals): Map<FollowUpSugg
   if (d.toolsUsedBrowser) add('web_verify_claim', 6);
   if (d.anyToolError) add('code_fix_error', 12);
 
-  if (/xopc\.json|agents\.list|providers|gateway|workspace/i.test(ctx.userText)) {
+  if (/xopc\.json|agents\.list|providers|gateway\.|workspace/i.test(ctx.userText) && d.userIntent === 'ops') {
     add('ops_fix_config', 16);
   }
-  if (/telegram|weixin|channel|通道|gateway/i.test(ctx.userText)) {
+  if (/telegram|weixin|botToken/i.test(ctx.userText) && /通道|channel|配置/i.test(ctx.userText)) {
     add('ops_channel_next', 22);
   }
-  if (/cron|定时|schedule|每天|remind/i.test(ctx.userText)) {
+  if (/cron|定时|schedule|remind/i.test(ctx.userText) && d.userIntent === 'ops') {
     add('ops_schedule_cron', 20);
   }
 
   const recentHasEmail =
     ctx.recentUserTexts.some((t) => detectContentSignals(t, t.toLowerCase()).email) ||
     detectContentSignals(ctx.recentAssistantSnippet, ctx.recentAssistantSnippet.toLowerCase()).email;
-  if (recentHasEmail && d.assistantAlreadyShort) {
+  if (recentHasEmail && d.assistantAlreadyShort && d.userIntent === 'email') {
     add('email_make_formal', 12);
     add('email_shorten', 12);
   }
   const recentHasCode = ctx.recentUserTexts.some(
     (t) => detectContentSignals(t, t.toLowerCase()).code,
   );
-  if (recentHasCode && !d.code) add('code_explain', 10);
+  if (recentHasCode && !d.code && d.userIntent === 'code') add('code_explain', 10);
 
-  if (ctx.priorTurnCount <= 1) {
-    for (const id of ALL_IDS) {
-      if (id.startsWith('generic_')) add(id, 4);
-    }
+  if (ctx.priorTurnCount >= 3 && hasStrongDomainSignal(d)) {
+    add('what_next', 6);
   }
-  if (ctx.priorTurnCount >= 3) {
-    add('what_next', 4);
-    add('generic_assumptions', 6);
+  if (d.taskPlan || d.taskImplement) {
+    add('what_next', 10);
   }
 
-  if (ctx.userHasAttachments) add('generic_simpler_terms', 6);
-
-  add('what_next', 40);
+  if (ctx.userHasAttachments && d.taskEducational) add('generic_simpler_terms', 6);
 
   if (d.assistantAlreadyBullets) multiply(m, 'generic_bullet_points', 0.2);
   if (d.assistantAlreadyTable) multiply(m, 'generic_create_table', 0.2);
@@ -503,18 +637,32 @@ function scoreIds(ctx: FollowUpContextPack, d: DerivedSignals): Map<FollowUpSugg
     multiply(m, 'email_shorten', 0.7);
   }
 
+  if (!hasStrongDomainSignal(d)) {
+    for (const id of ALL_IDS) {
+      if (id.startsWith('generic_') || id === 'research_deeper' || id === 'what_next') {
+        multiply(m, id, 0.05);
+      }
+    }
+  }
+
   return m;
 }
 
 function selectFollowUps(
   scores: Map<FollowUpSuggestionId, number>,
   signals: DerivedSignals,
+  ctx: FollowUpContextPack,
 ): FollowUpSuggestionId[] {
-  const ranked = [...scores.keys()].sort((a, b) => {
+  const eligible = [...scores.keys()].filter((id) => (scores.get(id) ?? 0) >= MIN_CHIP_SCORE);
+
+  if (eligible.length === 0) return [];
+
+  const ranked = eligible.sort((a, b) => {
     const diff = (scores.get(b) ?? 0) - (scores.get(a) ?? 0);
     if (diff !== 0) return diff;
     return ALL_IDS.indexOf(a) - ALL_IDS.indexOf(b);
   });
+
   const familyMax = familyMaxForSignals(signals);
 
   const familyUsed: Record<FollowUpFamily, number> = {
@@ -534,6 +682,7 @@ function selectFollowUps(
   const tryPick = (id: FollowUpSuggestionId): boolean => {
     if (picked.length >= 4 || pickedSet.has(id)) return false;
     if (!scores.has(id)) return false;
+    if ((scores.get(id) ?? 0) < MIN_CHIP_SCORE) return false;
     const fam = familyOf(id);
     if (familyUsed[fam] >= familyMax[fam]) return false;
     picked.push(id);
@@ -544,11 +693,20 @@ function selectFollowUps(
 
   const nonWhatNext = ranked.filter((id) => id !== 'what_next');
   for (const id of nonWhatNext) {
-    if (picked.length >= 3) break;
+    if (picked.filter((x) => familyOf(x) !== 'meta').length >= 3) break;
     tryPick(id);
   }
 
-  if (!pickedSet.has('what_next')) tryPick('what_next');
+  const domainCount = picked.filter((x) => familyOf(x) !== 'meta').length;
+  const whatNextScore = scores.get('what_next') ?? 0;
+  const mayShowWhatNext =
+    domainCount >= 1 &&
+    whatNextScore >= MIN_WHAT_NEXT_SCORE &&
+    (signals.taskPlan || signals.taskImplement || ctx.priorTurnCount >= 2 || hasStrongDomainSignal(signals));
+
+  if (mayShowWhatNext && !pickedSet.has('what_next')) {
+    tryPick('what_next');
+  }
 
   for (const id of nonWhatNext) {
     if (picked.length >= 4) break;
@@ -561,11 +719,14 @@ function selectFollowUps(
     picked.push(wn);
   }
 
+  if (picked.filter((x) => familyOf(x) !== 'meta').length === 0) return [];
+
   return picked.slice(0, 4);
 }
 
 /**
  * Score follow-up chips from a full context pack (phase-1 heuristic).
+ * Returns an empty list when nothing is confidently relevant.
  */
 export function suggestFollowUps(ctx: FollowUpContextPack): FollowUpSuggestionId[] {
   if (ctx.clarifyActive) return [];
@@ -573,10 +734,14 @@ export function suggestFollowUps(ctx: FollowUpContextPack): FollowUpSuggestionId
   const combinedSlice = [ctx.userText, ctx.assistantText, ...ctx.recentUserTexts].filter(Boolean).join('\n');
   if (!combinedSlice.trim()) return [];
 
-  const content = detectContentSignals(combinedSlice, combinedSlice.toLowerCase());
-  const derived = detectDerived(ctx, content);
+  const intent = detectUserIntent(ctx);
+  if (intent === 'chitchat' || intent === 'translation') return [];
+
+  const userContent = detectContentSignals(ctx.userText, ctx.userText.toLowerCase());
+  const assistantContent = detectContentSignals(ctx.assistantText, ctx.assistantText.toLowerCase());
+  const derived = detectDerived(ctx, userContent, assistantContent, intent);
   const scores = scoreIds(ctx, derived);
-  return selectFollowUps(scores, derived);
+  return selectFollowUps(scores, derived, ctx);
 }
 
 /**
