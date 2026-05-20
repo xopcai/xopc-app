@@ -2,7 +2,8 @@ import type { Router } from 'expo-router';
 
 import { useGatewayStore } from '../../stores/gateway-store';
 import { openDefaultSessionAfterConnect } from './navigate-after-gateway-connect';
-import { parseGatewayQrPayload } from './parse-gateway-qr';
+import { hasPairableGatewayQr, parseGatewayQrPayload } from './parse-gateway-qr';
+import { resolveGatewayCredentialsFromQr } from './pair-gateway';
 import { syncAfterGatewaySettingsSave } from './gateway-connection-sync';
 
 /**
@@ -72,13 +73,20 @@ export async function tryConsumeGatewayDeeplink(
 
   const embedded = extractGatewayLinkCandidate(rawUrl);
   const parsed = parseGatewayQrPayload(embedded ?? rawUrl);
-  if (!parsed.baseUrl && !parsed.token) return false;
+  if (!hasPairableGatewayQr(parsed)) return false;
+
+  let resolved;
+  try {
+    resolved = await resolveGatewayCredentialsFromQr(parsed);
+  } catch {
+    return false;
+  }
+  if (!resolved?.baseUrl) return false;
 
   const { setBaseUrl, setLanUrl, setToken, persist } = useGatewayStore.getState();
-  if (parsed.baseUrl) setBaseUrl(parsed.baseUrl);
-  if (parsed.lanUrl) setLanUrl(parsed.lanUrl);
-  else setLanUrl(null);
-  if (parsed.token != null) setToken(parsed.token);
+  setBaseUrl(resolved.baseUrl);
+  setLanUrl(resolved.lanUrl);
+  setToken(resolved.token);
   persist();
   await syncAfterGatewaySettingsSave();
 

@@ -28,6 +28,7 @@ import {
   requestGatewayQrCameraAccess,
 } from './GatewayQrScannerModal';
 import type { ParsedGatewayQr } from './parse-gateway-qr';
+import { resolveGatewayCredentialsFromQr } from './pair-gateway';
 import { openDefaultSessionAfterConnect } from './navigate-after-gateway-connect';
 
 export type GatewayConnectLandingModalProps = {
@@ -87,10 +88,29 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
   };
 
   const applyParsed = useCallback((parsed: ParsedGatewayQr) => {
-    if (parsed.baseUrl) setBaseUrlField(parsed.baseUrl);
-    if (parsed.token != null) setTokenField(parsed.token);
-    if (parsed.lanUrl) setLanUrl(parsed.lanUrl);
-    else setLanUrl(null);
+    void (async () => {
+      if (parsed.pairingSecret && parsed.baseUrl) {
+        setSaveError('');
+        setSaving(true);
+        try {
+          const resolved = await resolveGatewayCredentialsFromQr(parsed);
+          if (!resolved) return;
+          setBaseUrlField(resolved.baseUrl);
+          setTokenField(resolved.token);
+          setLanUrl(resolved.lanUrl);
+        } catch (err) {
+          setSaveError(err instanceof Error ? err.message : String(err));
+        } finally {
+          setSaving(false);
+        }
+        return;
+      }
+
+      if (parsed.baseUrl) setBaseUrlField(parsed.baseUrl);
+      if (parsed.token != null) setTokenField(parsed.token);
+      if (parsed.lanUrl) setLanUrl(parsed.lanUrl);
+      else setLanUrl(null);
+    })();
   }, [setLanUrl]);
 
   const openScanner = useCallback(async () => {

@@ -1241,16 +1241,6 @@ export default function ChatScreen() {
     void send(text);
   }, [send, sessionKey, streaming, awaitingSessionRefresh]);
 
-  const handleDeleteRound = useCallback((timestamp?: number) => {
-    if (!timestamp) return;
-    // Remove user message + its associated assistant response from optimistic/display
-    // For now, do a lightweight local removal from session messages via invalidation
-    setSnackMsg(m.chat.messageRoundDeleted);
-    // Invalidate to trigger fresh fetch (server side retains full history;
-    // mobile simply removes from local display until server API supports delete)
-    void queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionKey) });
-  }, [queryClient, sessionKey, m.chat.messageRoundDeleted]);
-
   const handleAssistantCopy = useCallback((text: string) => {
     void Clipboard.setStringAsync(text)
       .then(() => setSnackMsg(m.chat.messageCopied))
@@ -1380,7 +1370,6 @@ export default function ChatScreen() {
             onUserMessageCopy={handleUserMessageCopy}
             onUserMessageEdit={handleUserMessageEdit}
             onUserMessageRetry={handleUserMessageRetry}
-            onDeleteRound={handleDeleteRound}
             onAssistantCopy={handleAssistantCopy}
             followUpSuggestions={followUp.followUpSuggestions}
             followUpDisabled={

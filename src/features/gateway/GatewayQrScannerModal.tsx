@@ -34,7 +34,7 @@ export function GatewayQrScannerModal({
       if (Date.now() - scanCooldown.current < 1200) return;
       scanCooldown.current = Date.now();
       const parsed = parseGatewayQrPayload(ev.data);
-      if (!parsed.baseUrl && !parsed.token && !parsed.lanUrl) return;
+      if (!parsed.baseUrl && !parsed.token && !parsed.lanUrl && !parsed.pairingSecret) return;
       onScanned(parsed);
       onRequestClose();
     },

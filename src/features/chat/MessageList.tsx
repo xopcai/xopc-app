@@ -47,7 +47,6 @@ export const MessageList = memo(function MessageList({
   onUserMessageCopy,
   onUserMessageEdit,
   onUserMessageRetry,
-  onDeleteRound,
   onAssistantCopy,
   followUpSuggestions,
   followUpDisabled,
@@ -66,7 +65,6 @@ export const MessageList = memo(function MessageList({
   onUserMessageCopy?: (text: string) => void;
   onUserMessageEdit?: (text: string) => void;
   onUserMessageRetry?: (text: string) => void;
-  onDeleteRound?: (timestamp?: number) => void;
   onAssistantCopy?: (text: string) => void;
   followUpSuggestions?: FollowUpSuggestionDisplay[];
   followUpDisabled?: boolean;
@@ -180,12 +178,11 @@ export const MessageList = memo(function MessageList({
           onUserMessageCopy={onUserMessageCopy}
           onUserMessageEdit={onUserMessageEdit}
           onUserMessageRetry={onUserMessageRetry}
-          onDeleteRound={onDeleteRound}
           onAssistantCopy={onAssistantCopy}
         />
       );
     },
-    [messages.length, onUserMessageCopy, onUserMessageEdit, onUserMessageRetry, onDeleteRound, onAssistantCopy, streaming, progress, sessionKey],
+    [messages.length, onUserMessageCopy, onUserMessageEdit, onUserMessageRetry, onAssistantCopy, streaming, progress, sessionKey],
   );
 
   const keyExtractor = useCallback(

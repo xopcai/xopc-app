@@ -2,7 +2,10 @@
 export type ParsedGatewayQr = {
   baseUrl?: string;
   lanUrl?: string;
+  /** Legacy: permanent token embedded in QR (deprecated). */
   token?: string;
+  /** One-time pairing secret from `ps` query param (Phase 3+). */
+  pairingSecret?: string;
 };
 
 function isHttpUrl(s: string): boolean {
@@ -41,8 +44,9 @@ function isMobileConnectPath(pathname: string): boolean {
 /**
  * Interpret QR / deep-link text for gateway onboarding.
  * Supports:
- * - `xopc://gateway/mobile-connect?baseUrl=<encoded>&lanUrl=<encoded>&token=…` (desktop console QR)
- * - JSON `{"baseUrl","token"}`, http(s) URLs with optional query params, plain URLs.
+ * - `xopc://gateway/mobile-connect?baseUrl=…&lanUrl=…&ps=…` (preferred)
+ * - legacy `…&token=…` deep links
+ * - JSON `{"baseUrl","token"|"ps"}`, http(s) URLs with optional query params, plain URLs.
  */
 export function parseGatewayQrPayload(raw: string): ParsedGatewayQr {
   const t = raw.trim();
@@ -60,9 +64,14 @@ export function parseGatewayQrPayload(raw: string): ParsedGatewayQr {
         (typeof o.token === 'string' && o.token) ||
         (typeof o.bearerToken === 'string' && o.bearerToken) ||
         '';
+      const pairingSecret =
+        (typeof o.ps === 'string' && o.ps) ||
+        (typeof o.pairingSecret === 'string' && o.pairingSecret) ||
+        '';
       const out: ParsedGatewayQr = {};
       if (url.trim()) out.baseUrl = trimBase(url);
       if (token.trim()) out.token = token.trim();
+      if (pairingSecret.trim()) out.pairingSecret = pairingSecret.trim();
       return out;
     } catch {
       return {};
@@ -79,14 +88,16 @@ export function parseGatewayQrPayload(raw: string): ParsedGatewayQr {
     ) {
       const encBase = u.searchParams.get('baseUrl') ?? '';
       const encLan = u.searchParams.get('lanUrl') ?? '';
+      const pairingSecret = u.searchParams.get('ps') ?? u.searchParams.get('pairingSecret') ?? '';
       const token = u.searchParams.get('token') ?? u.searchParams.get('bearer') ?? '';
       const baseDecoded = decodeLayeredURIComponent(encBase);
       const lanDecoded = decodeLayeredURIComponent(encLan);
       const out: ParsedGatewayQr = {};
       if (baseDecoded && isHttpUrl(baseDecoded)) out.baseUrl = trimBase(baseDecoded);
       if (lanDecoded && isHttpUrl(lanDecoded)) out.lanUrl = trimBase(lanDecoded);
-      if (token) out.token = token.trim();
-      if (out.baseUrl || out.lanUrl || out.token) return out;
+      if (pairingSecret.trim()) out.pairingSecret = pairingSecret.trim();
+      else if (token) out.token = token.trim();
+      if (out.baseUrl || out.lanUrl || out.token || out.pairingSecret) return out;
     }
   } catch {
     /* fall through */
@@ -95,12 +106,14 @@ export function parseGatewayQrPayload(raw: string): ParsedGatewayQr {
   try {
     const u = new URL(t);
     if (isHttpUrl(t)) {
+      const pairingSecret = u.searchParams.get('ps') ?? u.searchParams.get('pairingSecret') ?? '';
       const token = u.searchParams.get('token') ?? u.searchParams.get('bearer') ?? '';
       u.search = '';
       u.hash = '';
       const baseUrl = trimBase(u.toString());
       const out: ParsedGatewayQr = { baseUrl };
-      if (token) out.token = token.trim();
+      if (pairingSecret.trim()) out.pairingSecret = pairingSecret.trim();
+      else if (token) out.token = token.trim();
       return out;
     }
   } catch {
@@ -109,4 +122,9 @@ export function parseGatewayQrPayload(raw: string): ParsedGatewayQr {
 
   if (isHttpUrl(t)) return { baseUrl: trimBase(t) };
   return {};
+}
+
+export function hasPairableGatewayQr(parsed: ParsedGatewayQr): boolean {
+  if (parsed.pairingSecret?.trim() && parsed.baseUrl?.trim()) return true;
+  return Boolean(parsed.baseUrl?.trim() || parsed.token?.trim() || parsed.lanUrl?.trim());
 }

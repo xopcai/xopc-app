@@ -18,6 +18,7 @@ import {
   requestGatewayQrCameraAccess,
 } from '../../src/features/gateway/GatewayQrScannerModal';
 import type { ParsedGatewayQr } from '../../src/features/gateway/parse-gateway-qr';
+import { resolveGatewayCredentialsFromQr } from '../../src/features/gateway/pair-gateway';
 import { useSettingsColors } from '../../src/features/settings/settings-ui';
 import { useMessages } from '../../src/i18n/messages';
 import { useGatewayConfigured } from '../../src/query/sessions';
@@ -81,13 +82,31 @@ export default function GatewaySettingsScreen() {
 
   const applyParsedQr = useCallback(
     (parsed: ParsedGatewayQr) => {
-      if (parsed.baseUrl) setValue('baseUrl', parsed.baseUrl, { shouldValidate: true });
-      if (parsed.token != null) setValue('token', parsed.token);
-      if (parsed.lanUrl) setLanUrl(parsed.lanUrl);
-      else setLanUrl(null);
-      setScanNotice(g.qrApplied);
-      setTestMessage(null);
-      setTestOk(null);
+      void (async () => {
+        if (parsed.pairingSecret && parsed.baseUrl) {
+          try {
+            const resolved = await resolveGatewayCredentialsFromQr(parsed);
+            if (!resolved) return;
+            setValue('baseUrl', resolved.baseUrl, { shouldValidate: true });
+            setValue('token', resolved.token);
+            setLanUrl(resolved.lanUrl);
+            setScanNotice(g.qrApplied);
+            setTestMessage(null);
+            setTestOk(null);
+          } catch (err) {
+            setScanNotice(err instanceof Error ? err.message : String(err));
+          }
+          return;
+        }
+
+        if (parsed.baseUrl) setValue('baseUrl', parsed.baseUrl, { shouldValidate: true });
+        if (parsed.token != null) setValue('token', parsed.token);
+        if (parsed.lanUrl) setLanUrl(parsed.lanUrl);
+        else setLanUrl(null);
+        setScanNotice(g.qrApplied);
+        setTestMessage(null);
+        setTestOk(null);
+      })();
     },
     [g.qrApplied, setLanUrl, setValue],
   );

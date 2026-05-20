@@ -2,6 +2,8 @@
 
 Standalone Expo (React Native) app for the [xopc](https://github.com/xopcai/xopc) gateway. Run an xopc gateway (HTTP/WebSocket) with your API keys and optional token auth; configure the app to point at that gateway base URL.
 
+**Remote access (FRP):** LAN-first routing and gateway connection UI live on `feat/frp`. Planned **application-layer E2EE** for mobile ↔ gateway traffic is specified in the xopc repo: [docs/mobile-e2ee.md](https://github.com/xopcai/xopc/blob/main/docs/mobile-e2ee.md) (`xopc-e2ee-v1`).
+
 ## Layout
 
 - App source: `app/` (Expo Router), `src/`, `app.json`, `metro.config.js`.

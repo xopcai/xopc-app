@@ -285,6 +285,7 @@ export const zh: MessageBundle = {
     clarifySkip: '跳过',
     clarifyTimeoutNote: '请在 5 分钟内回答，否则本次请求可能会超时。',
     messageCopy: '复制',
+    messageCopyCode: '复制代码',
     messageEdit: '编辑',
     messageRetry: '重试',
     messageDeleteRound: '删除本轮',

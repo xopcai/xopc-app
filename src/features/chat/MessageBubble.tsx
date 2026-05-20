@@ -4,9 +4,9 @@
  * User messages: right-aligned, tinted background, plain text.
  * Assistant messages: left-aligned, markdown rendering, thinking/tool blocks.
  */
-import { memo, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
-import { Menu, Text } from 'react-native-paper';
+import { memo, useMemo } from 'react';
+import { StyleSheet, useColorScheme, View } from 'react-native';
+import { Text } from 'react-native-paper';
 
 import { AssistantStepsBlock, hasTextAfterIndex } from './AssistantStepsBlock';
 import { AttachmentRenderer } from './AttachmentRenderer';
@@ -18,6 +18,8 @@ import {
   filterAssistantAttachmentsDedupedAgainstWorkspacePaths,
   imageContentBlocksToAttachments,
 } from './assistant-message-artifacts';
+import { extractMarkdownCodeBlocks } from './extract-markdown-code';
+import { MessageActionsBar, type MessageAction } from './MessageActionsBar';
 import type { ImageContent, Message, MessageContent, ProgressState, ThinkingContent, ToolUseContent } from './messages.types';
 import { useMessages } from '../../i18n/messages';
 import { chatColors, chatLayout } from './styles';
@@ -197,7 +199,6 @@ export const MessageBubble = memo(function MessageBubble({
   onUserMessageCopy,
   onUserMessageEdit,
   onUserMessageRetry,
-  onDeleteRound,
   onAssistantCopy,
 }: {
   message: Message;
@@ -207,13 +208,10 @@ export const MessageBubble = memo(function MessageBubble({
   onUserMessageCopy?: (text: string) => void;
   onUserMessageEdit?: (text: string) => void;
   onUserMessageRetry?: (text: string) => void;
-  onDeleteRound?: (timestamp?: number) => void;
   onAssistantCopy?: (text: string) => void;
 }) {
   const m = useMessages();
   const isDark = useColorScheme() === 'dark';
-  const [userMenuVisible, setUserMenuVisible] = useState(false);
-  const [assistantMenuVisible, setAssistantMenuVisible] = useState(false);
   const isUser = message.role === 'user' || message.role === 'user-with-attachments';
   const isAssistant = message.role === 'assistant';
 
@@ -272,33 +270,58 @@ export const MessageBubble = memo(function MessageBubble({
       .trim();
   }, [isAssistant, message.content]);
 
-  const closeUserMenu = () => setUserMenuVisible(false);
-  const closeAssistantMenu = () => setAssistantMenuVisible(false);
+  const assistantCodeText = useMemo(
+    () => (assistantPlainText ? extractMarkdownCodeBlocks(assistantPlainText) : ''),
+    [assistantPlainText],
+  );
 
-  const copyUserText = () => {
-    closeUserMenu();
-    if (userText.trim()) onUserMessageCopy?.(userText);
-  };
+  const userActions = useMemo((): MessageAction[] => {
+    if (!isUser || !userText.trim()) return [];
+    const actions: MessageAction[] = [];
+    if (onUserMessageRetry) {
+      actions.push({
+        icon: 'refresh',
+        label: m.chat.messageRetry,
+        onPress: () => onUserMessageRetry(userText),
+        accessibilityLabel: m.chat.messageRetry,
+      });
+    }
+    if (onUserMessageEdit) {
+      actions.push({
+        icon: 'pencil-outline',
+        onPress: () => onUserMessageEdit(userText),
+        accessibilityLabel: m.chat.messageEdit,
+      });
+    }
+    if (onUserMessageCopy) {
+      actions.push({
+        icon: 'content-copy',
+        onPress: () => onUserMessageCopy(userText),
+        accessibilityLabel: m.chat.messageCopy,
+      });
+    }
+    return actions;
+  }, [isUser, userText, onUserMessageRetry, onUserMessageEdit, onUserMessageCopy, m.chat.messageRetry, m.chat.messageEdit, m.chat.messageCopy]);
 
-  const editUserText = () => {
-    closeUserMenu();
-    if (userText.trim()) onUserMessageEdit?.(userText);
-  };
-
-  const retryUserText = () => {
-    closeUserMenu();
-    if (userText.trim()) onUserMessageRetry?.(userText);
-  };
-
-  const deleteRound = () => {
-    closeUserMenu();
-    onDeleteRound?.(message.timestamp);
-  };
-
-  const copyAssistantText = () => {
-    closeAssistantMenu();
-    if (assistantPlainText) onAssistantCopy?.(assistantPlainText);
-  };
+  const assistantActions = useMemo((): MessageAction[] => {
+    if (!isAssistant || isStreaming || !assistantPlainText) return [];
+    const actions: MessageAction[] = [];
+    if (onAssistantCopy) {
+      actions.push({
+        icon: 'content-copy',
+        onPress: () => onAssistantCopy(assistantPlainText),
+        accessibilityLabel: m.chat.messageCopy,
+      });
+    }
+    if (assistantCodeText && onAssistantCopy) {
+      actions.push({
+        icon: 'file-code-outline',
+        onPress: () => onAssistantCopy(assistantCodeText),
+        accessibilityLabel: m.chat.messageCopyCode,
+      });
+    }
+    return actions;
+  }, [isAssistant, isStreaming, assistantPlainText, assistantCodeText, onAssistantCopy, m.chat.messageCopy, m.chat.messageCopyCode]);
 
   return (
     <View style={chatLayout.messageBubbleRow}>
@@ -325,78 +348,57 @@ export const MessageBubble = memo(function MessageBubble({
 
       {/* Bubble */}
       {isUser ? (
-        <Menu
-          visible={userMenuVisible}
-          onDismiss={closeUserMenu}
-          anchor={
-            <Pressable
-              onLongPress={() => setUserMenuVisible(true)}
-              delayLongPress={260}
-              style={[
-                chatLayout.userBubbleContainer,
-                chatLayout.userBubble,
-                {
-                  backgroundColor: isDark
-                    ? chatColors.userBubbleBgDark
-                    : chatColors.userBubbleBg,
-                },
-              ]}
-            >
-              {userAudio.map((block, i) => (
-                <AudioMessageBlock key={`user-audio-${i}`} audio={block} sessionKey={sessionKey} />
-              ))}
-              {userText ? (
-                <Text
-                  selectable
-                  style={{
-                    color: isDark ? '#E5E7EB' : '#1F2937',
-                    fontSize: 15,
-                    lineHeight: 22,
-                  }}
-                >
-                  {userText}
-                </Text>
-              ) : null}
-              {attachmentsForBubble?.length ? (
-                <AttachmentRenderer attachments={attachmentsForBubble} sessionKey={sessionKey} compact />
-              ) : null}
-            </Pressable>
-          }
-        >
-          <Menu.Item title={m.chat.messageCopy} leadingIcon="content-copy" onPress={copyUserText} />
-          <Menu.Item title={m.chat.messageEdit} leadingIcon="pencil-outline" onPress={editUserText} />
-          <Menu.Item title={m.chat.messageRetry} leadingIcon="refresh" onPress={retryUserText} />
-          <Menu.Item title={m.chat.messageDeleteRound} leadingIcon="delete-outline" onPress={deleteRound} />
-        </Menu>
+        <View style={chatLayout.userBubbleContainer}>
+          <View
+            style={[
+              chatLayout.userBubble,
+              {
+                backgroundColor: isDark
+                  ? chatColors.userBubbleBgDark
+                  : chatColors.userBubbleBg,
+              },
+            ]}
+          >
+            {userAudio.map((block, i) => (
+              <AudioMessageBlock key={`user-audio-${i}`} audio={block} sessionKey={sessionKey} />
+            ))}
+            {userText ? (
+              <Text
+                selectable
+                style={{
+                  color: isDark ? '#E5E7EB' : '#1F2937',
+                  fontSize: 15,
+                  lineHeight: 22,
+                }}
+              >
+                {userText}
+              </Text>
+            ) : null}
+            {attachmentsForBubble?.length ? (
+              <AttachmentRenderer attachments={attachmentsForBubble} sessionKey={sessionKey} compact />
+            ) : null}
+          </View>
+          <MessageActionsBar actions={userActions} align="right" />
+        </View>
       ) : (
         <View style={chatLayout.assistantBubbleContainer}>
-          <Menu
-            visible={assistantMenuVisible}
-            onDismiss={closeAssistantMenu}
-            anchor={
-              <Pressable
-                onLongPress={() => setAssistantMenuVisible(true)}
-                delayLongPress={260}
-                style={[
-                  chatLayout.assistantBubble,
-                  showAssistantArtifacts ? styles.markdownAboveArtifacts : null,
-                  {
-                    backgroundColor: isDark
-                      ? chatColors.assistantBgDark
-                      : chatColors.assistantBg,
-                  },
-                ]}
-              >
-                {renderAssistantContent(displayContent, isStreaming, sessionKey, showAssistantArtifacts)}
-
-                {attachmentsForBubble?.length ? (
-                  <AttachmentRenderer attachments={attachmentsForBubble} sessionKey={sessionKey} />
-                ) : null}
-              </Pressable>
-            }
+          <View
+            style={[
+              chatLayout.assistantBubble,
+              showAssistantArtifacts ? styles.markdownAboveArtifacts : null,
+              {
+                backgroundColor: isDark
+                  ? chatColors.assistantBgDark
+                  : chatColors.assistantBg,
+              },
+            ]}
           >
-            <Menu.Item title={m.chat.messageCopy} leadingIcon="content-copy" onPress={copyAssistantText} />
-          </Menu>
+            {renderAssistantContent(displayContent, isStreaming, sessionKey, showAssistantArtifacts)}
+
+            {attachmentsForBubble?.length ? (
+              <AttachmentRenderer attachments={attachmentsForBubble} sessionKey={sessionKey} />
+            ) : null}
+          </View>
 
           {showAssistantArtifacts ? (
             <View
@@ -421,6 +423,8 @@ export const MessageBubble = memo(function MessageBubble({
               </View>
             </View>
           ) : null}
+
+          <MessageActionsBar actions={assistantActions} align="left" />
         </View>
       )}
 

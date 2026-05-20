@@ -285,6 +285,7 @@ export const en = {
     clarifySkip: 'Skip',
     clarifyTimeoutNote: 'Please answer within 5 minutes, or the request may time out.',
     messageCopy: 'Copy',
+    messageCopyCode: 'Copy code',
     messageEdit: 'Edit',
     messageRetry: 'Retry',
     messageDeleteRound: 'Delete round',
