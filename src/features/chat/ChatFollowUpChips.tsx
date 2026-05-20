@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
 import type { FollowUpSuggestionId } from './follow-up-suggestions';
@@ -91,17 +91,17 @@ export const ChatFollowUpChips = memo(function ChatFollowUpChips({
   const m = useMessages();
   const isDark = useColorScheme() === 'dark';
   const pillText = isDark ? '#F5F5F7' : '#1C1C1E';
+  const borderColor = isDark ? 'rgba(180,180,190,0.35)' : 'rgba(120,120,128,0.35)';
+  const chipBg = isDark ? '#1C1C1E' : '#FFFFFF';
+  const chipBgPressed = isDark ? '#2C2C2E' : '#F5F5F7';
 
   if (suggestions.length === 0) return null;
 
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-      accessibilityRole="adjustable"
+    <View
+      style={styles.wrap}
+      accessibilityRole="list"
       accessibilityLabel={m.chat.followUpSuggestionsAria}
-      contentContainerStyle={styles.row}
     >
       {suggestions.map((id) => {
         const label = labelForFollowUpId(m.chat, id);
@@ -112,41 +112,43 @@ export const ChatFollowUpChips = memo(function ChatFollowUpChips({
             style={({ pressed }) => [
               styles.chip,
               {
-                backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-                borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(120,120,128,0.22)',
-                opacity: disabled ? 0.5 : pressed ? 0.82 : 1,
+                borderColor,
+                backgroundColor: pressed && !disabled ? chipBgPressed : chipBg,
+                opacity: disabled ? 0.5 : 1,
               },
             ]}
             onPress={() => onPick(id)}
           >
-            <Text style={[styles.chipText, { color: pillText }]} numberOfLines={2}>
+            <Text style={[styles.chipText, { color: pillText }]} numberOfLines={3}>
               {label}
             </Text>
           </Pressable>
         );
       })}
-    </ScrollView>
+    </View>
   );
 });
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    flexWrap: 'nowrap',
-    gap: 8,
+  wrap: {
     paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 4,
+    alignSelf: 'flex-start',
+    width: '92%',
+    maxWidth: '92%',
+    marginTop: -4,
+    marginBottom: 8,
+    gap: 8,
   },
   chip: {
+    borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 999,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    maxWidth: 260,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignSelf: 'stretch',
   },
   chipText: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'left',
   },
 });

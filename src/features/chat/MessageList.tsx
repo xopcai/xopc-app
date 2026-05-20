@@ -21,6 +21,8 @@ import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 
 import { useKeyboardListPadding } from '../../hooks/use-keyboard-list-padding';
 import { MessageBubble } from './MessageBubble';
+import { ChatFollowUpChips } from './ChatFollowUpChips';
+import type { FollowUpSuggestionId } from './follow-up-suggestions';
 import type { Message, ProgressState } from './messages.types';
 
 const LIST_BASE_PADDING_BOTTOM = 8;
@@ -46,6 +48,9 @@ export const MessageList = memo(function MessageList({
   onUserMessageRetry,
   onDeleteRound,
   onAssistantCopy,
+  followUpSuggestions,
+  followUpDisabled,
+  onFollowUpPick,
 }: {
   messages: Message[];
   streaming: boolean;
@@ -62,6 +67,9 @@ export const MessageList = memo(function MessageList({
   onUserMessageRetry?: (text: string) => void;
   onDeleteRound?: (timestamp?: number) => void;
   onAssistantCopy?: (text: string) => void;
+  followUpSuggestions?: FollowUpSuggestionId[];
+  followUpDisabled?: boolean;
+  onFollowUpPick?: (id: FollowUpSuggestionId) => void;
 }) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -113,6 +121,34 @@ export const MessageList = memo(function MessageList({
       });
     });
   }, [keyboardPadding, messages.length]);
+
+  const showFollowUpChips = useMemo(() => {
+    if (!followUpSuggestions?.length || !onFollowUpPick) return false;
+    const last = messages[messages.length - 1];
+    return last?.role === 'assistant';
+  }, [followUpSuggestions, messages, onFollowUpPick]);
+
+  const listFooter = useMemo(() => {
+    if (!showFollowUpChips || !followUpSuggestions?.length || !onFollowUpPick) return null;
+    return (
+      <ChatFollowUpChips
+        suggestions={followUpSuggestions}
+        disabled={followUpDisabled}
+        onPick={onFollowUpPick}
+      />
+    );
+  }, [showFollowUpChips, followUpSuggestions, followUpDisabled, onFollowUpPick]);
+
+  useEffect(() => {
+    if (!showFollowUpChips || messages.length === 0) return;
+    if (isAtBottomRef.current) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          listRef.current?.scrollToEnd({ animated: true });
+        });
+      });
+    }
+  }, [showFollowUpChips, followUpSuggestions, messages.length]);
 
   const listContentStyle = useMemo(
     () => ({
@@ -246,6 +282,7 @@ export const MessageList = memo(function MessageList({
         showsVerticalScrollIndicator={false}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
+        ListFooterComponent={listFooter}
       />
       {showScrollToBottom ? (
         <IconButton

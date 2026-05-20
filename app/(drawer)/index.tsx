@@ -18,7 +18,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AgentMessageSender, submitClarifyResponse, type MessagingCallbacks } from '../../src/api/agent-client';
 import { ChatComposer } from '../../src/features/chat/ChatComposer';
-import { ChatFollowUpChips } from '../../src/features/chat/ChatFollowUpChips';
 import { canSendComposerDraft, buildOptimisticUserMessage } from '../../src/features/chat/composer-send-helpers';
 import type { WireAttachment } from '../../src/features/chat/composer.types';
 import { ClarifyPrompt, type ClarifyPromptState } from '../../src/features/chat/ClarifyPrompt';
@@ -1225,6 +1224,13 @@ export default function ChatScreen() {
             onUserMessageRetry={handleUserMessageRetry}
             onDeleteRound={handleDeleteRound}
             onAssistantCopy={handleAssistantCopy}
+            followUpSuggestions={followUp.followUpSuggestions}
+            followUpDisabled={
+              sessionQuery.isLoading ||
+              awaitingSessionRefresh ||
+              Boolean(clarifyPrompt)
+            }
+            onFollowUpPick={followUp.pickFollowUpSuggestion}
           />
         </View>
 
@@ -1232,15 +1238,6 @@ export default function ChatScreen() {
           offset={{ closed: 0, opened: 0 }}
           style={{ backgroundColor: canvasBg }}
         >
-          <ChatFollowUpChips
-            suggestions={followUp.followUpSuggestions}
-            disabled={
-              sessionQuery.isLoading ||
-              awaitingSessionRefresh ||
-              Boolean(clarifyPrompt)
-            }
-            onPick={followUp.pickFollowUpSuggestion}
-          />
           <ClarifyPrompt
             prompt={clarifyPrompt}
             submitting={clarifySubmitting}
