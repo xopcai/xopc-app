@@ -11,19 +11,25 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DrawerActions } from '@react-navigation/native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { Banner, IconButton, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AgentMessageSender, submitClarifyResponse, type MessagingCallbacks } from '../../src/api/agent-client';
 import { ChatComposer } from '../../src/features/chat/ChatComposer';
+import { ChatFollowUpChips } from '../../src/features/chat/ChatFollowUpChips';
 import { canSendComposerDraft, buildOptimisticUserMessage } from '../../src/features/chat/composer-send-helpers';
 import type { WireAttachment } from '../../src/features/chat/composer.types';
 import { ClarifyPrompt, type ClarifyPromptState } from '../../src/features/chat/ClarifyPrompt';
 import { AgentPickerSheet } from '../../src/features/chat/AgentPickerSheet';
 import { GoalMissionCard } from '../../src/features/chat/GoalMissionCard';
 import { MessageList } from '../../src/features/chat/MessageList';
+import {
+  FOLLOW_UP_AUTO_SEND_IDLE_MS,
+  MAX_PENDING_FOLLOW_UPS,
+} from '../../src/features/chat/pending-follow-up.types';
+import { useChatFollowUp } from '../../src/features/chat/use-chat-follow-up';
 import {
   useAgentStreamResume,
   type AgentStreamResumeOptions,
@@ -34,17 +40,12 @@ import {
   subscribePendingAgentRunChanged,
 } from '../../src/features/gateway/pending-agent-run';
 import {
-  followUpPromptForSuggestionId,
-  suggestFollowUpsFromAssistantMessage,
-  type FollowUpSuggestionId,
-} from '../../src/features/chat/follow-up-suggestions';
-import {
   applyStripToUserContent,
   extractAttachmentsFromUserContent,
   mergeUserAttachments,
 } from '../../src/features/chat/inbound-message-text';
 import type { Message, MessageAttachment, MessageContent, ProgressState } from '../../src/features/chat/messages.types';
-import { useMessages } from '../../src/i18n/messages';
+import { useMessages, t } from '../../src/i18n/messages';
 import { RenameDialog } from '../../src/features/sessions/RenameDialog';
 import {
   appendTextDelta,
@@ -55,6 +56,7 @@ import {
   ensureAssistantMessage,
   finalizeRunningTools,
   finalizeStreamingThinking,
+  hasRenderableAssistantContent,
   startThinkingSegment,
 } from '../../src/features/chat/streaming';
 import { fetchChatAgents, resolveEffectiveDefaultAgentId } from '../../src/query/agents';
@@ -456,10 +458,19 @@ export default function ChatScreen() {
   const [clarifySubmitError, setClarifySubmitError] = useState<string | null>(null);
   const senderRef = useRef(new AgentMessageSender());
   const streamingRef = useRef(false);
+  const sendingRef = useRef(false);
+  const runBusyRef = useRef(false);
+  const streamActiveRef = useRef(false);
+  const clarifyActiveRef = useRef(false);
   const streamingMsgRef = useRef<Message | null>(null);
   const streamingFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeSessionKeyRef = useRef(sessionKey);
   const autoResumeFailedRef = useRef(false);
+  const displayMessagesRef = useRef<Message[]>([]);
+  const sendRef = useRef<(text: string, attachments?: WireAttachment[]) => Promise<boolean>>(
+    async () => false,
+  );
+  const followUpFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearStreamingFlushTimer = useCallback(() => {
     if (!streamingFlushTimerRef.current) return;
@@ -570,6 +581,31 @@ export default function ChatScreen() {
     if (!streamingMsg) return base;
     return [...base, streamingMsg];
   }, [sessionRefreshComplete, sessionMessages, optimisticMessages, streamingMsg]);
+
+  useEffect(() => {
+    displayMessagesRef.current = displayMessages;
+  }, [displayMessages]);
+
+  useEffect(() => {
+    clarifyActiveRef.current = Boolean(clarifyPrompt);
+  }, [clarifyPrompt]);
+
+  useEffect(() => {
+    streamActiveRef.current = streaming || sendingRef.current;
+    runBusyRef.current = streaming || awaitingSessionRefresh || sendingRef.current;
+  }, [streaming, awaitingSessionRefresh]);
+
+  const followUp = useChatFollowUp({
+    sessionKey,
+    sessionKeyRef: activeSessionKeyRef,
+    runBusyRef,
+    streamActiveRef,
+    clarifyActiveRef,
+    sendRef,
+    onQueueFull: () => {
+      setSnackMsg(t(m.chat.followUpQueueMaxReached, { max: MAX_PENDING_FOLLOW_UPS }));
+    },
+  });
 
   /** Finalize a streaming turn and keep local messages visible until session refetch completes. */
   const finalizeMessage = useCallback((targetSessionKey = sessionKey) => {
@@ -682,6 +718,7 @@ export default function ChatScreen() {
       onClarifyRequest: (payload) => {
         if (!isCurrentSession()) return;
         flushStreamingMessage();
+        followUp.clearFollowUpSuggestions();
         setClarifyPrompt(payload);
         setClarifySubmitError(null);
         setClarifySubmitting(false);
@@ -691,19 +728,48 @@ export default function ChatScreen() {
           invalidateSessionByKey(callbackSessionKey);
           return;
         }
+        sendingRef.current = false;
+        streamActiveRef.current = false;
+        runBusyRef.current = true;
+        let appended: Message | null = null;
         if (streamingMsgRef.current) {
           finalizeStreamingThinking(streamingMsgRef.current.content);
           finalizeRunningTools(streamingMsgRef.current.content);
+          appended = cloneMessageForRender(
+            ensureAssistantMessage(streamingMsgRef.current, Date.now()),
+          );
           flushStreamingMessage();
         }
+        if (appended && hasRenderableAssistantContent(appended)) {
+          const prior = displayMessagesRef.current;
+          const withoutStreaming = prior.length > 0 && prior[prior.length - 1]?.role === 'assistant'
+            ? prior.slice(0, -1)
+            : prior;
+          const merged = mergeConsecutiveAssistantMessages([...withoutStreaming, appended]);
+          followUp.refreshFollowUpSuggestions({
+            appended,
+            messages: merged,
+            clarifyActive: Boolean(clarifyPrompt),
+          });
+        }
         finalizeMessage(callbackSessionKey);
+        if (followUpFlushTimerRef.current) {
+          clearTimeout(followUpFlushTimerRef.current);
+        }
+        followUpFlushTimerRef.current = setTimeout(() => {
+          void followUp.flushSteeringQueue(callbackSessionKey);
+        }, FOLLOW_UP_AUTO_SEND_IDLE_MS);
       },
       onError: (msg) => {
         if (!isCurrentSession()) {
           invalidateSessionByKey(callbackSessionKey);
           return;
         }
+        sendingRef.current = false;
         setStreaming(false);
+        streamingRef.current = false;
+        streamActiveRef.current = false;
+        runBusyRef.current = awaitingSessionRefresh;
         streamingRef.current = false;
         clearStreamingMessage();
         setProgress(null);
@@ -720,9 +786,13 @@ export default function ChatScreen() {
 
   const send = useCallback(
     async (text: string, attachments?: WireAttachment[]): Promise<boolean> => {
-      if (!canSendComposerDraft(text, attachments?.length ?? 0) || !sessionKey || streaming || awaitingSessionRefresh) {
+      if (!canSendComposerDraft(text, attachments?.length ?? 0) || !sessionKey || streaming) {
         return false;
       }
+      followUp.clearFollowUpSuggestions();
+      sendingRef.current = true;
+      streamActiveRef.current = true;
+      runBusyRef.current = true;
       const userMsg = buildOptimisticUserMessage(text, attachments);
       setOptimisticMessages([userMsg]);
       clearStreamingMessage();
@@ -750,11 +820,16 @@ export default function ChatScreen() {
         setError(e instanceof Error ? e.message : String(e));
         setStreaming(false);
         streamingRef.current = false;
+        sendingRef.current = false;
+        streamActiveRef.current = streaming || false;
+        runBusyRef.current = streaming || awaitingSessionRefresh;
         return false;
       }
     },
-    [sessionKey, streaming, awaitingSessionRefresh, invalidateSessionByKey, clearStreamingMessage],
+    [sessionKey, streaming, awaitingSessionRefresh, invalidateSessionByKey, clearStreamingMessage, followUp],
   );
+
+  sendRef.current = send;
 
   const sendVoice = useCallback(
     async (payload: { uri: string; durationMillis: number; mimeType?: string }) => {
@@ -1009,30 +1084,6 @@ export default function ChatScreen() {
     [m.chat.suggestion1, m.chat.suggestion2, m.chat.suggestion3],
   );
 
-  const latestFollowUpIds = useMemo<FollowUpSuggestionId[]>(() => {
-    if (streaming || clarifyPrompt || awaitingSessionRefresh) return [];
-    for (let messageIndex = displayMessages.length - 1; messageIndex >= 0; messageIndex--) {
-      const message = displayMessages[messageIndex];
-      if (message.role === 'assistant') return suggestFollowUpsFromAssistantMessage(message);
-    }
-    return [];
-  }, [awaitingSessionRefresh, clarifyPrompt, displayMessages, streaming]);
-
-  const followUpChips = useMemo(
-    () =>
-      latestFollowUpIds.map((id) => ({
-        id,
-        label: m.chat.followUpChips[id],
-      })),
-    [latestFollowUpIds, m.chat.followUpChips],
-  );
-
-  const handleFollowUpPress = useCallback((id: FollowUpSuggestionId) => {
-    const prompt = followUpPromptForSuggestionId(id);
-    // Enqueue rather than directly filling composer — auto-send when idle
-    setFollowUpQueue((prev) => [...prev, prompt]);
-  }, []);
-
   const handleUserMessageCopy = useCallback((text: string) => {
     void Clipboard.setStringAsync(text)
       .then(() => setSnackMsg(m.chat.messageCopied))
@@ -1066,7 +1117,6 @@ export default function ChatScreen() {
   }, [m.chat.messageCopied, m.chat.messageCopyFailed]);
 
   const [agentSheetVisible, setAgentSheetVisible] = useState(false);
-  const [followUpQueue, setFollowUpQueue] = useState<string[]>([]);
 
   const openAgentsPicker = useCallback(() => {
     setAgentSheetVisible(true);
@@ -1082,24 +1132,6 @@ export default function ChatScreen() {
       setError(e instanceof Error ? e.message : String(e));
     });
   }, [queryClient, router]);
-
-  const removeFollowUpAt = useCallback((index: number) => {
-    setFollowUpQueue((prev) => prev.filter((_, i) => i !== index));
-  }, []);
-
-  // Auto-dequeue: when idle + queue non-empty → send next follow-up
-  useEffect(() => {
-    if (followUpQueue.length === 0 || streaming || awaitingSessionRefresh || !sessionKey) return;
-    const timer = setTimeout(() => {
-      setFollowUpQueue((prev) => {
-        if (prev.length === 0) return prev;
-        const [next, ...rest] = prev;
-        void send(next);
-        return rest;
-      });
-    }, 600);
-    return () => clearTimeout(timer);
-  }, [followUpQueue.length, streaming, awaitingSessionRefresh, sessionKey, send]);
 
   const currentSessionAgentId = useMemo(() => {
     return sessionKey ? sessionKey.split(':')[0]?.trim().toLowerCase() ?? '' : '';
@@ -1200,50 +1232,15 @@ export default function ChatScreen() {
           offset={{ closed: 0, opened: 0 }}
           style={{ backgroundColor: canvasBg }}
         >
-          {followUpChips.length > 0 ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.followUpRow}
-            >
-              {followUpChips.map((chip) => (
-                <Pressable
-                  key={chip.id}
-                  style={({ pressed }) => [
-                    styles.followUpChip,
-                    {
-                      backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-                      borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(120,120,128,0.22)',
-                    },
-                    pressed && { opacity: 0.82 },
-                  ]}
-                  onPress={() => handleFollowUpPress(chip.id)}
-                >
-                  <Text style={[styles.followUpChipText, { color: pillText }]} numberOfLines={1}>
-                    {chip.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          ) : null}
-          {followUpQueue.length > 0 ? (
-            <View style={styles.pendingQueueBar}>
-              <Text style={[styles.pendingQueueText, { color: pillMuted }]}>
-                {m.chat.pendingQueueLabel} ({followUpQueue.length})
-              </Text>
-              {followUpQueue.map((prompt, queueIndex) => (
-                <View key={`q-${queueIndex}`} style={styles.pendingQueueItem}>
-                  <Text style={[styles.pendingQueueItemText, { color: pillText }]} numberOfLines={1}>
-                    {prompt.slice(0, 40)}{prompt.length > 40 ? '…' : ''}
-                  </Text>
-                  <Pressable onPress={() => removeFollowUpAt(queueIndex)} hitSlop={8}>
-                    <Text style={{ color: pillMuted, fontSize: 16 }}>✕</Text>
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-          ) : null}
+          <ChatFollowUpChips
+            suggestions={followUp.followUpSuggestions}
+            disabled={
+              sessionQuery.isLoading ||
+              awaitingSessionRefresh ||
+              Boolean(clarifyPrompt)
+            }
+            onPick={followUp.pickFollowUpSuggestion}
+          />
           <ClarifyPrompt
             prompt={clarifyPrompt}
             submitting={clarifySubmitting}
@@ -1261,6 +1258,17 @@ export default function ChatScreen() {
             placeholder={m.chat.inputPlaceholder}
             suggestionDraft={composerSuggestion}
             onConsumeSuggestionDraft={() => setComposerSuggestion(undefined)}
+            onAddPendingFollowUp={(text, atts) => followUp.addPendingFollowUp(text, atts)}
+            pendingFollowUps={followUp.pendingFollowUps}
+            editingFollowUpId={followUp.editingFollowUpId}
+            onBeginEditFollowUp={followUp.beginEditFollowUp}
+            onCancelEditFollowUp={followUp.cancelEditFollowUp}
+            onCommitEditFollowUp={followUp.commitEditFollowUp}
+            onPendingFollowUpRemove={followUp.removePendingFollowUp}
+            onPendingFollowUpMove={followUp.movePendingFollowUp}
+            onPendingFollowUpSteer={(id) => void followUp.steerPendingFollowUp(id)}
+            steeringFollowUpId={followUp.steeringFollowUpId}
+            onQueueFull={() => setSnackMsg(t(m.chat.followUpQueueMaxReached, { max: MAX_PENDING_FOLLOW_UPS }))}
           />
           {!keyboardVisible ? (
             <Text
@@ -1361,43 +1369,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
-  },
-  followUpRow: {
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 4,
-  },
-  followUpChip: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 999,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    maxWidth: 220,
-  },
-  followUpChipText: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  pendingQueueBar: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    gap: 4,
-  },
-  pendingQueueText: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  pendingQueueItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 4,
-  },
-  pendingQueueItemText: {
-    flex: 1,
-    fontSize: 12,
   },
   aiDisclaimer: {
     fontSize: 11,

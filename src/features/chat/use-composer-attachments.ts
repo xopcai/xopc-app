@@ -95,6 +95,7 @@ export function useComposerAttachments(messages: ComposerAttachmentMessages) {
     removeAttachment,
     clearAttachments,
     restoreAttachments,
+    setAttachments,
     toWirePayload,
     dismissSnack,
     maxAttachments: MAX_CHAT_ATTACHMENTS,

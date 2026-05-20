@@ -17,8 +17,12 @@ import {
 import { Icon, Snackbar } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
+import { ChatPendingFollowUpStack } from './ChatPendingFollowUpStack';
 import { canSendComposerDraft } from './composer-send-helpers';
 import type { WireAttachment } from './composer.types';
+import type { PendingFollowUp } from './pending-follow-up.types';
+import { wireFollowUpAttachmentsToComposer } from './follow-up-utils';
+import { useComposerActions } from './use-composer-actions';
 import { AttachmentSourceSheet } from './attachment-source-sheet';
 import { ComposerAttachmentStrip } from './composer-attachment-strip';
 import { CommandPaletteBar } from './CommandPaletteBar';
@@ -57,6 +61,17 @@ export const ChatComposer = memo(function ChatComposer({
   suggestionDraft,
   onConsumeSuggestionDraft,
   keyboardVisible = false,
+  onAddPendingFollowUp,
+  pendingFollowUps = [],
+  editingFollowUpId = null,
+  onBeginEditFollowUp,
+  onCancelEditFollowUp,
+  onCommitEditFollowUp,
+  onPendingFollowUpRemove,
+  onPendingFollowUpMove,
+  onPendingFollowUpSteer,
+  steeringFollowUpId = null,
+  onQueueFull,
 }: {
   disabled: boolean;
   streaming: boolean;
@@ -67,6 +82,21 @@ export const ChatComposer = memo(function ChatComposer({
   suggestionDraft?: string;
   onConsumeSuggestionDraft?: () => void;
   keyboardVisible?: boolean;
+  onAddPendingFollowUp?: (text: string, attachments?: WireAttachment[]) => void | Promise<void>;
+  pendingFollowUps?: PendingFollowUp[];
+  editingFollowUpId?: string | null;
+  onBeginEditFollowUp?: (id: string) => void;
+  onCancelEditFollowUp?: () => void;
+  onCommitEditFollowUp?: (
+    id: string,
+    text: string,
+    attachments?: PendingFollowUp['attachments'],
+  ) => void;
+  onPendingFollowUpRemove?: (id: string) => void;
+  onPendingFollowUpMove?: (id: string, dir: 'up' | 'down') => void;
+  onPendingFollowUpSteer?: (id: string) => void;
+  steeringFollowUpId?: string | null;
+  onQueueFull?: () => void;
 }) {
   const m = useMessages();
   const cm = m.chat;
@@ -100,6 +130,45 @@ export const ChatComposer = memo(function ChatComposer({
   const abortStartRef = useRef(false);
   const cancelZoneRef = useRef(false);
   const grantInFlightRef = useRef(false);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const lastLoadedEditFollowUpIdRef = useRef<string | null>(null);
+
+  const runBusy = streaming || disabled;
+  const hasDraft = canSendComposerDraft(draft, att.attachments.length);
+
+  const clearEditFollowUpRef = useCallback(() => {
+    lastLoadedEditFollowUpIdRef.current = null;
+  }, []);
+
+  const resetEditor = useCallback(() => {
+    setDraft('');
+    setCursorPos(0);
+    setInputHeight(MIN_COMPOSER_INPUT_HEIGHT);
+  }, []);
+
+  const actions = useComposerActions({
+    chat: cm,
+    runBusy,
+    voiceRecording: hudOpen,
+    stopVoiceRecording: () => {
+      abortStartRef.current = true;
+    },
+    editingFollowUpId,
+    getTextValue: () => draftRef.current,
+    getAttachmentCount: () => att.attachments.length,
+    wireAttachmentsPayload: att.toWirePayload,
+    onSend: (text, attachments) => {
+      void onSend(text, attachments);
+    },
+    onAddPendingFollowUp,
+    onCommitEditFollowUp: onCommitEditFollowUp ?? (() => {}),
+    onQueueFull,
+    pendingFollowUpsCount: pendingFollowUps.length,
+    resetEditor,
+    clearAttachments: att.clearAttachments,
+    clearEditFollowUpRef,
+  });
 
   const isExpanded = useMemo(
     () =>
@@ -134,7 +203,36 @@ export const ChatComposer = memo(function ChatComposer({
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [suggestionDraft, onConsumeSuggestionDraft, updateDraft]);
 
-  const canSend = canSendComposerDraft(draft, att.attachments.length) && !streaming && !disabled;
+  useEffect(() => {
+    if (!editingFollowUpId) {
+      if (lastLoadedEditFollowUpIdRef.current) {
+        att.clearAttachments();
+        resetEditor();
+        lastLoadedEditFollowUpIdRef.current = null;
+      }
+      return;
+    }
+    if (editingFollowUpId === lastLoadedEditFollowUpIdRef.current) return;
+    const row = pendingFollowUps.find((r) => r.id === editingFollowUpId);
+    if (!row) {
+      onCancelEditFollowUp?.();
+      return;
+    }
+    lastLoadedEditFollowUpIdRef.current = editingFollowUpId;
+    att.setAttachments(wireFollowUpAttachmentsToComposer(row.attachments ?? []));
+    updateDraft(row.text);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, [
+    att,
+    editingFollowUpId,
+    onCancelEditFollowUp,
+    pendingFollowUps,
+    resetEditor,
+    updateDraft,
+  ]);
+
+  const canSendIdle = hasDraft && !disabled && !runBusy;
+  const canQueueWhileBusy = runBusy && hasDraft;
 
   const finalizeRecordingInteraction = useCallback(async () => {
     const rec = recordingRef.current;
@@ -263,15 +361,17 @@ export const ChatComposer = memo(function ChatComposer({
   );
 
   const handleSend = useCallback(() => {
-    if (!canSend) return;
+    if (canQueueWhileBusy) {
+      void actions.flushSteeringDraft();
+      return;
+    }
+    if (!canSendIdle || runBusy) return;
 
     const previousDraft = draft;
     const previousAttachments = att.attachments;
     const wire = att.toWirePayload();
 
-    setDraft('');
-    setCursorPos(0);
-    setInputHeight(MIN_COMPOSER_INPUT_HEIGHT);
+    resetEditor();
     att.clearAttachments();
     inputRef.current?.blur();
 
@@ -287,7 +387,7 @@ export const ChatComposer = memo(function ChatComposer({
         att.restoreAttachments(previousAttachments);
         requestAnimationFrame(() => inputRef.current?.focus());
       });
-  }, [att, canSend, draft, onSend, updateDraft]);
+  }, [actions, att, canQueueWhileBusy, canSendIdle, draft, onSend, resetEditor, runBusy, updateDraft]);
 
   const handleAbort = useCallback(() => {
     onAbort();
@@ -368,20 +468,38 @@ export const ChatComposer = memo(function ChatComposer({
     </Pressable>
   );
 
+  const composerPlaceholder = runBusy
+    ? editingFollowUpId
+      ? cm.inputPlaceholderSteeringEdit
+      : cm.inputPlaceholderSteering
+    : (placeholder ?? cm.inputPlaceholder);
+
   const renderSendOrStop = () => {
     if (streaming) {
       return (
-        <Pressable style={styles.sendCircle} onPress={handleAbort} hitSlop={8} accessibilityLabel={cm.stop}>
-          <Icon source="stop" size={20} color="#FFFFFF" />
-        </Pressable>
+        <View style={styles.streamingActions}>
+          {canQueueWhileBusy && isExpanded ? (
+            <Pressable
+              style={[styles.sendCircle, { backgroundColor: accent }]}
+              onPress={handleSend}
+              hitSlop={8}
+              accessibilityLabel={cm.send}
+            >
+              <Icon source="arrow-up" size={20} color="#FFFFFF" />
+            </Pressable>
+          ) : null}
+          <Pressable style={styles.sendCircle} onPress={handleAbort} hitSlop={8} accessibilityLabel={cm.stop}>
+            <Icon source="stop" size={20} color="#FFFFFF" />
+          </Pressable>
+        </View>
       );
     }
     if (!isExpanded) return null;
     return (
       <Pressable
-        style={[styles.sendCircle, { backgroundColor: canSend ? '#1C1C1E' : scheme === 'dark' ? '#48484A' : '#C7C7CC' }]}
+        style={[styles.sendCircle, { backgroundColor: canSendIdle ? '#1C1C1E' : scheme === 'dark' ? '#48484A' : '#C7C7CC' }]}
         onPress={handleSend}
-        disabled={!canSend}
+        disabled={!canSendIdle}
         hitSlop={8}
         accessibilityLabel={cm.send}
       >
@@ -391,7 +509,7 @@ export const ChatComposer = memo(function ChatComposer({
   };
 
   const textInputProps = {
-    placeholder: placeholder ?? 'Message',
+    placeholder: composerPlaceholder,
     placeholderTextColor: '#8E8E93',
     value: draft,
     onChangeText: updateDraft,
@@ -411,6 +529,18 @@ export const ChatComposer = memo(function ChatComposer({
 
   return (
     <View style={[styles.wrap, { backgroundColor: barBg, borderTopColor: border }]}>
+      {pendingFollowUps.length > 0 ? (
+        <ChatPendingFollowUpStack
+          items={pendingFollowUps}
+          disabled={disabled}
+          editingFollowUpId={editingFollowUpId}
+          onEditInComposer={(id) => onBeginEditFollowUp?.(id)}
+          onRemove={(id) => onPendingFollowUpRemove?.(id)}
+          onMove={(id, dir) => onPendingFollowUpMove?.(id, dir)}
+          onSteer={(id) => onPendingFollowUpSteer?.(id)}
+          steeringBusyId={steeringFollowUpId}
+        />
+      ) : null}
       {hudOpen ? (
         <View style={styles.voiceHud} pointerEvents="none">
           <VoiceMeterBars samples={meterSamples} accentColor={accent} trackColor={waveTrack} />
@@ -593,6 +723,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#1C1C1E',
+  },
+  streamingActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   input: {
     fontSize: 15,

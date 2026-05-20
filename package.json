@@ -13,6 +13,7 @@
     "web": "expo start --web",
     "lint": "eslint app src",
     "typecheck": "tsc --noEmit && pnpm -C packages/gateway-sse-client run typecheck",
+    "test": "vitest run",
     "test:gateway-sse-client": "vitest run packages/gateway-sse-client"
   },
   "dependencies": {
