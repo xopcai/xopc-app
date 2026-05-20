@@ -36,7 +36,9 @@ import {
   useAgentStreamResume,
   type AgentStreamResumeOptions,
 } from '../../src/features/chat/use-agent-stream-resume';
+import { GatewayOfflineBanner } from '../../src/features/gateway/GatewayOfflineBanner';
 import { subscribeGatewayEvent } from '../../src/features/gateway/gateway-event-bus';
+import { useGatewayHealth } from '../../src/features/gateway/use-gateway-health';
 import {
   readPendingAgentRunId,
   subscribePendingAgentRunChanged,
@@ -417,6 +419,7 @@ export default function ChatScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const configured = useGatewayConfigured();
+  const { gatewayOnline } = useGatewayHealth();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
   const keyboardVisible = useKeyboardVisible();
@@ -1227,6 +1230,7 @@ export default function ChatScreen() {
       </View>
 
       <View style={[styles.chatBody, { backgroundColor: canvasBg }]}>
+        <GatewayOfflineBanner visible={configured && !gatewayOnline} />
         {error ? (
           <Banner visible icon="alert" actions={[{ label: m.chat.dismiss, onPress: () => setError(null) }]}>
             {error}

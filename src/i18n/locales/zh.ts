@@ -59,6 +59,16 @@ export const zh: MessageBundle = {
     unauthorized: '未授权 (401)，请检查令牌。',
   },
 
+  gateway: {
+    offlineBanner: '你的电脑可能已离线，无法连接 gateway。',
+    testConnection: '测试连接',
+    testingConnection: '测试中…',
+    testOk: 'Gateway 可达。',
+    testFailed: '无法连接 gateway。',
+    connectionModeLan: '局域网',
+    connectionModeTunnel: '隧道',
+  },
+
   // ── 网关连接引导（首次弹层）──────────────────────────────
   gatewayConnect: {
     title: '网关',

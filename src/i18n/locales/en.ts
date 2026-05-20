@@ -57,6 +57,16 @@ export const en = {
     unauthorized: 'Unauthorized (401). Check your bearer token.',
   },
 
+  gateway: {
+    offlineBanner: 'Your computer may be offline — cannot reach the gateway.',
+    testConnection: 'Test connection',
+    testingConnection: 'Testing…',
+    testOk: 'Gateway is reachable.',
+    testFailed: 'Could not reach the gateway.',
+    connectionModeLan: 'LAN',
+    connectionModeTunnel: 'Tunnel',
+  },
+
   // ── Gateway connect landing (first-run modal) ────────────
   gatewayConnect: {
     title: 'Gateway',
