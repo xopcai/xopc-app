@@ -10,7 +10,38 @@ export type WorkspaceRequestOptions = {
 type ReadWorkspaceFileResult = {
   content: string;
   path: string;
+  absolutePath?: string;
   mtimeMs?: number;
+};
+
+export type FileReferenceScope =
+  | 'workspace'
+  | 'external'
+  | 'agent-profile'
+  | 'session-artifact'
+  | 'missing'
+  | 'invalid';
+
+export type FileReferenceCapability =
+  | 'preview'
+  | 'edit'
+  | 'openExternal'
+  | 'revealInFolder'
+  | 'copyPath'
+  | 'importToWorkspace';
+
+export type WorkspaceFileReference = {
+  fileRefId?: string;
+  inputPath: string;
+  displayName: string;
+  scope: FileReferenceScope;
+  exists: boolean;
+  isDirectory?: boolean;
+  absolutePath?: string;
+  workspaceRelativePath?: string;
+  capabilities: FileReferenceCapability[];
+  mtimeMs?: number;
+  errorCode?: string;
 };
 
 type ReadWorkspaceFileBase64Result = {
@@ -56,6 +87,23 @@ export async function resolveWorkspaceAbsoluteToRelative(
   } | null;
   const rel = data?.payload?.workspaceRelativePath;
   return data?.ok && typeof rel === 'string' && rel.trim() ? rel : null;
+}
+
+export async function resolveWorkspaceFileReference(
+  path: string,
+  options?: WorkspaceRequestOptions,
+): Promise<WorkspaceFileReference | null> {
+  const params = new URLSearchParams({ path });
+  appendWorkspaceScope(params, options);
+  const res = await apiFetch(`/api/workspace/editor/resolve-reference?${params.toString()}`);
+  if (!res.ok) {
+    return null;
+  }
+  const data = (await res.json().catch(() => null)) as {
+    ok?: boolean;
+    payload?: WorkspaceFileReference;
+  } | null;
+  return data?.ok && data.payload ? data.payload : null;
 }
 
 export async function readWorkspaceFile(

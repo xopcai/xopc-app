@@ -50,6 +50,28 @@ describe('collectAssistantWorkspaceOutputPaths', () => {
     expect(collectAssistantWorkspaceOutputPaths(content)).toEqual([]);
   });
 
+  it('keeps external absolute paths from writer tools for UI-level classification', () => {
+    const content: MessageContent[] = [
+      {
+        type: 'tool_use',
+        id: 'ext1',
+        name: 'write_file',
+        input: { path: '/Users/x/Downloads/report.pdf' },
+        status: 'done',
+        result: 'Created external artifact: /Users/x/Downloads/report.pdf',
+      },
+    ];
+    const paths = collectAssistantWorkspaceOutputPaths(content);
+    expect(paths).toEqual([
+      expect.objectContaining({
+        fileName: 'report.pdf',
+        absolutePath: '/Users/x/Downloads/report.pdf',
+        mimeType: 'application/pdf',
+      }),
+    ]);
+    expect(paths[0]).not.toHaveProperty('workspaceRelativePath');
+  });
+
   it('collects workspace paths from assistant text (bold filenames)', () => {
     const content: MessageContent[] = [
       {

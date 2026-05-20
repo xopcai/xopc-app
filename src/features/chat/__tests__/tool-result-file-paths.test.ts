@@ -87,4 +87,21 @@ describe('extractFilePathsFromToolResult', () => {
     ]);
     expect(paths[0]).not.toHaveProperty('workspaceRelativePath');
   });
+
+  it('extracts external absolute paths from JSON strings before checking workspace-relative shape', () => {
+    const abs = '/Users/micjoyce/Downloads/report.pdf';
+    const text = JSON.stringify({
+      content: [{ type: 'text', text: `Created external artifact: ${abs}` }],
+      details: {},
+    });
+    const paths = extractFilePathsFromToolResult(text);
+    expect(paths).toEqual([
+      expect.objectContaining({
+        fileName: 'report.pdf',
+        absolutePath: abs,
+        mimeType: 'application/pdf',
+      }),
+    ]);
+    expect(paths[0]).not.toHaveProperty('workspaceRelativePath');
+  });
 });

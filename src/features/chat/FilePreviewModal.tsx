@@ -1,3 +1,4 @@
+import * as Clipboard from 'expo-clipboard';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Image,
@@ -11,6 +12,7 @@ import {
 import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useMessages } from '../../i18n/messages';
 import { MarkdownView } from './MarkdownView';
 import { mimeTypeFromFileName } from './tool-result-file-paths';
 import { readWorkspaceFile, readWorkspaceFileBase64 } from './workspace-api';
@@ -24,6 +26,8 @@ export type PreviewableFile = {
   textContent?: string;
   /** Workspace-relative path to load on demand. */
   workspaceRelativePath?: string;
+  /** Gateway host absolute path, only for display/copy on mobile. */
+  absolutePath?: string;
   /** Optional extracted text fallback for documents. */
   extractedText?: string;
 };
@@ -42,6 +46,7 @@ type LoadedPreview = {
   mimeType: string;
   text: string | null;
   base64: string | null;
+  absolutePath?: string;
 };
 
 function extensionOf(name: string): string {
@@ -84,6 +89,7 @@ function dataUri(mimeType: string, base64: string): string {
 async function loadPreview(file: PreviewableFile, sessionKey?: string | null): Promise<LoadedPreview> {
   const name = file.name || fileName(file.workspaceRelativePath ?? 'preview');
   const mimeType = file.mimeType || mimeTypeFromFileName(name);
+  const absolutePath = file.absolutePath;
   const kind: PreviewKind = isImageFile(name, mimeType)
     ? 'image'
     : isMarkdownFile(name, mimeType)
@@ -94,28 +100,28 @@ async function loadPreview(file: PreviewableFile, sessionKey?: string | null): P
 
   if (kind === 'image') {
     const direct = normalizeBase64Payload(file.contentBase64);
-    if (direct) return { kind, mimeType, text: null, base64: direct };
+    if (direct) return { kind, mimeType, text: null, base64: direct, absolutePath };
     if (file.workspaceRelativePath) {
       const loaded = await readWorkspaceFileBase64(file.workspaceRelativePath, { sessionKey });
-      return { kind, mimeType, text: null, base64: loaded.contentBase64 };
+      return { kind, mimeType, text: null, base64: loaded.contentBase64, absolutePath: loaded.absolutePath ?? absolutePath };
     }
-    return { kind, mimeType, text: null, base64: null };
+    return { kind, mimeType, text: null, base64: null, absolutePath };
   }
 
   if (kind === 'markdown' || kind === 'text') {
     if (file.textContent != null) {
-      return { kind, mimeType, text: file.textContent, base64: null };
+      return { kind, mimeType, text: file.textContent, base64: null, absolutePath };
     }
     if (file.workspaceRelativePath) {
       const loaded = await readWorkspaceFile(file.workspaceRelativePath, { sessionKey });
-      return { kind, mimeType, text: loaded.content, base64: null };
+      return { kind, mimeType, text: loaded.content, base64: null, absolutePath: loaded.absolutePath ?? absolutePath };
     }
     const fromBase64 = normalizeBase64Payload(file.contentBase64);
     if (fromBase64) {
       try {
-        return { kind, mimeType, text: globalThis.atob(fromBase64), base64: null };
+        return { kind, mimeType, text: globalThis.atob(fromBase64), base64: null, absolutePath };
       } catch {
-        return { kind, mimeType, text: null, base64: null };
+        return { kind, mimeType, text: null, base64: null, absolutePath };
       }
     }
   }
@@ -125,12 +131,14 @@ async function loadPreview(file: PreviewableFile, sessionKey?: string | null): P
     mimeType,
     text: file.extractedText ?? null,
     base64: normalizeBase64Payload(file.contentBase64),
+    absolutePath,
   };
 }
 
 export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePreviewModalProps) {
   const insets = useSafeAreaInsets();
   const isDark = useColorScheme() === 'dark';
+  const m = useMessages();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<LoadedPreview | null>(null);
@@ -158,6 +166,13 @@ export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePre
     };
   }, [file, sessionKey, visible]);
 
+  const copyablePath = loaded?.absolutePath ?? file?.absolutePath;
+  const copyPath = () => {
+    if (copyablePath) {
+      void Clipboard.setStringAsync(copyablePath);
+    }
+  };
+
   const surface = isDark ? '#111827' : '#FFFFFF';
   const textColor = isDark ? '#F9FAFB' : '#111827';
   const muted = isDark ? '#9CA3AF' : '#6B7280';
@@ -170,6 +185,15 @@ export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePre
           <Text variant="titleMedium" numberOfLines={1} style={[styles.title, { color: textColor }]}> 
             {title}
           </Text>
+          {copyablePath ? (
+            <IconButton
+              icon="content-copy"
+              size={20}
+              iconColor={textColor}
+              onPress={copyPath}
+              accessibilityLabel={m.chat.fileReferenceCopyPath}
+            />
+          ) : null}
           <IconButton icon="close" size={22} iconColor={textColor} onPress={onClose} accessibilityLabel="关闭预览" />
         </View>
 
