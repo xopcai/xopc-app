@@ -435,7 +435,10 @@ export default function ChatScreen() {
   const localDefaultAgentId = usePreferencesStore((s) => s.defaultAgentId);
 
   const [creatingInitialSession, setCreatingInitialSession] = useState(false);
-  const autoSessionStartedRef = useRef(false);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const autoSessionAttemptedRef = useRef(false);
+  const autoSessionInFlightRef = useRef(false);
+  const prevGatewayOnlineRef = useRef(gatewayOnline);
 
   const modelName = useMemo(() => {
     const agents = agentsQuery.data?.items ?? [];
@@ -1015,33 +1018,60 @@ export default function ChatScreen() {
     };
   }, [clearStreamingFlushTimer]);
 
-  /** Create a fresh session when landing on home without `k`. */
-  useEffect(() => {
-    if (sessionKey || !configured || autoSessionStartedRef.current || creatingInitialSession) return;
+  const startAutoSession = useCallback(() => {
+    if (sessionKey || !configured || !gatewayOnline || autoSessionInFlightRef.current) return;
 
-    autoSessionStartedRef.current = true;
+    autoSessionInFlightRef.current = true;
     setCreatingInitialSession(true);
+    setBootstrapError(null);
     const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
     void createSession(agentId)
       .then((key) => {
         void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
         router.replace({ pathname: '/', params: { k: key } });
       })
-      .catch(() => {
-        autoSessionStartedRef.current = false;
+      .catch((e) => {
+        const message = e instanceof Error ? e.message : String(e);
+        setBootstrapError(message.trim() || m.sessions.bootstrapFailed);
       })
       .finally(() => {
+        autoSessionInFlightRef.current = false;
         setCreatingInitialSession(false);
       });
   }, [
     sessionKey,
     configured,
-    creatingInitialSession,
+    gatewayOnline,
     agentsQuery.data,
     localDefaultAgentId,
     router,
     queryClient,
+    m.sessions.bootstrapFailed,
   ]);
+
+  /** Create a fresh session when landing on home without `k` (once; no retry loop on failure). */
+  useEffect(() => {
+    if (sessionKey || !configured || !gatewayOnline) return;
+    if (autoSessionAttemptedRef.current || autoSessionInFlightRef.current) return;
+    autoSessionAttemptedRef.current = true;
+    startAutoSession();
+  }, [sessionKey, configured, gatewayOnline, startAutoSession]);
+
+  const retryBootstrapSession = useCallback(() => {
+    if (sessionKey || !configured || !gatewayOnline || autoSessionInFlightRef.current) return;
+    autoSessionAttemptedRef.current = true;
+    startAutoSession();
+  }, [sessionKey, configured, gatewayOnline, startAutoSession]);
+
+  /** Retry bootstrap once when gateway connectivity returns. */
+  useEffect(() => {
+    const wasOffline = !prevGatewayOnlineRef.current;
+    prevGatewayOnlineRef.current = gatewayOnline;
+    if (!wasOffline || !gatewayOnline || !bootstrapError || sessionKey || !configured) return;
+    autoSessionAttemptedRef.current = false;
+    setBootstrapError(null);
+    startAutoSession();
+  }, [gatewayOnline, bootstrapError, sessionKey, configured, startAutoSession]);
 
   // ── New chat ─────────────────────────────────────────────
   const handleNewChat = useCallback(() => {
@@ -1175,7 +1205,8 @@ export default function ChatScreen() {
     return sessionKey ? sessionKey.split(':')[0]?.trim().toLowerCase() ?? '' : '';
   }, [sessionKey]);
 
-  const bootstrappingSession = !sessionKey && configured && creatingInitialSession;
+  const bootstrappingSession =
+    !sessionKey && configured && gatewayOnline && creatingInitialSession && !bootstrapError;
 
   // ── Render: no session key → bootstrap or fallback ───────
   if (!sessionKey) {
@@ -1195,9 +1226,25 @@ export default function ChatScreen() {
             <IconButton icon="plus" size={22} onPress={handleNewChat} />
           </View>
         </View>
+        <GatewayOfflineBanner visible={configured && !gatewayOnline} />
         <View style={styles.emptyContainer}>
           {bootstrappingSession ? (
             <ActivityIndicator size="large" />
+          ) : bootstrapError ? (
+            <Banner
+              visible
+              icon="alert"
+              actions={[{ label: m.common.retry, onPress: retryBootstrapSession }]}
+            >
+              {bootstrapError}
+            </Banner>
+          ) : configured && !gatewayOnline ? (
+            <>
+              <Text variant="bodyLarge" style={{ opacity: 0.65 }}>{m.sessions.bootstrapOffline}</Text>
+              <Text variant="bodySmall" style={{ opacity: 0.45, marginTop: 8, textAlign: 'center' }}>
+                {m.sessions.emptyHint}
+              </Text>
+            </>
           ) : (
             <>
               <Text variant="bodyLarge" style={{ opacity: 0.65 }}>{m.sessions.empty}</Text>

@@ -55,6 +55,8 @@ export const en = {
     openSettings: 'Open Settings',
     connectGateway: 'Connect gateway',
     unauthorized: 'Unauthorized (401). Check your bearer token.',
+    bootstrapFailed: 'Could not create a chat session.',
+    bootstrapOffline: 'Cannot reach the gateway. Check your network and gateway URL, then try again.',
   },
 
   gateway: {
