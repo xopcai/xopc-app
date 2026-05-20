@@ -6,7 +6,19 @@ import {
   type MutableRefObject,
 } from 'react';
 
+import {
+  buildFollowUpAnchor,
+  buildFollowUpDisplays,
+  type FollowUpAnchorContext,
+  type FollowUpSuggestionDisplay,
+} from './follow-up-anchor';
+import { followUpChipBaseLabel } from './follow-up-chip-labels';
 import { agentSteer } from './follow-up-agent-api';
+import {
+  inferFollowUpCapabilities,
+  mergeSessionToolUses,
+} from './follow-up-capabilities';
+import type { FollowUpCapabilities, ToolUseSummary } from './follow-up-context';
 import {
   clearFollowUpQueueSnapshot,
   readFollowUpQueueSnapshot,
@@ -27,11 +39,18 @@ import {
   type PendingFollowUp,
 } from './pending-follow-up.types';
 import { newFollowUpRowId } from './follow-up-utils';
+import { useMessages } from '../../i18n/messages';
 import { usePreferencesStore } from '../../stores/preferences-store';
+
+const MAX_RECENT_PICKED_IDS = 8;
+
+function recordRecentPick(prev: FollowUpSuggestionId[], id: FollowUpSuggestionId): FollowUpSuggestionId[] {
+  return [...prev.filter((x) => x !== id), id].slice(-MAX_RECENT_PICKED_IDS);
+}
 
 export type ChatFollowUpApi = {
   pendingFollowUps: PendingFollowUp[];
-  followUpSuggestions: FollowUpSuggestionId[];
+  followUpSuggestions: FollowUpSuggestionDisplay[];
   steeringFollowUpId: string | null;
   editingFollowUpId: string | null;
   addPendingFollowUp: (content: string, attachments?: PendingFollowUp['attachments']) => void;
@@ -52,6 +71,7 @@ export type ChatFollowUpApi = {
     appended: Message;
     messages: Message[];
     clarifyActive?: boolean;
+    capabilities?: Partial<FollowUpCapabilities>;
   }) => void;
   clearFollowUpSuggestions: () => void;
   flushSteeringQueue: (forSessionKey?: string | null) => Promise<void>;
@@ -80,23 +100,38 @@ export function useChatFollowUp(options: {
     onQueueFull,
   } = options;
 
+  const m = useMessages();
+
   const [pendingFollowUps, setPendingFollowUps] = useState<PendingFollowUp[]>([]);
   const pendingFollowUpsRef = useRef<PendingFollowUp[]>([]);
   const [steeringFollowUpId, setSteeringFollowUpId] = useState<string | null>(null);
   const [editingFollowUpId, setEditingFollowUpId] = useState<string | null>(null);
   const editingFollowUpIdRef = useRef<string | null>(null);
-  const [followUpSuggestions, setFollowUpSuggestions] = useState<FollowUpSuggestionId[]>([]);
-  const followUpSuggestionsRef = useRef<FollowUpSuggestionId[]>([]);
+  const [followUpSuggestions, setFollowUpSuggestions] = useState<FollowUpSuggestionDisplay[]>([]);
+  const followUpSuggestionsRef = useRef<FollowUpSuggestionDisplay[]>([]);
+  const followUpAnchorRef = useRef<FollowUpAnchorContext | null>(null);
+  const recentPickedIdsRef = useRef<FollowUpSuggestionId[]>([]);
+  const sessionToolUsesRef = useRef<ToolUseSummary[]>([]);
   const followUpPrevSessionRef = useRef<string | null>(null);
+
+  const writeSnapshot = useCallback(
+    (sk: string) => {
+      writeFollowUpQueueSnapshot(sk, {
+        pending: structuredClone(pendingFollowUpsRef.current),
+        suggestions: followUpSuggestionsRef.current.map((d) => d.id),
+        suggestionDisplays: [...followUpSuggestionsRef.current],
+        editingId: editingFollowUpIdRef.current,
+        recentPickedIds: [...recentPickedIdsRef.current],
+        sessionToolUses: [...sessionToolUsesRef.current],
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     const prevLoaded = followUpPrevSessionRef.current;
     if (prevLoaded != null && prevLoaded !== sessionKey) {
-      writeFollowUpQueueSnapshot(prevLoaded, {
-        pending: structuredClone(pendingFollowUpsRef.current),
-        suggestions: [...followUpSuggestionsRef.current],
-        editingId: editingFollowUpIdRef.current,
-      });
+      writeSnapshot(prevLoaded);
     }
     followUpPrevSessionRef.current = sessionKey;
 
@@ -105,6 +140,9 @@ export function useChatFollowUp(options: {
       setPendingFollowUps([]);
       followUpSuggestionsRef.current = [];
       setFollowUpSuggestions([]);
+      followUpAnchorRef.current = null;
+      recentPickedIdsRef.current = [];
+      sessionToolUsesRef.current = [];
       setEditingFollowUpId(null);
       return;
     }
@@ -112,33 +150,34 @@ export function useChatFollowUp(options: {
     const snap = readFollowUpQueueSnapshot(sessionKey);
     if (snap) {
       const pending = structuredClone(snap.pending);
-      const suggestions = [...snap.suggestions];
+      const displays = [...snap.suggestionDisplays];
       pendingFollowUpsRef.current = pending;
       setPendingFollowUps(pending);
-      followUpSuggestionsRef.current = suggestions;
-      setFollowUpSuggestions(suggestions);
+      followUpSuggestionsRef.current = displays;
+      setFollowUpSuggestions(displays);
+      recentPickedIdsRef.current = [...snap.recentPickedIds];
+      sessionToolUsesRef.current = [...snap.sessionToolUses];
       setEditingFollowUpId(snap.editingId);
     } else {
       pendingFollowUpsRef.current = [];
       setPendingFollowUps([]);
       followUpSuggestionsRef.current = [];
       setFollowUpSuggestions([]);
+      followUpAnchorRef.current = null;
+      recentPickedIdsRef.current = [];
+      sessionToolUsesRef.current = [];
       setEditingFollowUpId(null);
     }
-  }, [sessionKey]);
+  }, [sessionKey, writeSnapshot]);
 
   useEffect(() => {
     if (!sessionKey) return;
     const t = setTimeout(() => {
       if (sessionKeyRef.current !== sessionKey) return;
-      writeFollowUpQueueSnapshot(sessionKey, {
-        pending: structuredClone(pendingFollowUpsRef.current),
-        suggestions: [...followUpSuggestionsRef.current],
-        editingId: editingFollowUpIdRef.current,
-      });
+      writeSnapshot(sessionKey);
     }, 280);
     return () => clearTimeout(t);
-  }, [sessionKey, pendingFollowUps, followUpSuggestions, editingFollowUpId, sessionKeyRef]);
+  }, [sessionKey, pendingFollowUps, followUpSuggestions, editingFollowUpId, sessionKeyRef, writeSnapshot]);
 
   const clearPendingFollowUps = useCallback(() => {
     const key = sessionKeyRef.current;
@@ -151,23 +190,65 @@ export function useChatFollowUp(options: {
   const clearFollowUpSuggestions = useCallback(() => {
     followUpSuggestionsRef.current = [];
     setFollowUpSuggestions([]);
+    followUpAnchorRef.current = null;
   }, []);
 
   const refreshFollowUpSuggestions = useCallback(
-    (input: { appended: Message; messages: Message[]; clarifyActive?: boolean }) => {
+    (input: {
+      appended: Message;
+      messages: Message[];
+      clarifyActive?: boolean;
+      capabilities?: Partial<FollowUpCapabilities>;
+    }) => {
       const locale = usePreferencesStore.getState().language as FollowUpPromptLocale;
-      const ctx = buildFollowUpContextPack({
+      const clarifyActive = input.clarifyActive ?? clarifyActiveRef.current;
+
+      const draftCtx = buildFollowUpContextPack({
         messages: input.messages,
         appendedAssistant: input.appended,
         locale,
         channel: 'webchat',
-        clarifyActive: input.clarifyActive ?? clarifyActiveRef.current,
+        clarifyActive,
       });
-      const next = ctx ? suggestFollowUps(ctx) : [];
-      followUpSuggestionsRef.current = next;
-      setFollowUpSuggestions(next);
+      const turnToolUses = draftCtx?.assistantToolUses ?? [];
+      sessionToolUsesRef.current = mergeSessionToolUses(
+        sessionToolUsesRef.current,
+        turnToolUses,
+      );
+
+      const capabilities = inferFollowUpCapabilities(
+        turnToolUses,
+        sessionToolUsesRef.current,
+        input.capabilities,
+      );
+
+      const ctx =
+        draftCtx != null
+          ? buildFollowUpContextPack({
+              messages: input.messages,
+              appendedAssistant: input.appended,
+              locale,
+              channel: 'webchat',
+              clarifyActive,
+              capabilities,
+            })
+          : null;
+
+      const anchor = ctx ? buildFollowUpAnchor(ctx) : null;
+      followUpAnchorRef.current = anchor;
+
+      const ids = ctx
+        ? suggestFollowUps(ctx, { recentPickedIds: recentPickedIdsRef.current })
+        : [];
+
+      const displays = buildFollowUpDisplays(ids, locale, anchor, (id) =>
+        followUpChipBaseLabel(m.chat, id),
+      );
+
+      followUpSuggestionsRef.current = displays;
+      setFollowUpSuggestions(displays);
     },
-    [clarifyActiveRef],
+    [clarifyActiveRef, m.chat],
   );
 
   const flushSteeringQueue = useCallback(async (forSessionKey?: string | null) => {
@@ -354,10 +435,15 @@ export function useChatFollowUp(options: {
   const pickFollowUpSuggestion = useCallback(
     (id: FollowUpSuggestionId) => {
       const locale = usePreferencesStore.getState().language as FollowUpPromptLocale;
-      const t = followUpPromptForSuggestionId(id, locale).trim();
+      const t = followUpPromptForSuggestionId(id, locale, followUpAnchorRef.current).trim();
       if (!t) return;
+
+      recentPickedIdsRef.current = recordRecentPick(recentPickedIdsRef.current, id);
+
       followUpSuggestionsRef.current = [];
       setFollowUpSuggestions([]);
+      followUpAnchorRef.current = null;
+
       if (runBusyRef.current) {
         if (pendingFollowUpsRef.current.length >= MAX_PENDING_FOLLOW_UPS) {
           onQueueFull?.();

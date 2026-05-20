@@ -22,6 +22,7 @@ import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 import { useKeyboardListPadding } from '../../hooks/use-keyboard-list-padding';
 import { MessageBubble } from './MessageBubble';
 import { ChatFollowUpChips } from './ChatFollowUpChips';
+import type { FollowUpSuggestionDisplay } from './follow-up-anchor';
 import type { FollowUpSuggestionId } from './follow-up-suggestions';
 import type { Message, ProgressState } from './messages.types';
 
@@ -67,7 +68,7 @@ export const MessageList = memo(function MessageList({
   onUserMessageRetry?: (text: string) => void;
   onDeleteRound?: (timestamp?: number) => void;
   onAssistantCopy?: (text: string) => void;
-  followUpSuggestions?: FollowUpSuggestionId[];
+  followUpSuggestions?: FollowUpSuggestionDisplay[];
   followUpDisabled?: boolean;
   onFollowUpPick?: (id: FollowUpSuggestionId) => void;
 }) {

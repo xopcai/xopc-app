@@ -21,6 +21,13 @@ const MIN_CHIP_SCORE = 22;
 /** `what_next` only appears alongside at least one domain chip above this bar. */
 const MIN_WHAT_NEXT_SCORE = 14;
 
+export type SuggestFollowUpsOptions = {
+  /** Recently picked chip ids (same session) — down-ranked to avoid repetition. */
+  recentPickedIds?: FollowUpSuggestionId[];
+};
+
+const RECENT_PICK_PENALTY = 0.28;
+
 const ALL_IDS = FOLLOW_UP_SUGGESTION_IDS;
 
 type UserIntent =
@@ -447,7 +454,11 @@ function hasStrongDomainSignal(d: DerivedSignals): boolean {
   );
 }
 
-function scoreIds(ctx: FollowUpContextPack, d: DerivedSignals): Map<FollowUpSuggestionId, number> {
+function scoreIds(
+  ctx: FollowUpContextPack,
+  d: DerivedSignals,
+  recentPickedIds: FollowUpSuggestionId[],
+): Map<FollowUpSuggestionId, number> {
   const combined = [ctx.userText, ctx.assistantText, ...ctx.recentUserTexts].filter(Boolean).join('\n');
   const m = new Map<FollowUpSuggestionId, number>();
   for (const id of ALL_IDS) {
@@ -645,6 +656,12 @@ function scoreIds(ctx: FollowUpContextPack, d: DerivedSignals): Map<FollowUpSugg
     }
   }
 
+  if (recentPickedIds.length > 0) {
+    for (const id of recentPickedIds) {
+      multiply(m, id, RECENT_PICK_PENALTY);
+    }
+  }
+
   return m;
 }
 
@@ -728,7 +745,10 @@ function selectFollowUps(
  * Score follow-up chips from a full context pack (phase-1 heuristic).
  * Returns an empty list when nothing is confidently relevant.
  */
-export function suggestFollowUps(ctx: FollowUpContextPack): FollowUpSuggestionId[] {
+export function suggestFollowUps(
+  ctx: FollowUpContextPack,
+  options?: SuggestFollowUpsOptions,
+): FollowUpSuggestionId[] {
   if (ctx.clarifyActive) return [];
 
   const combinedSlice = [ctx.userText, ctx.assistantText, ...ctx.recentUserTexts].filter(Boolean).join('\n');
@@ -740,7 +760,8 @@ export function suggestFollowUps(ctx: FollowUpContextPack): FollowUpSuggestionId
   const userContent = detectContentSignals(ctx.userText, ctx.userText.toLowerCase());
   const assistantContent = detectContentSignals(ctx.assistantText, ctx.assistantText.toLowerCase());
   const derived = detectDerived(ctx, userContent, assistantContent, intent);
-  const scores = scoreIds(ctx, derived);
+  const recentPickedIds = options?.recentPickedIds ?? [];
+  const scores = scoreIds(ctx, derived, recentPickedIds);
   return selectFollowUps(scores, derived, ctx);
 }
 

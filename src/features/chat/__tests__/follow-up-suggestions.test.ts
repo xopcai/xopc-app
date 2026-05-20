@@ -244,6 +244,29 @@ describe('Phase A conservative relevance', () => {
     expect(s).toContain('wf_compare_options');
     expect(s).not.toContain('research_deeper');
   });
+
+  it('down-ranks recently picked chip ids', () => {
+    const user: Message = {
+      role: 'user',
+      content: [{ type: 'text', text: 'export function foo() throws TypeError at runtime' }],
+      timestamp: 1,
+    };
+    const assistant: Message = {
+      role: 'assistant',
+      content: [
+        {
+          type: 'text',
+          text: 'TypeError: Cannot read properties of undefined\n    at foo (app.ts:12:3)\n```ts\nexport function foo() {}\n```',
+        },
+      ],
+      timestamp: 2,
+    };
+    const ctx = buildFollowUpContextPack({ messages: [user, assistant], appendedAssistant: assistant, locale: 'en' });
+    const first = suggestFollowUps(ctx!);
+    expect(first[0]).toBe('code_fix_error');
+    const second = suggestFollowUps(ctx!, { recentPickedIds: ['code_fix_error'] });
+    expect(second[0]).not.toBe('code_fix_error');
+  });
 });
 
 describe('followUpPromptForSuggestionId', () => {

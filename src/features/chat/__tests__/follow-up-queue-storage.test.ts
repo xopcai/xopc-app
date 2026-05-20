@@ -30,12 +30,24 @@ describe('follow-up-queue-storage', () => {
     writeFollowUpQueueSnapshot('session-a', {
       pending: [{ id: 'row-1', text: 'queued text', thinkingLevel: 'off' }],
       suggestions: ['what_next', 'code_explain'],
+      suggestionDisplays: [
+        { id: 'what_next', label: 'What next?' },
+        { id: 'code_explain', label: 'Explain code' },
+      ],
       editingId: 'row-1',
+      recentPickedIds: ['code_explain'],
+      sessionToolUses: [{ name: 'web_search', status: 'done' }],
     });
     expect(readFollowUpQueueSnapshot('session-a')).toEqual({
       pending: [{ id: 'row-1', text: 'queued text', thinkingLevel: 'off' }],
       suggestions: ['what_next', 'code_explain'],
+      suggestionDisplays: [
+        { id: 'what_next', label: 'What next?' },
+        { id: 'code_explain', label: 'Explain code' },
+      ],
       editingId: 'row-1',
+      recentPickedIds: ['code_explain'],
+      sessionToolUses: [{ name: 'web_search', status: 'done' }],
     });
   });
 
@@ -43,12 +55,18 @@ describe('follow-up-queue-storage', () => {
     writeFollowUpQueueSnapshot('a', {
       pending: [{ id: '1', text: 'a' }],
       suggestions: [],
+      suggestionDisplays: [],
       editingId: null,
+      recentPickedIds: [],
+      sessionToolUses: [],
     });
     writeFollowUpQueueSnapshot('b', {
       pending: [{ id: '2', text: 'b' }],
       suggestions: [],
+      suggestionDisplays: [],
       editingId: null,
+      recentPickedIds: [],
+      sessionToolUses: [],
     });
     expect(readFollowUpQueueSnapshot('a')?.pending[0]?.text).toBe('a');
     expect(readFollowUpQueueSnapshot('b')?.pending[0]?.text).toBe('b');
@@ -58,12 +76,18 @@ describe('follow-up-queue-storage', () => {
     writeFollowUpQueueSnapshot('x', {
       pending: [{ id: '1', text: 't' }],
       suggestions: [],
+      suggestionDisplays: [],
       editingId: null,
+      recentPickedIds: [],
+      sessionToolUses: [],
     });
     writeFollowUpQueueSnapshot('x', {
       pending: [],
       suggestions: [],
+      suggestionDisplays: [],
       editingId: null,
+      recentPickedIds: [],
+      sessionToolUses: [],
     });
     expect(readFollowUpQueueSnapshot('x')).toBeNull();
   });
@@ -72,7 +96,10 @@ describe('follow-up-queue-storage', () => {
     writeFollowUpQueueSnapshot('z', {
       pending: [{ id: '1', text: 't' }],
       suggestions: [],
+      suggestionDisplays: [],
       editingId: null,
+      recentPickedIds: [],
+      sessionToolUses: [],
     });
     clearFollowUpQueueSnapshot('z');
     expect(readFollowUpQueueSnapshot('z')).toBeNull();
@@ -95,7 +122,10 @@ describe('follow-up-queue-storage', () => {
         },
       ],
       suggestions: [],
+      suggestionDisplays: [],
       editingId: null,
+      recentPickedIds: [],
+      sessionToolUses: [],
     });
     expect(snap.pending[0]?.attachments?.[0]).not.toHaveProperty('data');
     expect(snap.pending[0]?.attachments?.[0]?.workspaceRelativePath).toBe('inbound/foo.png');
@@ -112,5 +142,6 @@ describe('follow-up-queue-storage', () => {
       }),
     );
     expect(readFollowUpQueueSnapshot('z')?.suggestions).toEqual(['what_next']);
+    expect(readFollowUpQueueSnapshot('z')?.recentPickedIds).toEqual([]);
   });
 });

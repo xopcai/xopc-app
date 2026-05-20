@@ -1,3 +1,4 @@
+import type { FollowUpAnchorContext } from './follow-up-anchor';
 import type { FollowUpSuggestionId } from './follow-up-suggestions.types';
 
 export type FollowUpPromptLocale = 'en' | 'zh';
@@ -129,10 +130,71 @@ const PROMPTS: Record<FollowUpSuggestionId, Record<FollowUpPromptLocale, string>
   },
 };
 
+function anchoredComparePrompt(locale: FollowUpPromptLocale, anchor: FollowUpAnchorContext): string {
+  const topic = anchor.topicHint.trim();
+  if (locale === 'zh') {
+    return topic
+      ? `请用表格对比与「${topic}」相关的各方案（优缺点），并结合我的问题给出推荐。`
+      : `请用表格对比你提到的各方案（优缺点），并结合我的问题「${anchor.userSnippet}」给出推荐。`;
+  }
+  return topic
+    ? `Compare the options related to "${topic}" in a table with pros, cons, and a recommendation for my question.`
+    : `Compare the options you mentioned in a table with pros, cons, and a recommendation for my question: ${anchor.userSnippet}`;
+}
+
+function appendAnchorBlock(
+  base: string,
+  locale: FollowUpPromptLocale,
+  anchor: FollowUpAnchorContext,
+): string {
+  const user = anchor.userSnippet.trim();
+  if (!user) return base;
+
+  const topic = anchor.topicHint.trim();
+  if (locale === 'zh') {
+    const lines = [base, '', '【我方问题】', user];
+    if (topic) lines.push(`【主题】${topic}`);
+    if (anchor.assistantSnippet.trim()) {
+      lines.push('', '【你刚才的回答（摘要）】', anchor.assistantSnippet.trim());
+    }
+    return lines.join('\n');
+  }
+
+  const lines = [base, '', '[My question]', user];
+  if (topic) lines.push(`[Topic] ${topic}`);
+  if (anchor.assistantSnippet.trim()) {
+    lines.push('', '[Your last answer (snippet)]', anchor.assistantSnippet.trim());
+  }
+  return lines.join('\n');
+}
+
 export function followUpPromptForSuggestionId(
   id: FollowUpSuggestionId,
   locale: FollowUpPromptLocale = 'en',
+  anchor?: FollowUpAnchorContext | null,
 ): string {
   const row = PROMPTS[id];
-  return row[locale] ?? row.en;
+  let base = row[locale] ?? row.en;
+
+  if (anchor?.topicHint?.trim() && id === 'research_deeper') {
+    base =
+      locale === 'zh'
+        ? `围绕「${anchor.topicHint.trim()}」做更深入的检索，聚焦我最关心的子问题。`
+        : `Dig deeper on "${anchor.topicHint.trim()}" with web search, focusing on what matters most to me.`;
+  }
+
+  if (anchor?.userSnippet?.trim()) {
+    if (id === 'wf_compare_options') {
+      base = anchoredComparePrompt(locale, anchor);
+    } else if (id === 'wf_verify_acceptance') {
+      base =
+        locale === 'zh'
+          ? `对照我最初的目标「${anchor.userSnippet.trim()}」检查完成情况，列出尚未满足的验收项。`
+          : `Check the work against my original goal (${anchor.userSnippet.trim()}) and list any gaps or acceptance criteria still open.`;
+    } else {
+      base = appendAnchorBlock(base, locale, anchor);
+    }
+  }
+
+  return base;
 }
