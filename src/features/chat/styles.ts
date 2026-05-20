@@ -4,7 +4,8 @@ import { StyleSheet } from 'react-native';
 export const chatColors = {
   userBubbleBg: '#DBEAFE', // blue-100
   userBubbleBgDark: 'rgba(59,130,246,0.18)',
-  assistantBg: 'transparent',
+  assistantBg: '#FFFFFF',
+  assistantBgDark: '#1C1C1E',
   thinkingBg: '#F3F4F6', // gray-100
   thinkingBgDark: 'rgba(255,255,255,0.06)',
   thinkingBorder: '#E5E7EB',
@@ -41,6 +42,8 @@ export const chatLayout = StyleSheet.create({
     paddingVertical: 10,
   },
   assistantBubble: {
-    paddingVertical: 4,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
 });

@@ -102,8 +102,8 @@ export const AssistantStepsBlock = memo(function AssistantStepsBlock({
       style={[
         styles.container,
         {
-          backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB',
-          borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB',
+          backgroundColor: isDark ? chatColors.assistantBgDark : chatColors.assistantBg,
+          borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB',
         },
       ]}
     >

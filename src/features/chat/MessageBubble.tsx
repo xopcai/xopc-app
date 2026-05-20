@@ -380,6 +380,11 @@ export const MessageBubble = memo(function MessageBubble({
                 style={[
                   chatLayout.assistantBubble,
                   showAssistantArtifacts ? styles.markdownAboveArtifacts : null,
+                  {
+                    backgroundColor: isDark
+                      ? chatColors.assistantBgDark
+                      : chatColors.assistantBg,
+                  },
                 ]}
               >
                 {renderAssistantContent(displayContent, isStreaming, sessionKey, showAssistantArtifacts)}
@@ -398,7 +403,7 @@ export const MessageBubble = memo(function MessageBubble({
               style={[
                 styles.artifactCard,
                 {
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB',
+                  backgroundColor: isDark ? chatColors.assistantBgDark : chatColors.assistantBg,
                   borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB',
                 },
               ]}
