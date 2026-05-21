@@ -169,8 +169,8 @@ export const zh: MessageBundle = {
   chat: {
     missingKey: '缺少会话密钥。',
     inputPlaceholder: '尽管问，带图也行',
-    inputPlaceholderSteering: '追问：发送会加入队列；点某行可在输入框编辑',
-    inputPlaceholderSteeringEdit: '正在编辑队列中的追问 — 发送保存修改',
+    inputPlaceholderSteering: '追问排队，点行编辑',
+    inputPlaceholderSteeringEdit: '编辑追问，发送保存',
     followUpSuggestionsAria: '建议的后续问题',
     followUpChipErrorHandling: '补充错误处理和边界情况。',
     followUpChipRefactorReadability: '重构以提高可读性。',

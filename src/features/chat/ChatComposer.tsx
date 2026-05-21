@@ -453,6 +453,8 @@ export const ChatComposer = memo(function ChatComposer({
     </Pressable>
   );
 
+  const showAttachButton = !streaming;
+
   const renderAttachButton = () => (
     <Pressable
       style={styles.toolBtn}
@@ -592,13 +594,13 @@ export const ChatComposer = memo(function ChatComposer({
                   {...textInputProps}
                 />
               </View>
-              {!isExpanded ? renderAttachButton() : null}
+              {!isExpanded ? (showAttachButton ? renderAttachButton() : renderSendOrStop()) : null}
             </View>
             {isExpanded ? (
               <View style={styles.toolRow}>
                 {renderVoiceToggle()}
                 <View style={styles.toolSpacer} />
-                {renderAttachButton()}
+                {showAttachButton ? renderAttachButton() : null}
                 {renderSendOrStop()}
               </View>
             ) : null}
@@ -616,7 +618,7 @@ export const ChatComposer = memo(function ChatComposer({
             <View style={styles.toolRow}>
               {renderVoiceToggle()}
               <View style={styles.toolSpacer} />
-              {renderAttachButton()}
+              {showAttachButton ? renderAttachButton() : null}
               {streaming ? renderSendOrStop() : null}
             </View>
           </>
@@ -631,7 +633,7 @@ export const ChatComposer = memo(function ChatComposer({
                 {cm.holdToSpeak}
               </Text>
             </View>
-            {renderAttachButton()}
+            {showAttachButton ? renderAttachButton() : renderSendOrStop()}
           </View>
         )}
       </View>

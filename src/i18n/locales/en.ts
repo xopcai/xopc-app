@@ -167,8 +167,8 @@ export const en = {
   chat: {
     missingKey: 'Missing session key.',
     inputPlaceholder: 'Ask anything…',
-    inputPlaceholderSteering: 'Follow-up: Enter queues a row; tap a row to edit here',
-    inputPlaceholderSteeringEdit: 'Editing queued follow-up — send saves changes',
+    inputPlaceholderSteering: 'Follow-up queues; tap row to edit',
+    inputPlaceholderSteeringEdit: 'Edit follow-up — send to save',
     followUpSuggestionsAria: 'Suggested follow-up questions',
     followUpChipErrorHandling: 'Add error handling and edge cases.',
     followUpChipRefactorReadability: 'Refactor for readability.',

@@ -133,6 +133,8 @@ const styles = StyleSheet.create({
   outer: {
     paddingHorizontal: 12,
     paddingTop: 10,
+    paddingBottom: 10,
+    zIndex: 1,
   },
   card: {
     borderWidth: StyleSheet.hairlineWidth,
