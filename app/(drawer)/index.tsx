@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AgentMessageSender, submitClarifyResponse, type MessagingCallbacks } from '../../src/api/agent-client';
 import { ChatComposer } from '../../src/features/chat/ChatComposer';
 import { ChatStreamNotice } from '../../src/features/chat/ChatStreamNotice';
-import { canSendComposerDraft, buildOptimisticUserMessage } from '../../src/features/chat/composer-send-helpers';
+import { canSendComposerDraft, buildOptimisticUserMessage, buildUserResendPayload, findPrecedingUserMessage } from '../../src/features/chat/composer-send-helpers';
 import type { WireAttachment } from '../../src/features/chat/composer.types';
 import { ClarifyPrompt, type ClarifyPromptState } from '../../src/features/chat/ClarifyPrompt';
 import { AgentPickerSheet } from '../../src/features/chat/AgentPickerSheet';
@@ -1236,16 +1236,20 @@ export default function ChatScreen() {
     setSnackMsg(m.chat.messageReadyToEdit);
   }, [m.chat.messageReadyToEdit]);
 
-  const handleUserMessageRetry = useCallback((text: string) => {
-    if (!text.trim() || !sessionKey || streaming || awaitingSessionRefresh) return;
-    void send(text);
-  }, [send, sessionKey, streaming, awaitingSessionRefresh]);
-
   const handleAssistantCopy = useCallback((text: string) => {
     void Clipboard.setStringAsync(text)
       .then(() => setSnackMsg(m.chat.messageCopied))
       .catch(() => setSnackMsg(m.chat.messageCopyFailed));
   }, [m.chat.messageCopied, m.chat.messageCopyFailed]);
+
+  const handleAssistantRegenerate = useCallback((assistantIndex: number) => {
+    if (!sessionKey || streaming || awaitingSessionRefresh || Boolean(clarifyPrompt)) return;
+    const userMessage = findPrecedingUserMessage(displayMessages, assistantIndex);
+    if (!userMessage) return;
+    const payload = buildUserResendPayload(userMessage);
+    if (!payload) return;
+    void send(payload.text, payload.attachments);
+  }, [awaitingSessionRefresh, clarifyPrompt, displayMessages, send, sessionKey, streaming]);
 
   const [agentSheetVisible, setAgentSheetVisible] = useState(false);
   const openAgentsPicker = useCallback(() => {
@@ -1369,8 +1373,8 @@ export default function ChatScreen() {
             onSuggestionSend={handleStarterSend}
             onUserMessageCopy={handleUserMessageCopy}
             onUserMessageEdit={handleUserMessageEdit}
-            onUserMessageRetry={handleUserMessageRetry}
             onAssistantCopy={handleAssistantCopy}
+            onAssistantRegenerate={handleAssistantRegenerate}
             followUpSuggestions={followUp.followUpSuggestions}
             followUpDisabled={
               sessionQuery.isLoading ||

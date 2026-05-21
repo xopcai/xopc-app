@@ -21,6 +21,7 @@ import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 
 import { useKeyboardListPadding } from '../../hooks/use-keyboard-list-padding';
 import { MessageBubble } from './MessageBubble';
+import { isLastAssistantMessage } from './composer-send-helpers';
 import { ChatFollowUpChips } from './ChatFollowUpChips';
 import type { FollowUpSuggestionDisplay } from './follow-up-anchor';
 import type { FollowUpSuggestionId } from './follow-up-suggestions';
@@ -46,8 +47,8 @@ export const MessageList = memo(function MessageList({
   onSuggestionSend,
   onUserMessageCopy,
   onUserMessageEdit,
-  onUserMessageRetry,
   onAssistantCopy,
+  onAssistantRegenerate,
   followUpSuggestions,
   followUpDisabled,
   onFollowUpPick,
@@ -64,8 +65,8 @@ export const MessageList = memo(function MessageList({
   onSuggestionSend?: (text: string) => void;
   onUserMessageCopy?: (text: string) => void;
   onUserMessageEdit?: (text: string) => void;
-  onUserMessageRetry?: (text: string) => void;
   onAssistantCopy?: (text: string) => void;
+  onAssistantRegenerate?: (messageIndex: number) => void;
   followUpSuggestions?: FollowUpSuggestionDisplay[];
   followUpDisabled?: boolean;
   onFollowUpPick?: (id: FollowUpSuggestionId) => void;
@@ -177,12 +178,16 @@ export const MessageList = memo(function MessageList({
           sessionKey={sessionKey}
           onUserMessageCopy={onUserMessageCopy}
           onUserMessageEdit={onUserMessageEdit}
-          onUserMessageRetry={onUserMessageRetry}
           onAssistantCopy={onAssistantCopy}
+          onAssistantRegenerate={
+            onAssistantRegenerate && isLastAssistantMessage(messages, index)
+              ? () => onAssistantRegenerate(index)
+              : undefined
+          }
         />
       );
     },
-    [messages.length, onUserMessageCopy, onUserMessageEdit, onUserMessageRetry, onAssistantCopy, streaming, progress, sessionKey],
+    [messages, onUserMessageCopy, onUserMessageEdit, onAssistantCopy, onAssistantRegenerate, streaming, progress, sessionKey],
   );
 
   const keyExtractor = useCallback(

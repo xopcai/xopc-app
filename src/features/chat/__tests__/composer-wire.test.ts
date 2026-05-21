@@ -10,7 +10,11 @@ import {
 import {
   buildOptimisticUserMessage,
   buildUserMessageContent,
+  buildUserResendPayload,
   canSendComposerDraft,
+  extractUserMessageText,
+  findPrecedingUserMessage,
+  isLastAssistantMessage,
   wireAttachmentsToMessageAttachments,
 } from '../composer-send-helpers';
 
@@ -97,5 +101,34 @@ describe('buildUserMessageContent', () => {
     ]);
     expect(blocks).toHaveLength(1);
     expect(blocks[0].type).toBe('text');
+  });
+});
+
+describe('assistant regenerate helpers', () => {
+  const messages = [
+    { role: 'user' as const, content: [{ type: 'text' as const, text: 'hello' }] },
+    { role: 'assistant' as const, content: [{ type: 'text' as const, text: 'hi there' }] },
+    { role: 'user' as const, content: [{ type: 'text' as const, text: 'again' }] },
+    { role: 'assistant' as const, content: [{ type: 'text' as const, text: 'sure' }] },
+  ];
+
+  it('extractUserMessageText strips envelope timestamps', () => {
+    expect(
+      extractUserMessageText([{ type: 'text', text: '[2026-05-22 10:00 UTC] hello' }]),
+    ).toBe('hello');
+  });
+
+  it('findPrecedingUserMessage walks backward to the nearest user turn', () => {
+    expect(findPrecedingUserMessage(messages, 3)?.content[0]).toEqual({ type: 'text', text: 'again' });
+    expect(findPrecedingUserMessage(messages, 1)?.content[0]).toEqual({ type: 'text', text: 'hello' });
+  });
+
+  it('buildUserResendPayload returns text for user messages', () => {
+    expect(buildUserResendPayload(messages[2])).toEqual({ text: 'again', attachments: undefined });
+  });
+
+  it('isLastAssistantMessage only matches the final assistant row', () => {
+    expect(isLastAssistantMessage(messages, 1)).toBe(false);
+    expect(isLastAssistantMessage(messages, 3)).toBe(true);
   });
 });

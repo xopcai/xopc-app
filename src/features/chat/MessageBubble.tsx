@@ -22,6 +22,7 @@ import { extractMarkdownCodeBlocks } from './extract-markdown-code';
 import { MessageActionsBar, type MessageAction } from './MessageActionsBar';
 import type { ImageContent, Message, MessageContent, ProgressState, ThinkingContent, ToolUseContent } from './messages.types';
 import { useMessages } from '../../i18n/messages';
+import { extractUserMessageText } from './composer-send-helpers';
 import { chatColors, chatLayout } from './styles';
 
 function formatTime(ts: number): string {
@@ -29,15 +30,6 @@ function formatTime(ts: number): string {
   const h = d.getHours().toString().padStart(2, '0');
   const m = d.getMinutes().toString().padStart(2, '0');
   return `${h}:${m}`;
-}
-
-/**
- * Strip the envelope timestamp prefix that xopc prepends for model context.
- * Format: `[YYYY-MM-DD HH:MM ...] ` — kept for the model but hidden in UI.
- */
-const ENVELOPE_TIMESTAMP_RE = /^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}[^\]]*\]\s*/;
-function stripEnvelopeTimestampPrefix(text: string): string {
-  return text.replace(ENVELOPE_TIMESTAMP_RE, '');
 }
 
 /**
@@ -88,11 +80,7 @@ const garbledStyles = StyleSheet.create({
 
 /** Extract all text blocks into a single string for user display. */
 function userContentText(content: MessageContent[]): string {
-  return content
-    .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-    .map((b) => stripEnvelopeTimestampPrefix(b.text))
-    .join('\n')
-    .trim();
+  return extractUserMessageText(content);
 }
 
 function userAudioBlocks(content: MessageContent[]): Extract<MessageContent, { type: 'audio' }>[] {
@@ -198,8 +186,8 @@ export const MessageBubble = memo(function MessageBubble({
   sessionKey,
   onUserMessageCopy,
   onUserMessageEdit,
-  onUserMessageRetry,
   onAssistantCopy,
+  onAssistantRegenerate,
 }: {
   message: Message;
   isStreaming?: boolean;
@@ -207,8 +195,8 @@ export const MessageBubble = memo(function MessageBubble({
   sessionKey?: string;
   onUserMessageCopy?: (text: string) => void;
   onUserMessageEdit?: (text: string) => void;
-  onUserMessageRetry?: (text: string) => void;
   onAssistantCopy?: (text: string) => void;
+  onAssistantRegenerate?: () => void;
 }) {
   const m = useMessages();
   const isDark = useColorScheme() === 'dark';
@@ -278,14 +266,6 @@ export const MessageBubble = memo(function MessageBubble({
   const userActions = useMemo((): MessageAction[] => {
     if (!isUser || !userText.trim()) return [];
     const actions: MessageAction[] = [];
-    if (onUserMessageRetry) {
-      actions.push({
-        icon: 'refresh',
-        label: m.chat.messageRetry,
-        onPress: () => onUserMessageRetry(userText),
-        accessibilityLabel: m.chat.messageRetry,
-      });
-    }
     if (onUserMessageEdit) {
       actions.push({
         icon: 'pencil-outline',
@@ -301,10 +281,11 @@ export const MessageBubble = memo(function MessageBubble({
       });
     }
     return actions;
-  }, [isUser, userText, onUserMessageRetry, onUserMessageEdit, onUserMessageCopy, m.chat.messageRetry, m.chat.messageEdit, m.chat.messageCopy]);
+  }, [isUser, userText, onUserMessageEdit, onUserMessageCopy, m.chat.messageEdit, m.chat.messageCopy]);
 
   const assistantActions = useMemo((): MessageAction[] => {
-    if (!isAssistant || isStreaming || !assistantPlainText) return [];
+    if (!isAssistant || isStreaming) return [];
+    if (!assistantPlainText && !onAssistantRegenerate) return [];
     const actions: MessageAction[] = [];
     if (onAssistantCopy) {
       actions.push({
@@ -320,8 +301,25 @@ export const MessageBubble = memo(function MessageBubble({
         accessibilityLabel: m.chat.messageCopyCode,
       });
     }
+    if (onAssistantRegenerate) {
+      actions.push({
+        icon: 'refresh',
+        onPress: onAssistantRegenerate,
+        accessibilityLabel: m.chat.messageRegenerate,
+      });
+    }
     return actions;
-  }, [isAssistant, isStreaming, assistantPlainText, assistantCodeText, onAssistantCopy, m.chat.messageCopy, m.chat.messageCopyCode]);
+  }, [
+    isAssistant,
+    isStreaming,
+    assistantPlainText,
+    assistantCodeText,
+    onAssistantCopy,
+    onAssistantRegenerate,
+    m.chat.messageCopy,
+    m.chat.messageCopyCode,
+    m.chat.messageRegenerate,
+  ]);
 
   return (
     <View style={chatLayout.messageBubbleRow}>

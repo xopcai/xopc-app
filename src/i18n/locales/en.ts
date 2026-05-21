@@ -288,6 +288,7 @@ export const en = {
     messageCopyCode: 'Copy code',
     messageEdit: 'Edit',
     messageRetry: 'Retry',
+    messageRegenerate: 'Regenerate',
     messageDeleteRound: 'Delete round',
     messageCopied: 'Copied',
     messageCopyFailed: 'Copy failed',

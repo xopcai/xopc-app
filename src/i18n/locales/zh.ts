@@ -288,6 +288,7 @@ export const zh: MessageBundle = {
     messageCopyCode: '复制代码',
     messageEdit: '编辑',
     messageRetry: '重试',
+    messageRegenerate: '重新生成',
     messageDeleteRound: '删除本轮',
     messageCopied: '已复制',
     messageCopyFailed: '复制失败',

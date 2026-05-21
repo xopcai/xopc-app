@@ -1,5 +1,55 @@
 import type { WireAttachment } from './composer.types';
-import type { Message, MessageAttachment, MessageContent } from './messages.types';
+import type { Message, MessageAttachment, MessageContent, TextContent } from './messages.types';
+
+const ENVELOPE_TIMESTAMP_RE = /^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}[^\]]*\]\s*/;
+
+export function extractUserMessageText(content: MessageContent[]): string {
+  return content
+    .filter((b): b is TextContent => b.type === 'text')
+    .map((b) => b.text.replace(ENVELOPE_TIMESTAMP_RE, ''))
+    .join('\n')
+    .trim();
+}
+
+export function messageAttachmentsToWire(attachments?: MessageAttachment[]): WireAttachment[] | undefined {
+  if (!attachments?.length) return undefined;
+  const wire = attachments
+    .map((a) => ({
+      type: a.type ?? 'document',
+      mimeType: a.mimeType,
+      data: a.data ?? a.content,
+      name: a.name,
+      size: a.size,
+      workspaceRelativePath: a.workspaceRelativePath,
+      durationSeconds: a.durationSeconds,
+    }))
+    .filter((a) => Boolean(a.data || a.workspaceRelativePath));
+  return wire.length ? wire : undefined;
+}
+
+export function findPrecedingUserMessage(messages: Message[], fromIndex: number): Message | null {
+  for (let i = fromIndex - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role === 'user' || msg.role === 'user-with-attachments') return msg;
+  }
+  return null;
+}
+
+export function buildUserResendPayload(message: Message): { text: string; attachments?: WireAttachment[] } | null {
+  const hasAudio = message.content.some((b) => b.type === 'audio');
+  if (hasAudio) return null;
+  const text = extractUserMessageText(message.content);
+  const attachments = messageAttachmentsToWire(message.attachments);
+  if (!text && !attachments?.length) return null;
+  return { text, attachments };
+}
+
+export function isLastAssistantMessage(messages: Message[], index: number): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'assistant') return i === index;
+  }
+  return false;
+}
 
 export function wireAttachmentsToMessageAttachments(wire: WireAttachment[]): MessageAttachment[] {
   return wire.map((w, index) => ({
