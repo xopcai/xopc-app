@@ -126,10 +126,19 @@ export async function resolvePreferredBaseUrl(
   lanUrl: string | undefined,
   options?: ResolvePreferredBaseUrlOptions,
 ): Promise<string> {
-  const normalizedTunnel = tunnelUrl.replace(/\/+$/, '');
-  if (!lanUrl?.trim()) return normalizedTunnel;
+  const tunnel = tunnelUrl.trim()
+    ? ensureGatewayUrlScheme(tunnelUrl.trim().replace(/\/+$/, ''))
+    : '';
+  const lan = lanUrl?.trim()
+    ? ensureGatewayUrlScheme(lanUrl.trim().replace(/\/+$/, ''))
+    : '';
 
-  const lanReachable = await probeGatewayHealth(lanUrl, options);
-  if (lanReachable) return ensureGatewayUrlScheme(lanUrl).replace(/\/+$/, '');
-  return normalizedTunnel;
+  if (!tunnel && !lan) return '';
+  if (!tunnel) return lan;
+
+  if (!lan) return tunnel;
+
+  const lanReachable = await probeGatewayHealth(lanUrl!, options);
+  if (lanReachable) return lan;
+  return tunnel;
 }

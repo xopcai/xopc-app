@@ -38,7 +38,16 @@ pnpm exec expo run:ios
 
 ## HTTP (cleartext) on Android
 
-Local gateways often use `http://`. This app sets `android.usesCleartextTraffic: true` in `app.json` for development convenience.
+Local gateways often use `http://` on LAN IPs. **Expo Go** allows cleartext by default, but **standalone Android builds** block HTTP unless the native manifest opts in.
+
+This app uses the `expo-build-properties` plugin with `android.usesCleartextTraffic: true`. After changing this, run a fresh native build:
+
+```bash
+pnpm exec expo prebuild --clean
+pnpm exec expo run:android
+```
+
+If LAN worked in Expo Go but fails in a release/dev-client APK, rebuild the Android app — the setting is applied at prebuild time, not at runtime.
 
 ## Configure
 

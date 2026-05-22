@@ -7,6 +7,8 @@ import {
   buildGatewayProfile,
   gatewayProfileNameFromUrl,
   normalizeGatewayBaseUrl,
+  preferredActiveBaseUrlFromFlat,
+  resolveEffectiveGatewayBaseUrl,
   type GatewayProfile,
   type GatewayProfileInput,
 } from './gateway-types';
@@ -62,7 +64,7 @@ function flatFieldsFromProfile(profile: GatewayProfile | null): Pick<
     lanUrl,
     token: profile.token.trim(),
     // Prefer LAN route until health probe confirms otherwise.
-    activeBaseUrl: lanUrl ?? baseUrl,
+    activeBaseUrl: preferredActiveBaseUrlFromFlat({ baseUrl, lanUrl }),
     unauthorized: false,
   };
 }
@@ -131,20 +133,26 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
 
   setBaseUrl: (v) => {
     const baseUrl = normalizeBaseUrl(v);
-    const { profiles, activeGatewayId, lanUrl, token } = get();
+    const { profiles, activeGatewayId, lanUrl, token, activeBaseUrl } = get();
     set({
       baseUrl,
       unauthorized: false,
+      activeBaseUrl: activeGatewayId
+        ? preferredActiveBaseUrlFromFlat({ baseUrl, lanUrl })
+        : activeBaseUrl,
       profiles: syncActiveProfileFromFlat(profiles, activeGatewayId, baseUrl, lanUrl, token),
     });
   },
 
   setLanUrl: (v) => {
     const lanUrl = v ? normalizeBaseUrl(v) : null;
-    const { profiles, activeGatewayId, baseUrl, token } = get();
+    const { profiles, activeGatewayId, baseUrl, token, activeBaseUrl } = get();
     set({
       lanUrl,
       unauthorized: false,
+      activeBaseUrl: activeGatewayId
+        ? preferredActiveBaseUrlFromFlat({ baseUrl, lanUrl })
+        : activeBaseUrl,
       profiles: syncActiveProfileFromFlat(profiles, activeGatewayId, baseUrl, lanUrl, token),
     });
   },
@@ -161,13 +169,18 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
 
   refreshActiveBaseUrl: async () => {
     const { baseUrl, lanUrl, token } = get();
-    if (!baseUrl) {
+    const tunnel = normalizeBaseUrl(baseUrl);
+    const lan = lanUrl ? normalizeBaseUrl(lanUrl) : '';
+
+    if (!tunnel && !lan) {
       set({ activeBaseUrl: '' });
       return '';
     }
+
     const active = await resolvePreferredBaseUrl(baseUrl, lanUrl ?? undefined, { token });
-    set({ activeBaseUrl: active });
-    return active;
+    const resolved = normalizeBaseUrl(active) || lan || tunnel;
+    set({ activeBaseUrl: resolved });
+    return resolved;
   },
 
   hydrateFromStorage: () => {
@@ -234,7 +247,7 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
   },
 
   apiUrl: (path: string) => {
-    const base = normalizeBaseUrl(get().activeBaseUrl || get().baseUrl);
+    const base = resolveEffectiveGatewayBaseUrl(get());
     if (!base) {
       throw new Error('Gateway base URL is not configured');
     }

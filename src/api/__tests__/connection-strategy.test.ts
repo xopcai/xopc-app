@@ -104,6 +104,14 @@ describe('resolvePreferredBaseUrl', () => {
     );
   });
 
+  it('returns LAN when tunnel URL is empty but LAN is configured', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true })));
+
+    await expect(
+      resolvePreferredBaseUrl('', 'http://192.168.1.44:18790', { token: 'secret' }),
+    ).resolves.toBe('http://192.168.1.44:18790');
+  });
+
   it('prefers LAN when health check succeeds', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true }));
     vi.stubGlobal('fetch', fetchMock);

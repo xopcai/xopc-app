@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 
 import { useGatewayConfigured } from '../../query/sessions';
 import { useGatewayStore } from '../../stores/gateway-store';
+import { resolveEffectiveGatewayBaseUrl } from '../../stores/gateway-types';
 
 import { GatewaySseConnection } from './gateway-sse-connection';
 
@@ -13,11 +14,14 @@ let sharedConnection: GatewaySseConnection | null = null;
 export function useGatewaySse(): void {
   const configured = useGatewayConfigured();
   const token = useGatewayStore((s) => s.token);
-  const activeBaseUrl = useGatewayStore((s) => s.activeBaseUrl);
-  const baseUrl = useGatewayStore((s) => s.baseUrl);
   const connRef = useRef<GatewaySseConnection | null>(null);
-
-  const gatewayEndpoint = activeBaseUrl || baseUrl;
+  const gatewayEndpoint = useGatewayStore((s) =>
+    resolveEffectiveGatewayBaseUrl({
+      activeBaseUrl: s.activeBaseUrl,
+      baseUrl: s.baseUrl,
+      lanUrl: s.lanUrl,
+    }),
+  );
 
   useEffect(() => {
     if (!configured || !token || !gatewayEndpoint) {

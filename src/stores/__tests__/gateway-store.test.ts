@@ -147,4 +147,20 @@ describe('useGatewayStore', () => {
     expect(st.baseUrl).toBe('https://persist.example.com');
     expect(st.token).toBe('save-me');
   });
+
+  it('apiUrl falls back to lanUrl when activeBaseUrl was cleared', () => {
+    useGatewayStore.setState({
+      profiles: [],
+      activeGatewayId: 'gw1',
+      baseUrl: '',
+      lanUrl: 'http://192.168.1.44:18790',
+      activeBaseUrl: '',
+      token: 'tok',
+      unauthorized: false,
+    });
+
+    expect(useGatewayStore.getState().apiUrl('/api/agent')).toBe(
+      'http://192.168.1.44:18790/api/agent',
+    );
+  });
 });

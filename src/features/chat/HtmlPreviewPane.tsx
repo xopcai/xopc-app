@@ -4,6 +4,7 @@ import { ActivityIndicator, Text } from 'react-native-paper';
 import { WebView, type WebViewNavigation } from 'react-native-webview';
 
 import { useGatewayStore } from '../../stores/gateway-store';
+import { resolveEffectiveGatewayBaseUrl } from '../../stores/gateway-types';
 import {
   buildHtmlWebViewSource,
   shouldAllowHtmlWebViewNavigation,
@@ -30,7 +31,13 @@ export function HtmlPreviewPane({
   const isDark = useColorScheme() === 'dark';
   const apiUrl = useGatewayStore((s) => s.apiUrl);
   const token = useGatewayStore((s) => s.token);
-  const gatewayBaseUrl = useGatewayStore((s) => s.activeBaseUrl || s.baseUrl);
+  const gatewayBaseUrl = useGatewayStore((s) =>
+    resolveEffectiveGatewayBaseUrl({
+      activeBaseUrl: s.activeBaseUrl,
+      baseUrl: s.baseUrl,
+      lanUrl: s.lanUrl,
+    }),
+  );
   const [loading, setLoading] = useState(true);
   const [webError, setWebError] = useState<string | null>(null);
 

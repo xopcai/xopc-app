@@ -82,7 +82,7 @@ export const zh: MessageBundle = {
     addressReachable: '可达',
     addressUnreachable: '不可达',
     addressUnreachableReasonTimeout: '请求 /health 超时（5 秒）。',
-    addressUnreachableReasonNetwork: '网络请求失败（请检查 Wi‑Fi 与本地网络权限）。',
+    addressUnreachableReasonNetwork: '网络请求失败（请检查 Wi‑Fi；Android 安装包需重新构建以允许 HTTP 明文访问）。',
     addressUnreachableReasonNetworkDetail: '网络错误：{{detail}}',
     addressUnreachableReasonInvalidUrl: '网关地址无效。',
     addressUnreachableReasonHttp: '服务器返回 HTTP {{status}}。',

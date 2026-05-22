@@ -72,3 +72,25 @@ export function buildGatewayProfile(input: GatewayProfileInput, id?: string): Ga
     updatedAt: Date.now(),
   };
 }
+
+/** Best URL for API calls: probed route, tunnel, then LAN fallback. */
+export function resolveEffectiveGatewayBaseUrl(input: {
+  activeBaseUrl: string;
+  baseUrl: string;
+  lanUrl: string | null;
+}): string {
+  for (const raw of [input.activeBaseUrl, input.baseUrl, input.lanUrl ?? '']) {
+    const normalized = normalizeGatewayBaseUrl(raw);
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+export function preferredActiveBaseUrlFromFlat(input: {
+  baseUrl: string;
+  lanUrl: string | null;
+}): string {
+  const base = normalizeGatewayBaseUrl(input.baseUrl);
+  const lan = input.lanUrl ? normalizeGatewayBaseUrl(input.lanUrl) : '';
+  return lan || base;
+}

@@ -23,11 +23,11 @@
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
-      }
+      },
+      "bundleIdentifier": "com.anonymous.xopcapp"
     },
     "android": {
       "softwareKeyboardLayoutMode": "resize",
-      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -46,6 +46,14 @@
     },
     "plugins": [
       "./plugins/with-android-maven-mirrors",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
       "expo-router",
       [
         "expo-av",

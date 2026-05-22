@@ -80,7 +80,7 @@ export const en = {
     addressReachable: 'Reachable',
     addressUnreachable: 'Unreachable',
     addressUnreachableReasonTimeout: 'Timed out after 5s while requesting /health.',
-    addressUnreachableReasonNetwork: 'Network request failed (check Wi‑Fi and local network permission).',
+    addressUnreachableReasonNetwork: 'Network request failed (check Wi‑Fi; on Android release builds, rebuild after enabling HTTP/cleartext).',
     addressUnreachableReasonNetworkDetail: 'Network error: {{detail}}',
     addressUnreachableReasonInvalidUrl: 'Invalid gateway URL.',
     addressUnreachableReasonHttp: 'Server responded with HTTP {{status}}.',
