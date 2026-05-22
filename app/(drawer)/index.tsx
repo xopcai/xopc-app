@@ -422,7 +422,11 @@ function parseSessionMessages(raw: Array<Record<string, unknown>>): Message[] {
 
 export default function ChatScreen() {
   const { k: rawKey } = useLocalSearchParams<{ k?: string }>();
-  const sessionKey = typeof rawKey === 'string' ? rawKey : Array.isArray(rawKey) ? rawKey[0] : '';
+  const urlSessionKey =
+    typeof rawKey === 'string' ? rawKey : Array.isArray(rawKey) ? rawKey[0] : '';
+  /** Fallback until expo-router applies `k` after auto-bootstrap createSession. */
+  const [pendingBootstrapKey, setPendingBootstrapKey] = useState('');
+  const sessionKey = urlSessionKey || pendingBootstrapKey;
   const navigation = useNavigation();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -450,6 +454,10 @@ export default function ChatScreen() {
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const autoSessionAttemptedRef = useRef(false);
   const autoSessionInFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (urlSessionKey) setPendingBootstrapKey('');
+  }, [urlSessionKey]);
   const prevGatewayOnlineRef = useRef(gatewayOnline);
   const prevGatewayOnlineForStreamRef = useRef(gatewayOnline);
 
@@ -1090,27 +1098,32 @@ export default function ChatScreen() {
   }, [clearStreamingFlushTimer]);
 
   const startAutoSession = useCallback(() => {
-    if (sessionKey || !configured || !gatewayOnline || autoSessionInFlightRef.current) return;
+    if (urlSessionKey || !configured || !gatewayOnline || autoSessionInFlightRef.current) return;
 
+    autoSessionAttemptedRef.current = true;
     autoSessionInFlightRef.current = true;
     setCreatingInitialSession(true);
     setBootstrapError(null);
     const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
-    void createSession(agentId)
-      .then((key) => {
+    void (async () => {
+      try {
+        // Probe LAN vs FRP before the first session API call (cold start uses optimistic LAN).
+        await useGatewayStore.getState().refreshActiveBaseUrl();
+        const key = await createSession(agentId);
+        activeSessionKeyRef.current = key;
+        setPendingBootstrapKey(key);
         void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
         router.replace({ pathname: '/', params: { k: key } });
-      })
-      .catch((e) => {
+      } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         setBootstrapError(message.trim() || m.sessions.bootstrapFailed);
-      })
-      .finally(() => {
+      } finally {
         autoSessionInFlightRef.current = false;
         setCreatingInitialSession(false);
-      });
+      }
+    })();
   }, [
-    sessionKey,
+    urlSessionKey,
     configured,
     gatewayOnline,
     agentsQuery.data,
@@ -1122,27 +1135,26 @@ export default function ChatScreen() {
 
   /** Create a fresh session when landing on home without `k` (once; no retry loop on failure). */
   useEffect(() => {
-    if (sessionKey || !configured || !gatewayOnline) return;
+    if (urlSessionKey || !configured || !gatewayOnline) return;
     if (autoSessionAttemptedRef.current || autoSessionInFlightRef.current) return;
-    autoSessionAttemptedRef.current = true;
     startAutoSession();
-  }, [sessionKey, configured, gatewayOnline, startAutoSession]);
+  }, [urlSessionKey, configured, gatewayOnline, startAutoSession]);
 
   const retryBootstrapSession = useCallback(() => {
-    if (sessionKey || !configured || !gatewayOnline || autoSessionInFlightRef.current) return;
-    autoSessionAttemptedRef.current = true;
+    if (urlSessionKey || !configured || !gatewayOnline || autoSessionInFlightRef.current) return;
+    autoSessionAttemptedRef.current = false;
     startAutoSession();
-  }, [sessionKey, configured, gatewayOnline, startAutoSession]);
+  }, [urlSessionKey, configured, gatewayOnline, startAutoSession]);
 
   /** Retry bootstrap once when gateway connectivity returns. */
   useEffect(() => {
     const wasOffline = !prevGatewayOnlineRef.current;
     prevGatewayOnlineRef.current = gatewayOnline;
-    if (!wasOffline || !gatewayOnline || !bootstrapError || sessionKey || !configured) return;
+    if (!wasOffline || !gatewayOnline || !bootstrapError || urlSessionKey || !configured) return;
     autoSessionAttemptedRef.current = false;
     setBootstrapError(null);
     startAutoSession();
-  }, [gatewayOnline, bootstrapError, sessionKey, configured, startAutoSession]);
+  }, [gatewayOnline, bootstrapError, urlSessionKey, configured, startAutoSession]);
 
   /** Resume in-flight agent streams when gateway connectivity returns. */
   useEffect(() => {
@@ -1177,6 +1189,7 @@ export default function ChatScreen() {
     void createSession(agentId, { forceNew: true })
       .then((key) => {
         activeSessionKeyRef.current = key;
+        setPendingBootstrapKey(key);
         void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
         router.replace({ pathname: '/', params: { k: key } });
       })
@@ -1207,7 +1220,12 @@ export default function ChatScreen() {
     displayMessages.length === 0 && !streaming && !sessionQuery.isLoading;
 
   const composerDisabled =
-    sessionQuery.isLoading || awaitingSessionRefresh || Boolean(clarifyPrompt);
+    !sessionKey ||
+    creatingInitialSession ||
+    (configured && !gatewayOnline) ||
+    sessionQuery.isLoading ||
+    awaitingSessionRefresh ||
+    Boolean(clarifyPrompt);
 
   const queueFollowUpOrSend = useCallback(
     (text: string) => {
@@ -1287,6 +1305,7 @@ export default function ChatScreen() {
         const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
         const key = await createSession(agentId, { forceNew: true });
         activeSessionKeyRef.current = key;
+        setPendingBootstrapKey(key);
         void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
         setGatewaySheetVisible(false);
         router.replace({ pathname: '/', params: { k: key } });
@@ -1320,6 +1339,7 @@ export default function ChatScreen() {
     // Start a new session with the selected agent
     void createSession(agentId, { forceNew: true }).then((key) => {
       activeSessionKeyRef.current = key;
+      setPendingBootstrapKey(key);
       void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
       router.replace({ pathname: '/', params: { k: key } });
     }).catch((e) => {
@@ -1330,9 +1350,6 @@ export default function ChatScreen() {
   const currentSessionAgentId = useMemo(() => {
     return sessionKey ? sessionKey.split(':')[0]?.trim().toLowerCase() ?? '' : '';
   }, [sessionKey]);
-
-  const bootstrappingSession =
-    !sessionKey && configured && gatewayOnline && creatingInitialSession && !bootstrapError;
 
   const headerPaddingTop = insets.top + 8;
 
@@ -1359,56 +1376,6 @@ export default function ChatScreen() {
     </>
   );
 
-  // ── Render: no session key → bootstrap or fallback ───────
-  if (!sessionKey) {
-    return (
-      <View style={[styles.screen, { backgroundColor: canvasBg }]}>
-        <ChatHeader
-          agentName={modelName}
-          gatewaySubtitle={gatewayDisplay.subtitle}
-          paddingTop={headerPaddingTop}
-          headerBg={headerBg}
-          headerBorder={headerBorder}
-          pillText={pillText}
-          pillMuted={pillMuted}
-          onMenuPress={openDrawer}
-          onAgentPress={openAgentsPicker}
-          onGatewayPress={openGatewayPicker}
-          onNewChat={handleNewChat}
-        />
-        <GatewayOfflineBanner visible={configured && !gatewayOnline} />
-        <View style={styles.emptyContainer}>
-          {bootstrappingSession ? (
-            <ActivityIndicator size="large" />
-          ) : bootstrapError ? (
-            <Banner
-              visible
-              icon="alert"
-              actions={[{ label: m.common.retry, onPress: retryBootstrapSession }]}
-            >
-              {bootstrapError}
-            </Banner>
-          ) : configured && !gatewayOnline ? (
-            <>
-              <Text variant="bodyLarge" style={{ opacity: 0.65 }}>{m.sessions.bootstrapOffline}</Text>
-              <Text variant="bodySmall" style={{ opacity: 0.45, marginTop: 8, textAlign: 'center' }}>
-                {m.sessions.emptyHint}
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text variant="bodyLarge" style={{ opacity: 0.65 }}>{m.sessions.empty}</Text>
-              <Text variant="bodySmall" style={{ opacity: 0.45, marginTop: 8, textAlign: 'center' }}>
-                {m.sessions.emptyHint}
-              </Text>
-            </>
-          )}
-        </View>
-        {pickerSheets}
-      </View>
-    );
-  }
-
   return (
     <View style={[styles.screen, { backgroundColor: canvasBg }]}>
       <ChatHeader
@@ -1419,7 +1386,7 @@ export default function ChatScreen() {
         headerBorder={headerBorder}
         pillText={pillText}
         pillMuted={pillMuted}
-        showRename
+        showRename={Boolean(sessionKey)}
         onMenuPress={openDrawer}
         onAgentPress={openAgentsPicker}
         onGatewayPress={openGatewayPicker}
@@ -1429,6 +1396,21 @@ export default function ChatScreen() {
 
       <View style={[styles.chatBody, { backgroundColor: canvasBg }]}>
         <GatewayOfflineBanner visible={configured && !gatewayOnline} />
+        {!urlSessionKey && bootstrapError ? (
+          <Banner
+            visible
+            icon="alert"
+            actions={[{ label: m.common.retry, onPress: retryBootstrapSession }]}
+          >
+            {bootstrapError}
+          </Banner>
+        ) : null}
+        {!urlSessionKey && creatingInitialSession ? (
+          <View style={styles.bootstrapRow}>
+            <ActivityIndicator size="small" />
+            <Text variant="bodySmall" style={{ opacity: 0.65 }}>{m.common.loading}</Text>
+          </View>
+        ) : null}
         <ChatStreamNotice
           isDark={isDark}
           reconnecting={streamReconnecting}
@@ -1450,7 +1432,7 @@ export default function ChatScreen() {
             messages={displayMessages}
             streaming={streaming}
             progress={progress}
-            loading={sessionQuery.isLoading}
+            loading={sessionQuery.isLoading || (!sessionKey && creatingInitialSession)}
             sessionKey={sessionKey}
             welcomeTitle={m.chat.welcomeTitle}
             welcomeSubtitle={m.chat.welcomeSubtitle}
@@ -1552,17 +1534,20 @@ const styles = StyleSheet.create({
   // ── Chat body ──
   chatBody: {
     flex: 1,
+    minHeight: 0,
+  },
+  bootstrapRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
   /** Lets FlashList shrink when the keyboard opens (flex parent must allow min height 0). */
   listFill: {
     flex: 1,
     minHeight: 0,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
   },
   aiDisclaimer: {
     fontSize: 11,
