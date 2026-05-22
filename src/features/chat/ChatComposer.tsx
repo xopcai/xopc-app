@@ -17,6 +17,7 @@ import {
 import { Icon, Snackbar } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
+import { transcribeVoice } from '../../api/agent-client';
 import { ChatPendingFollowUpStack } from './ChatPendingFollowUpStack';
 import { canSendComposerDraft } from './composer-send-helpers';
 import type { WireAttachment } from './composer.types';
@@ -124,6 +125,7 @@ export const ChatComposer = memo(function ChatComposer({
   const [hudCancel, setHudCancel] = useState(false);
   const [meterSamples, setMeterSamples] = useState<number[]>([]);
   const [snack, setSnack] = useState('');
+  const [transcribing, setTranscribing] = useState(false);
 
   const recordingRef = useRef<ExpoRecording | null>(null);
   const readyRef = useRef(false);
@@ -264,15 +266,40 @@ export const ChatComposer = memo(function ChatComposer({
         setSnack(cm.voiceRecordingFailed);
         return;
       }
-      if (!onSendVoice) {
-        setSnack(cm.voiceCapturedNoStt);
-        return;
+
+      const mimeType = inferRecordingMimeType(uri);
+
+      // Try STT transcription → fill draft for editing
+      setTranscribing(true);
+      try {
+        const result = await transcribeVoice(uri, mimeType);
+        const text = result.refined || result.raw;
+        if (text.trim()) {
+          // Append to existing draft or set as new draft
+          const currentDraft = draftRef.current;
+          const nextDraft = currentDraft.trim()
+            ? `${currentDraft.trim()} ${text.trim()}`
+            : text.trim();
+          updateDraft(nextDraft);
+          setMode('text');
+          requestAnimationFrame(() => inputRef.current?.focus());
+        } else {
+          setSnack(cm.voiceNoSpeechDetected);
+        }
+      } catch {
+        // Transcription failed — fallback to sending voice message directly
+        if (onSendVoice) {
+          await onSendVoice({ uri, durationMillis, mimeType });
+        } else {
+          setSnack(cm.voiceTranscribeFailed);
+        }
+      } finally {
+        setTranscribing(false);
       }
-      await onSendVoice({ uri, durationMillis, mimeType: inferRecordingMimeType(uri) });
     } catch {
       setSnack(cm.voiceRecordingFailed);
     }
-  }, [cm, onSendVoice]);
+  }, [cm, onSendVoice, updateDraft]);
 
   const startGrantFlow = useCallback(() => {
     if (disabled || streaming || grantInFlightRef.current) return;
@@ -548,13 +575,21 @@ export const ChatComposer = memo(function ChatComposer({
           steeringBusyId={steeringFollowUpId}
         />
       ) : null}
-      {hudOpen ? (
+      {hudOpen || transcribing ? (
         <View style={styles.voiceHud} pointerEvents="none">
-          <VoiceMeterBars samples={meterSamples} accentColor={accent} trackColor={waveTrack} />
-          <Text style={[styles.hudHint, { color: hudCancel ? '#EF4444' : hintMuted }]}>
-            {hudCancel ? cm.voiceCancelZoneHint : cm.voiceReleaseSwipeHint}
-          </Text>
-          <View style={[styles.hudPill, { backgroundColor: accent }]} />
+          {transcribing ? (
+            <Text style={[styles.hudHint, { color: accent }]}>
+              {cm.voiceTranscribing}
+            </Text>
+          ) : (
+            <>
+              <VoiceMeterBars samples={meterSamples} accentColor={accent} trackColor={waveTrack} />
+              <Text style={[styles.hudHint, { color: hudCancel ? '#EF4444' : hintMuted }]}>
+                {hudCancel ? cm.voiceCancelZoneHint : cm.voiceReleaseSwipeHint}
+              </Text>
+              <View style={[styles.hudPill, { backgroundColor: accent }]} />
+            </>
+          )}
         </View>
       ) : null}
 

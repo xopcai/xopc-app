@@ -34,6 +34,44 @@ export type VoiceMessagePayload = {
   name?: string;
 };
 
+export interface VoiceTranscribeResult {
+  raw: string;
+  refined?: string;
+  language?: string;
+}
+
+/**
+ * Transcribe audio via gateway STT + optional LLM refine.
+ * Returns { raw, refined?, language? }.
+ */
+export async function transcribeVoice(
+  uri: string,
+  mimeType: string,
+  options?: { language?: string },
+): Promise<VoiceTranscribeResult> {
+  const { content } = await readUriAsBase64(uri, 'voice.m4a');
+  const res = await apiFetch('/api/voice/transcribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      audio: content,
+      mimeType,
+      ...(options?.language ? { language: options.language } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw new Error(
+      formatApiHttpError(res.status, res.statusText, body.error?.message),
+    );
+  }
+  const json = (await res.json()) as { ok: boolean; payload?: VoiceTranscribeResult; error?: { message?: string } };
+  if (!json.ok || !json.payload) {
+    throw new Error(json.error?.message ?? 'Transcription failed');
+  }
+  return json.payload;
+}
+
 export async function submitClarifyResponse(
   requestId: string,
   payload: { answer: string } | { skip: true },
