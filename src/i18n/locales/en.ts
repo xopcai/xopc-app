@@ -297,7 +297,7 @@ export const en = {
     messageCopyFailed: 'Copy failed',
     messageReadyToEdit: 'Message copied into the input box',
     messageRoundDeleted: 'Round deleted',
-    agentPickerTitle: 'Switch model',
+    agentPickerTitle: 'Switch agent',
     gatewayPickerTitle: 'Select gateway',
     gatewayPickerManage: 'Manage gateways',
     gatewayPickerEmpty: 'No gateways configured',

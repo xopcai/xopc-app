@@ -297,7 +297,7 @@ export const zh: MessageBundle = {
     messageCopyFailed: '复制失败',
     messageReadyToEdit: '已填入输入框，可继续编辑',
     messageRoundDeleted: '已删除本轮',
-    agentPickerTitle: '切换模型',
+    agentPickerTitle: '切换智能体',
     gatewayPickerTitle: '选择网关',
     gatewayPickerManage: '管理网关设置',
     gatewayPickerEmpty: '尚未配置网关',
