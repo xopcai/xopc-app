@@ -22,9 +22,10 @@
         "NSLocalNetworkUsageDescription": "Allow xopc to connect to your gateway on the local network when available.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
-        }
+        },
+        "ITSAppUsesNonExemptEncryption": false
       },
-      "bundleIdentifier": "com.anonymous.xopcapp"
+      "bundleIdentifier": "ai.xopc.xopc"
     },
     "android": {
       "softwareKeyboardLayoutMode": "resize",
@@ -39,7 +40,7 @@
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.CAMERA"
       ],
-      "package": "com.anonymous.xopcapp"
+      "package": "ai.xopc.xopc"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -75,6 +76,13 @@
           "cameraPermission": "Allow $(PRODUCT_NAME) to use the camera to take photos in chat."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3e0f47ca-2bbe-447d-81aa-c7dc8e65431e"
+      }
+    },
+    "owner": "xopcai"
   }
 }
