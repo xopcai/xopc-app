@@ -24,6 +24,8 @@ export const en = {
     sectionEarlier: 'Earlier',
     profileFallbackName: 'XOPC',
     search: 'Search',
+    multiSelectCancel: 'Cancel',
+    multiSelectDelete: 'Delete ({{count}})',
   },
 
   // ── Drawer settings popup menu ──────────────────────────
@@ -99,6 +101,8 @@ export const en = {
     remoteAccessOff: 'Not running',
     remoteAccessOffHint: 'Start remote access on your computer to use the public tunnel URL.',
     gatewayUnreachable: 'Gateway unreachable on the current route.',
+    routesUnreachableBanner:
+      'Cannot connect via LAN or FRP tunnel. Tap to open gateway settings.',
     qrApplied: 'Filled from QR code — review and save.',
     applyImmediatelyHint: 'Changes apply immediately after saving — no app restart needed.',
   },
@@ -126,7 +130,9 @@ export const en = {
 
   // ── Session actions ─────────────────────────────────────
   sessionActions: {
+    edit: 'Edit',
     rename: 'Rename',
+    multiSelect: 'Multi-select',
     pin: 'Pin',
     unpin: 'Unpin',
     archive: 'Archive',
@@ -147,9 +153,10 @@ export const en = {
 
   // ── Rename dialog ───────────────────────────────────────
   renameDialog: {
-    title: 'Rename session',
+    title: 'Edit title',
     placeholder: 'Session name',
     cancel: 'Cancel',
+    confirm: 'Confirm',
     rename: 'Rename',
   },
 
@@ -306,6 +313,9 @@ export const en = {
     messageReadyToEdit: 'Message copied into the input box',
     messageRoundDeleted: 'Round deleted',
     agentPickerTitle: 'Switch agent',
+    modelPickerTitle: 'Switch model',
+    modelPickerEmpty: 'No models available',
+    modelPickerSelect: 'Select model',
     gatewayPickerTitle: 'Select gateway',
     gatewayPickerManage: 'Manage gateways',
     gatewayPickerEmpty: 'No gateways configured',
@@ -313,6 +323,7 @@ export const en = {
     gatewayStatusOnline: 'Online',
     gatewayStatusOffline: 'Offline',
     headerAgentPicker: 'Select agent',
+    headerModelPicker: 'Select model',
     headerGatewayPicker: 'Select gateway',
     goal: {
       missionHeading: 'Goal mission',

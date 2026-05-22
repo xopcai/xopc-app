@@ -4,9 +4,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DrawerActions } from '@react-navigation/native';
 import type { DrawerContentComponentProps } from '@react-navigation/drawer';
-import Constants from 'expo-constants';
 import { useGlobalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -15,15 +14,24 @@ import {
 } from 'react-native';
 import {
   ActivityIndicator,
+  Checkbox,
   Icon,
   IconButton,
   Searchbar,
+  Snackbar,
   Text,
   TouchableRipple,
 } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useGatewayConnectLanding } from '../features/gateway/gateway-connect-context';
+import { DrawerGatewayConnection } from '../features/gateway/DrawerGatewayConnection';
+import { DeleteConfirmDialog } from '../features/sessions/DeleteConfirmDialog';
+import { RenameDialog } from '../features/sessions/RenameDialog';
+import {
+  SessionActionPopover,
+  type SessionPopoverAction,
+} from '../features/sessions/SessionActionPopover';
 import { useMessages, t } from '../i18n/messages';
 import { useResolvedIsDark } from '../lib/stack-screen-theme';
 import { fetchChatAgents } from '../query/agents';
@@ -31,7 +39,9 @@ import { queryKeys } from '../query/keys';
 import { resolveEffectiveDefaultAgentId } from '../query/agents';
 import {
   createSession,
+  deleteSession,
   fetchSessionsList,
+  renameSession,
   useGatewayConfigured,
 } from '../query/sessions';
 import { usePreferencesStore } from '../stores/preferences-store';
@@ -67,6 +77,12 @@ function groupSessions(
   return out;
 }
 
+function sessionDisplayName(item: SessionListItem): string {
+  if (item.name?.trim()) return item.name.trim();
+  const key = item.key;
+  return key.length > 24 ? `…${key.slice(-24)}` : key;
+}
+
 export function DrawerContent({ navigation }: DrawerContentComponentProps) {
   const { openGatewayConnectLanding } = useGatewayConnectLanding();
   const router = useRouter();
@@ -81,6 +97,17 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
   const activeKey = typeof rawK === 'string' ? rawK : Array.isArray(rawK) ? rawK[0] : '';
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [popoverVisible, setPopoverVisible] = useState(false);
+  const [popoverAnchor, setPopoverAnchor] = useState({ x: 0, y: 0, width: 0 });
+  const [actionSession, setActionSession] = useState<SessionListItem | null>(null);
+  const [renameVisible, setRenameVisible] = useState(false);
+  const [renameLoading, setRenameLoading] = useState(false);
+  const [deleteVisible, setDeleteVisible] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [snackMsg, setSnackMsg] = useState('');
+  const rowRefs = useRef<Map<string, View>>(new Map());
 
   const sessionsQuery = useQuery({
     queryKey: queryKeys.sessions,
@@ -121,7 +148,10 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
     [filteredSessions, dm.sectionThisWeek, dm.sectionThisYear, dm.sectionEarlier],
   );
 
-  const appVersion = Constants.expoConfig?.version ?? '1.0.0';
+  const openGatewaySettings = useCallback(() => {
+    navigation.dispatch(DrawerActions.closeDrawer());
+    router.push('/settings/gateway');
+  }, [navigation, router]);
 
   const createMut = useMutation({
     mutationFn: (agentId?: string) =>
@@ -142,11 +172,112 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
 
   const handleSessionTap = useCallback(
     (session: SessionListItem) => {
+      if (multiSelectMode) {
+        setSelectedKeys((prev) => {
+          const next = new Set(prev);
+          if (next.has(session.key)) next.delete(session.key);
+          else next.add(session.key);
+          return next;
+        });
+        return;
+      }
       router.replace({ pathname: '/', params: { k: session.key } });
       navigation.dispatch(DrawerActions.closeDrawer());
     },
-    [navigation, router],
+    [multiSelectMode, navigation, router],
   );
+
+  const closePopover = useCallback(() => {
+    setPopoverVisible(false);
+  }, []);
+
+  const handleSessionLongPress = useCallback((item: SessionListItem) => {
+    if (multiSelectMode) return;
+    const row = rowRefs.current.get(item.key);
+    if (!row) return;
+    row.measureInWindow((x, y, width, height) => {
+      setActionSession(item);
+      setPopoverAnchor({ x, y: y + height, width });
+      setPopoverVisible(true);
+    });
+  }, [multiSelectMode]);
+
+  const handlePopoverAction = useCallback((action: SessionPopoverAction) => {
+    if (!actionSession) return;
+    closePopover();
+    if (action === 'edit') {
+      setRenameVisible(true);
+      return;
+    }
+    if (action === 'delete') {
+      setDeleteVisible(true);
+      return;
+    }
+    setMultiSelectMode(true);
+    setSelectedKeys(new Set([actionSession.key]));
+    setActionSession(null);
+  }, [actionSession, closePopover]);
+
+  const handleRename = useCallback(async (name: string) => {
+    if (!actionSession) return;
+    setRenameLoading(true);
+    try {
+      await renameSession(actionSession.key, name);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+      if (actionSession.key === activeKey) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.session(actionSession.key) });
+      }
+      setRenameVisible(false);
+      setActionSession(null);
+    } catch {
+      setSnackMsg(m.sessionActions.failedToRename);
+    } finally {
+      setRenameLoading(false);
+    }
+  }, [actionSession, activeKey, m.sessionActions.failedToRename, queryClient]);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!actionSession) return;
+    setDeleteLoading(true);
+    try {
+      await deleteSession(actionSession.key);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+      setDeleteVisible(false);
+      setSnackMsg(m.sessionActions.sessionDeleted);
+      if (actionSession.key === activeKey) {
+        router.replace({ pathname: '/' });
+      }
+      setActionSession(null);
+    } catch {
+      setSnackMsg(m.sessionActions.failedToDelete);
+    } finally {
+      setDeleteLoading(false);
+    }
+  }, [actionSession, activeKey, m.sessionActions.failedToDelete, m.sessionActions.sessionDeleted, queryClient, router]);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedKeys.size === 0) return;
+    setDeleteLoading(true);
+    try {
+      await Promise.all([...selectedKeys].map((key) => deleteSession(key)));
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+      if (activeKey && selectedKeys.has(activeKey)) {
+        router.replace({ pathname: '/' });
+      }
+      setMultiSelectMode(false);
+      setSelectedKeys(new Set());
+      setSnackMsg(m.sessionActions.sessionDeleted);
+    } catch {
+      setSnackMsg(m.sessionActions.failedToDelete);
+    } finally {
+      setDeleteLoading(false);
+    }
+  }, [activeKey, m.sessionActions.failedToDelete, m.sessionActions.sessionDeleted, queryClient, router, selectedKeys]);
+
+  const exitMultiSelect = useCallback(() => {
+    setMultiSelectMode(false);
+    setSelectedKeys(new Set());
+  }, []);
 
   const colors = {
     pageBg: isDark ? '#000000' : '#F2F2F7',
@@ -161,25 +292,57 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
 
   const renderSessionRow = useCallback(
     (item: SessionListItem) => {
-      const label = item.name?.trim() || item.key.slice(-24);
+      const label = sessionDisplayName(item);
       const active = item.key === activeKey;
+      const selected = selectedKeys.has(item.key);
       return (
-        <TouchableRipple
+        <View
           key={item.key}
-          style={[styles.sessionRow, active && { backgroundColor: colors.activeRow }]}
-          onPress={() => handleSessionTap(item)}
-          rippleColor={colors.activeRow}
+          ref={(node) => {
+            if (node) rowRefs.current.set(item.key, node);
+            else rowRefs.current.delete(item.key);
+          }}
+          collapsable={false}
         >
-          <View style={styles.sessionRowInner}>
-            <Icon source="chat-outline" size={18} color={colors.textMuted} />
-            <Text numberOfLines={1} style={[styles.sessionLabel, { color: colors.text }]}>
-              {label}
-            </Text>
-          </View>
-        </TouchableRipple>
+          <TouchableRipple
+            style={[
+              styles.sessionRow,
+              (active || selected) && { backgroundColor: colors.activeRow },
+            ]}
+            onPress={() => handleSessionTap(item)}
+            onLongPress={() => handleSessionLongPress(item)}
+            delayLongPress={350}
+            rippleColor={colors.activeRow}
+          >
+            <View style={styles.sessionRowInner}>
+              {multiSelectMode ? (
+                <Checkbox
+                  status={selected ? 'checked' : 'unchecked'}
+                  onPress={() => handleSessionTap(item)}
+                  color={colors.accent}
+                />
+              ) : (
+                <Icon source="chat-outline" size={18} color={colors.textMuted} />
+              )}
+              <Text numberOfLines={1} style={[styles.sessionLabel, { color: colors.text }]}>
+                {label}
+              </Text>
+            </View>
+          </TouchableRipple>
+        </View>
       );
     },
-    [activeKey, colors.activeRow, colors.text, colors.textMuted, handleSessionTap],
+    [
+      activeKey,
+      colors.accent,
+      colors.activeRow,
+      colors.text,
+      colors.textMuted,
+      handleSessionLongPress,
+      handleSessionTap,
+      multiSelectMode,
+      selectedKeys,
+    ],
   );
 
   if (!configured) {
@@ -253,7 +416,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
             />
           </View>
 
-          <Text style={[styles.versionHint, { color: colors.textMuted }]}>v{appVersion}</Text>
+          <DrawerGatewayConnection onPress={openGatewaySettings} />
 
           <Pressable
             style={[styles.newChatCta, { backgroundColor: colors.accent }]}
@@ -269,16 +432,33 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
         <View style={[styles.card, styles.historyCard, { backgroundColor: colors.card }]}>
           <View style={styles.historyTitleRow}>
             <Text style={[styles.historyTitle, { color: colors.text }]}>{dm.historyTitle}</Text>
-            <Searchbar
-              placeholder={dm.search}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              style={[styles.searchBar, { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}
-              inputStyle={{ fontSize: 14, minHeight: 0 }}
-              iconColor={colors.textMuted}
-              placeholderTextColor={colors.textMuted}
-              elevation={0}
-            />
+            {multiSelectMode ? (
+              <View style={styles.multiSelectBar}>
+                <Pressable onPress={exitMultiSelect} style={styles.multiSelectAction}>
+                  <Text style={{ color: colors.textMuted }}>{dm.multiSelectCancel}</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => void handleBulkDelete()}
+                  disabled={selectedKeys.size === 0 || deleteLoading}
+                  style={styles.multiSelectAction}
+                >
+                  <Text style={{ color: selectedKeys.size > 0 ? '#FF453A' : colors.textMuted }}>
+                    {t(dm.multiSelectDelete, { count: selectedKeys.size })}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Searchbar
+                placeholder={dm.search}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                style={[styles.searchBar, { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}
+                inputStyle={{ fontSize: 14, minHeight: 0 }}
+                iconColor={colors.textMuted}
+                placeholderTextColor={colors.textMuted}
+                elevation={0}
+              />
+            )}
           </View>
 
           {sections.length === 0 ? (
@@ -293,6 +473,41 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
           )}
         </View>
       </ScrollView>
+
+      <SessionActionPopover
+        visible={popoverVisible}
+        anchorX={popoverAnchor.x}
+        anchorY={popoverAnchor.y}
+        anchorWidth={popoverAnchor.width}
+        onAction={handlePopoverAction}
+        onDismiss={closePopover}
+      />
+
+      <RenameDialog
+        visible={renameVisible}
+        currentName={actionSession?.name?.trim() ?? ''}
+        onDismiss={() => {
+          setRenameVisible(false);
+          setActionSession(null);
+        }}
+        onRename={(name) => void handleRename(name)}
+        loading={renameLoading}
+      />
+
+      <DeleteConfirmDialog
+        visible={deleteVisible}
+        sessionName={actionSession ? sessionDisplayName(actionSession) : ''}
+        onDismiss={() => {
+          setDeleteVisible(false);
+          setActionSession(null);
+        }}
+        onConfirm={() => void handleDeleteConfirm()}
+        loading={deleteLoading}
+      />
+
+      <Snackbar visible={Boolean(snackMsg)} onDismiss={() => setSnackMsg('')} duration={2500}>
+        {snackMsg}
+      </Snackbar>
     </View>
   );
 }
@@ -352,11 +567,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  versionHint: {
-    fontSize: 11,
-    marginTop: 6,
-    marginBottom: 12,
-  },
   newChatCta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -373,6 +583,15 @@ const styles = StyleSheet.create({
   historyTitleRow: {
     gap: 10,
     marginBottom: 8,
+  },
+  multiSelectBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  multiSelectAction: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
   },
   historyTitle: {
     fontSize: 15,

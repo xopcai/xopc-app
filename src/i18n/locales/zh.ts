@@ -26,6 +26,8 @@ export const zh: MessageBundle = {
     sectionEarlier: '更早',
     profileFallbackName: 'XOPC',
     search: '搜索',
+    multiSelectCancel: '取消',
+    multiSelectDelete: '删除 ({{count}})',
   },
 
   // ── 侧边栏设置弹出菜单 ─────────────────────────────────
@@ -101,6 +103,7 @@ export const zh: MessageBundle = {
     remoteAccessOff: '未运行',
     remoteAccessOffHint: '请在电脑上开启远程访问以使用公网隧道地址。',
     gatewayUnreachable: '当前线路无法连接网关。',
+    routesUnreachableBanner: '局域网和 FRP 隧道均无法连接，点此前往网关设置。',
     qrApplied: '已从二维码填入，请检查后保存。',
     applyImmediatelyHint: '保存后立即生效，无需重启应用。',
   },
@@ -128,7 +131,9 @@ export const zh: MessageBundle = {
 
   // ── 会话操作 ────────────────────────────────────────────
   sessionActions: {
+    edit: '编辑',
     rename: '重命名',
+    multiSelect: '多选',
     pin: '置顶',
     unpin: '取消置顶',
     archive: '归档',
@@ -149,9 +154,10 @@ export const zh: MessageBundle = {
 
   // ── 重命名对话框 ────────────────────────────────────────
   renameDialog: {
-    title: '重命名会话',
+    title: '修改标题',
     placeholder: '会话名称',
     cancel: '取消',
+    confirm: '确认',
     rename: '重命名',
   },
 
@@ -306,6 +312,9 @@ export const zh: MessageBundle = {
     messageReadyToEdit: '已填入输入框，可继续编辑',
     messageRoundDeleted: '已删除本轮',
     agentPickerTitle: '切换智能体',
+    modelPickerTitle: '切换模型',
+    modelPickerEmpty: '暂无可用模型',
+    modelPickerSelect: '选择模型',
     gatewayPickerTitle: '选择网关',
     gatewayPickerManage: '管理网关设置',
     gatewayPickerEmpty: '尚未配置网关',
@@ -313,6 +322,7 @@ export const zh: MessageBundle = {
     gatewayStatusOnline: '在线',
     gatewayStatusOffline: '离线',
     headerAgentPicker: '选择智能体',
+    headerModelPicker: '选择模型',
     headerGatewayPicker: '选择网关',
     goal: {
       missionHeading: '目标执行',

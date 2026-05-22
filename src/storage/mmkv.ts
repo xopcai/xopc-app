@@ -10,6 +10,7 @@ export const KEYS = {
   language: 'prefs.language',
   themePreference: 'prefs.themePreference',
   defaultAgentId: 'prefs.defaultAgentId',
+  selectedModelRef: 'prefs.selectedModelRef',
 } as const;
 
 export type KeyValueStorage = {

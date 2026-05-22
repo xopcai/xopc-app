@@ -20,6 +20,7 @@ import {
 import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 
 import { useKeyboardListPadding } from '../../hooks/use-keyboard-list-padding';
+import { GatewayUnreachableTip } from '../gateway/GatewayUnreachableTip';
 import { MessageBubble } from './MessageBubble';
 import { isLastAssistantMessage, shouldShowFollowUpChips } from './composer-send-helpers';
 import { ChatFollowUpChips } from './ChatFollowUpChips';
@@ -52,6 +53,7 @@ export const MessageList = memo(function MessageList({
   followUpSuggestions,
   followUpDisabled,
   onFollowUpPick,
+  networkUnreachableTip,
 }: {
   messages: Message[];
   streaming: boolean;
@@ -70,6 +72,7 @@ export const MessageList = memo(function MessageList({
   followUpSuggestions?: FollowUpSuggestionDisplay[];
   followUpDisabled?: boolean;
   onFollowUpPick?: (id: FollowUpSuggestionId) => void;
+  networkUnreachableTip?: { message: string; onPress: () => void } | null;
 }) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -132,6 +135,16 @@ export const MessageList = memo(function MessageList({
       }),
     [streaming, followUpSuggestions, messages, onFollowUpPick],
   );
+
+  const listHeader = useMemo(() => {
+    if (!networkUnreachableTip) return null;
+    return (
+      <GatewayUnreachableTip
+        message={networkUnreachableTip.message}
+        onPress={networkUnreachableTip.onPress}
+      />
+    );
+  }, [networkUnreachableTip]);
 
   const listFooter = useMemo(() => {
     if (!showFollowUpChips || !followUpSuggestions?.length || !onFollowUpPick) return null;
@@ -220,6 +233,7 @@ export const MessageList = memo(function MessageList({
   if (loading) {
     return (
       <View style={styles.center}>
+        {listHeader}
         <ActivityIndicator size="large" />
       </View>
     );
@@ -235,6 +249,7 @@ export const MessageList = memo(function MessageList({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {listHeader}
         <View style={styles.botAvatar}>
           <View style={styles.botEyeRow}>
             <View style={styles.botEye} />
@@ -290,6 +305,7 @@ export const MessageList = memo(function MessageList({
         showsVerticalScrollIndicator={false}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={listHeader}
         ListFooterComponent={listFooter}
       />
       {showScrollToBottom ? (

@@ -1,82 +1,103 @@
-import { memo } from 'react';
+import { memo, useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { IconButton, Text } from 'react-native-paper';
+import { Icon, IconButton, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
+import type { ChatModelOption } from '../../query/models';
+
+import { ModelPickerMenu } from './ModelPickerMenu';
 
 export const ChatHeader = memo(function ChatHeader({
   agentName,
-  gatewaySubtitle,
+  modelName,
+  models,
+  currentModelId,
   paddingTop,
   headerBg,
   headerBorder,
   pillText,
   pillMuted,
-  showRename,
   onMenuPress,
   onAgentPress,
-  onGatewayPress,
-  onRename,
+  onModelSelect,
   onNewChat,
 }: {
   agentName: string;
-  gatewaySubtitle: string;
+  modelName: string;
+  models: ChatModelOption[];
+  currentModelId: string;
   paddingTop: number;
   headerBg: string;
   headerBorder: string;
   pillText: string;
   pillMuted: string;
-  showRename?: boolean;
   onMenuPress: () => void;
   onAgentPress: () => void;
-  onGatewayPress: () => void;
-  onRename?: () => void;
+  onModelSelect: (modelId: string) => void;
   onNewChat: () => void;
 }) {
   const m = useMessages();
-  const gatewayLabel = gatewaySubtitle;
+  const [modelPickerVisible, setModelPickerVisible] = useState(false);
+  const pickerTopOffset = paddingTop + 52;
+
+  const openModelPicker = useCallback(() => {
+    setModelPickerVisible(true);
+  }, []);
+
+  const closeModelPicker = useCallback(() => {
+    setModelPickerVisible(false);
+  }, []);
 
   return (
-    <View
-      style={[
-        styles.header,
-        { backgroundColor: headerBg, borderBottomColor: headerBorder, paddingTop },
-      ]}
-    >
-      <View style={styles.headerSide}>
-        <IconButton icon="menu" size={22} onPress={onMenuPress} />
+    <>
+      <View
+        style={[
+          styles.header,
+          { backgroundColor: headerBg, borderBottomColor: headerBorder, paddingTop },
+        ]}
+      >
+        <View style={styles.headerSide}>
+          <IconButton icon="menu" size={22} onPress={onMenuPress} />
+        </View>
+
+        <View style={styles.headerCenter}>
+          <Pressable
+            style={styles.titlePressable}
+            onPress={onAgentPress}
+            accessibilityRole="button"
+            accessibilityLabel={m.chat.headerAgentPicker}
+          >
+            <Text style={[styles.agentTitle, { color: pillText }]} numberOfLines={1}>
+              {agentName}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={styles.modelPressable}
+            onPress={openModelPicker}
+            accessibilityRole="button"
+            accessibilityLabel={m.chat.headerModelPicker}
+          >
+            <Text style={[styles.modelTitle, { color: pillText }]} numberOfLines={1}>
+              {modelName}
+            </Text>
+            <Icon source="chevron-down" size={16} color={pillMuted} />
+          </Pressable>
+        </View>
+
+        <View style={styles.headerSideRight}>
+          <IconButton icon="plus" size={22} onPress={onNewChat} />
+        </View>
       </View>
 
-      <View style={styles.headerCenter}>
-        <Pressable
-          style={styles.titlePressable}
-          onPress={onAgentPress}
-          accessibilityRole="button"
-          accessibilityLabel={m.chat.headerAgentPicker}
-        >
-          <Text style={[styles.agentTitle, { color: pillText }]} numberOfLines={1}>
-            {agentName}
-          </Text>
-        </Pressable>
-        <Pressable
-          style={styles.titlePressable}
-          onPress={onGatewayPress}
-          accessibilityRole="button"
-          accessibilityLabel={m.chat.headerGatewayPicker}
-        >
-          <Text style={[styles.gatewaySubtitle, { color: pillMuted }]} numberOfLines={1}>
-            {gatewayLabel}
-          </Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.headerSideRight}>
-        {showRename && onRename ? (
-          <IconButton icon="pencil-outline" size={22} onPress={onRename} />
-        ) : null}
-        <IconButton icon="plus" size={22} onPress={onNewChat} />
-      </View>
-    </View>
+      <ModelPickerMenu
+        visible={modelPickerVisible}
+        topOffset={pickerTopOffset}
+        models={models}
+        currentModelId={currentModelId}
+        onSelect={onModelSelect}
+        onDismiss={closeModelPicker}
+      />
+    </>
   );
 });
 
@@ -109,14 +130,22 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     paddingHorizontal: 4,
   },
+  modelPressable: {
+    maxWidth: '100%',
+    paddingHorizontal: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
   agentTitle: {
     fontSize: 17,
     fontWeight: '600',
     textAlign: 'center',
   },
-  gatewaySubtitle: {
-    fontSize: 12,
+  modelTitle: {
+    fontSize: 13,
+    fontWeight: '500',
     textAlign: 'center',
-    lineHeight: 16,
+    flexShrink: 1,
   },
 });

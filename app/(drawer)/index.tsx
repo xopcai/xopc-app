@@ -3,8 +3,8 @@
  *
  * Header layout:
  *   Left:   menu
- *   Center: agent name (top) + gateway name (bottom)
- *   Right:  rename (when in session) + new chat
+ *   Center: agent name + model dropdown
+ *   Right:  new chat
  */
 import * as Clipboard from 'expo-clipboard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,9 +41,8 @@ import {
 } from '../../src/features/chat/use-agent-stream-resume';
 import { useAgentStreamRecovery } from '../../src/features/chat/use-agent-stream-recovery';
 import { isTransientNetworkError } from '../../src/features/chat/network-errors';
-import { GatewayOfflineBanner } from '../../src/features/gateway/GatewayOfflineBanner';
+import { useGatewayFullyUnreachable } from '../../src/features/gateway/use-gateway-fully-unreachable';
 import { syncAfterGatewaySettingsSave } from '../../src/features/gateway/gateway-connection-sync';
-import { useActiveGatewayDisplay } from '../../src/features/gateway/use-active-gateway-display';
 import { subscribeGatewayEvent } from '../../src/features/gateway/gateway-event-bus';
 import { useGatewayHealth } from '../../src/features/gateway/use-gateway-health';
 import {
@@ -57,7 +56,6 @@ import {
 } from '../../src/features/chat/inbound-message-text';
 import type { Message, MessageAttachment, MessageContent, ProgressState } from '../../src/features/chat/messages.types';
 import { useMessages, t } from '../../src/i18n/messages';
-import { RenameDialog } from '../../src/features/sessions/RenameDialog';
 import {
   appendTextDelta,
   appendThinkingDelta,
@@ -71,11 +69,11 @@ import {
   startThinkingSegment,
 } from '../../src/features/chat/streaming';
 import { fetchChatAgents, resolveEffectiveDefaultAgentId } from '../../src/query/agents';
+import { fetchChatModels, resolveEffectiveModelId, setSessionModelRef } from '../../src/query/models';
 import { queryKeys } from '../../src/query/keys';
 import {
   createSession,
   fetchSession,
-  renameSession,
   useGatewayConfigured,
 } from '../../src/query/sessions';
 import { useKeyboardVisible } from '../../src/hooks/use-keyboard-visible';
@@ -432,7 +430,7 @@ export default function ChatScreen() {
   const queryClient = useQueryClient();
   const configured = useGatewayConfigured();
   const { gatewayOnline } = useGatewayHealth();
-  const gatewayDisplay = useActiveGatewayDisplay();
+  const { fullyUnreachable: gatewayFullyUnreachable } = useGatewayFullyUnreachable();
   const gatewayProfiles = useGatewayStore((s) => s.profiles);
   const activeGatewayId = useGatewayStore((s) => s.activeGatewayId);
   const switchGateway = useGatewayStore((s) => s.switchGateway);
@@ -449,6 +447,8 @@ export default function ChatScreen() {
   });
 
   const localDefaultAgentId = usePreferencesStore((s) => s.defaultAgentId);
+  const localSelectedModelRef = usePreferencesStore((s) => s.selectedModelRef);
+  const setSelectedModelRef = usePreferencesStore((s) => s.setSelectedModelRef);
 
   const [creatingInitialSession, setCreatingInitialSession] = useState(false);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
@@ -461,15 +461,32 @@ export default function ChatScreen() {
   const prevGatewayOnlineRef = useRef(gatewayOnline);
   const prevGatewayOnlineForStreamRef = useRef(gatewayOnline);
 
-  const modelName = useMemo(() => {
+  const currentSessionAgentId = useMemo(() => {
+    return sessionKey ? sessionKey.split(':')[0]?.trim().toLowerCase() ?? '' : '';
+  }, [sessionKey]);
+
+  const modelsQuery = useQuery({
+    queryKey: queryKeys.models(currentSessionAgentId),
+    queryFn: () => fetchChatModels(currentSessionAgentId || undefined),
+    enabled: configured,
+  });
+
+  const effectiveModelId = resolveEffectiveModelId(modelsQuery.data, localSelectedModelRef);
+
+  const agentName = useMemo(() => {
     const agents = agentsQuery.data?.items ?? [];
     const defaultId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
-    // Extract agentId from session key (format: {agentId}:{source}:{accountId}:{peerKind}:{peerId})
-    const sessionAgentId = sessionKey ? sessionKey.split(':')[0]?.trim().toLowerCase() : null;
-    const targetId = sessionAgentId || defaultId;
-    const agent = agents.find((a) => a.id === targetId);
-    return agent?.name ?? agent?.id ?? targetId;
-  }, [agentsQuery.data, localDefaultAgentId, sessionKey]);
+    const sessionAgentId = currentSessionAgentId || defaultId;
+    const agent = agents.find((a) => a.id === sessionAgentId);
+    return agent?.name ?? agent?.id ?? sessionAgentId;
+  }, [agentsQuery.data, currentSessionAgentId, localDefaultAgentId]);
+
+  const modelName = useMemo(() => {
+    const models = modelsQuery.data?.items ?? [];
+    if (!models.length) return m.chat.modelPickerSelect;
+    const model = models.find((item) => item.id === effectiveModelId);
+    return model?.name ?? model?.id ?? (effectiveModelId || m.chat.modelPickerSelect);
+  }, [effectiveModelId, m.chat.modelPickerSelect, modelsQuery.data?.items]);
 
   // ── Session data ─────────────────────────────────────────
   const sessionQuery = useQuery({
@@ -571,32 +588,12 @@ export default function ChatScreen() {
     invalidateSessionByKey(sessionKey);
   }, [invalidateSessionByKey, sessionKey]);
 
-  const sessionName = sessionQuery.data?.name?.trim() || '';
-  const [renameVisible, setRenameVisible] = useState(false);
-  const [renameLoading, setRenameLoading] = useState(false);
   const [composerSuggestion, setComposerSuggestion] = useState<string | undefined>(undefined);
 
   // ── Header: hide default, use custom ─────────────────────
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
-
-  const handleRename = useCallback(
-    async (name: string) => {
-      setRenameLoading(true);
-      try {
-        await renameSession(sessionKey, name);
-        void queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionKey) });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
-        setRenameVisible(false);
-      } catch {
-        setSnackMsg(m.chat.failedToRename);
-      } finally {
-        setRenameLoading(false);
-      }
-    },
-    [sessionKey, queryClient],
-  );
 
   /** Parsed messages from the loaded session. */
   const sessionMessages = useMemo<Message[]>(() => {
@@ -856,6 +853,7 @@ export default function ChatScreen() {
           sessionKey,
           buildCallbacks(sessionKey),
           attachments,
+          effectiveModelId ? { modelRef: effectiveModelId } : undefined,
         );
         return true;
       } catch (e) {
@@ -879,7 +877,7 @@ export default function ChatScreen() {
         return false;
       }
     },
-    [sessionKey, streaming, awaitingSessionRefresh, invalidateSessionByKey, clearStreamingMessage, followUp],
+    [sessionKey, streaming, awaitingSessionRefresh, invalidateSessionByKey, clearStreamingMessage, followUp, effectiveModelId],
   );
 
   sendRef.current = send;
@@ -918,6 +916,7 @@ export default function ChatScreen() {
           payload,
           sessionKey,
           buildCallbacks(sessionKey),
+          effectiveModelId ? { modelRef: effectiveModelId } : undefined,
         );
       } catch (e) {
         if (activeSessionKeyRef.current !== sessionKey) {
@@ -933,7 +932,7 @@ export default function ChatScreen() {
         setProgress(null);
       }
     },
-    [sessionKey, streaming, awaitingSessionRefresh, invalidateSessionByKey, clearStreamingMessage, m.chat.voiceSending],
+    [sessionKey, streaming, awaitingSessionRefresh, invalidateSessionByKey, clearStreamingMessage, m.chat.voiceSending, effectiveModelId],
   );
 
   const abort = useCallback(() => {
@@ -1284,6 +1283,7 @@ export default function ChatScreen() {
   const [agentSheetVisible, setAgentSheetVisible] = useState(false);
   const [gatewaySheetVisible, setGatewaySheetVisible] = useState(false);
   const [switchingGatewayId, setSwitchingGatewayId] = useState<string | null>(null);
+
   const openAgentsPicker = useCallback(() => {
     setAgentSheetVisible(true);
   }, []);
@@ -1347,9 +1347,14 @@ export default function ChatScreen() {
     });
   }, [queryClient, router]);
 
-  const currentSessionAgentId = useMemo(() => {
-    return sessionKey ? sessionKey.split(':')[0]?.trim().toLowerCase() ?? '' : '';
-  }, [sessionKey]);
+  const handleModelSelect = useCallback((modelId: string) => {
+    setSelectedModelRef(modelId);
+    if (sessionKey) {
+      void setSessionModelRef(sessionKey, modelId).catch(() => {
+        /* session-level model override is optional on the gateway */
+      });
+    }
+  }, [sessionKey, setSelectedModelRef]);
 
   const headerPaddingTop = insets.top + 8;
 
@@ -1379,23 +1384,22 @@ export default function ChatScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: canvasBg }]}>
       <ChatHeader
-        agentName={modelName}
-        gatewaySubtitle={gatewayDisplay.subtitle}
+        agentName={agentName}
+        modelName={modelName}
+        models={modelsQuery.data?.items ?? []}
+        currentModelId={effectiveModelId}
         paddingTop={headerPaddingTop}
         headerBg={headerBg}
         headerBorder={headerBorder}
         pillText={pillText}
         pillMuted={pillMuted}
-        showRename={Boolean(sessionKey)}
         onMenuPress={openDrawer}
         onAgentPress={openAgentsPicker}
-        onGatewayPress={openGatewayPicker}
-        onRename={() => setRenameVisible(true)}
+        onModelSelect={handleModelSelect}
         onNewChat={handleNewChat}
       />
 
       <View style={[styles.chatBody, { backgroundColor: canvasBg }]}>
-        <GatewayOfflineBanner visible={configured && !gatewayOnline} />
         {!urlSessionKey && bootstrapError ? (
           <Banner
             visible
@@ -1449,6 +1453,14 @@ export default function ChatScreen() {
               Boolean(clarifyPrompt)
             }
             onFollowUpPick={followUp.pickFollowUpSuggestion}
+            networkUnreachableTip={
+              gatewayFullyUnreachable
+                ? {
+                    message: m.gateway.routesUnreachableBanner,
+                    onPress: handleGatewayManageSettings,
+                  }
+                : null
+            }
           />
         </View>
 
@@ -1505,14 +1517,6 @@ export default function ChatScreen() {
       </View>
 
       {/* ── Dialogs ──────────────────────────────────── */}
-      <RenameDialog
-        visible={renameVisible}
-        currentName={sessionName}
-        onDismiss={() => setRenameVisible(false)}
-        onRename={(name) => void handleRename(name)}
-        loading={renameLoading}
-      />
-
       <Snackbar
         visible={Boolean(snackMsg)}
         onDismiss={() => setSnackMsg('')}

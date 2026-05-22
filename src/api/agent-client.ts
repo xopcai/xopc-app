@@ -296,14 +296,17 @@ export class AgentMessageSender {
     sessionKey: string,
     callbacks?: MessagingCallbacks,
     attachments?: WireAttachment[],
+    options?: { modelRef?: string },
   ): Promise<void> {
     const capped = capAttachments(attachments);
+    const modelRef = options?.modelRef?.trim();
     return this.send(
       '/api/agent',
       {
         message,
         sessionKey,
         ...(capped?.length ? { attachments: capped } : {}),
+        ...(modelRef ? { modelRef } : {}),
         clientCreatedAtMs: Date.now(),
       },
       callbacks,
@@ -314,6 +317,7 @@ export class AgentMessageSender {
     payload: VoiceMessagePayload,
     sessionKey: string,
     callbacks?: MessagingCallbacks,
+    options?: { modelRef?: string },
   ): Promise<void> {
     const mimeType = payload.mimeType || 'audio/mp4';
     const name = payload.name || (mimeType.includes('mpeg') ? 'voice.mp3' : 'voice.m4a');
@@ -329,7 +333,7 @@ export class AgentMessageSender {
       size,
       ...(durationSeconds != null ? { durationSeconds } : {}),
     };
-    return this.sendMessage('', sessionKey, callbacks, [wire]);
+    return this.sendMessage('', sessionKey, callbacks, [wire], options);
   }
 
   async resume(runId: string, chatId: string, callbacks?: MessagingCallbacks): Promise<void> {

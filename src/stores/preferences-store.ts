@@ -21,10 +21,13 @@ export type PreferencesState = {
   resolvedTheme: 'light' | 'dark';
   /** App override for default agent; null = follow gateway defaultId. */
   defaultAgentId: string | null;
+  /** App override for chat LLM model ref; null = follow gateway default model. */
+  selectedModelRef: string | null;
 
   setLanguage: (lang: Language) => void;
   setThemePreference: (pref: ThemePreference) => void;
   setDefaultAgentId: (agentId: string | null) => void;
+  setSelectedModelRef: (modelRef: string | null) => void;
   /** Call once at app startup to hydrate from MMKV. */
   hydrate: () => void;
 };
@@ -59,6 +62,7 @@ export const usePreferencesStore = create<PreferencesState>((set, _get) => ({
   themePreference: 'system',
   resolvedTheme: resolveTheme('system'),
   defaultAgentId: null,
+  selectedModelRef: null,
 
   setLanguage: (language) => {
     storage.set(KEYS.language, language);
@@ -79,19 +83,29 @@ export const usePreferencesStore = create<PreferencesState>((set, _get) => ({
     set({ defaultAgentId: normalized });
   },
 
+  setSelectedModelRef: (selectedModelRef) => {
+    const normalized = selectedModelRef?.trim() || null;
+    if (normalized) storage.set(KEYS.selectedModelRef, normalized);
+    else storage.delete(KEYS.selectedModelRef);
+    set({ selectedModelRef: normalized });
+  },
+
   hydrate: () => {
     const langRaw = storage.getString(KEYS.language);
     const themeRaw = storage.getString(KEYS.themePreference);
     const agentRaw = storage.getString(KEYS.defaultAgentId);
+    const modelRaw = storage.getString(KEYS.selectedModelRef);
     const language = isValidLanguage(langRaw) ? langRaw : 'en';
     const themePreference = isValidThemePref(themeRaw) ? themeRaw : 'system';
     const defaultAgentId = agentRaw?.trim().toLowerCase() || null;
+    const selectedModelRef = modelRaw?.trim() || null;
     syncAppearance(themePreference);
     set({
       language,
       themePreference,
       resolvedTheme: resolveTheme(themePreference),
       defaultAgentId,
+      selectedModelRef,
     });
   },
 }));

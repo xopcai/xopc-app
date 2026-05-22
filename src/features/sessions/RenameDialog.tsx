@@ -1,23 +1,20 @@
 /**
- * Dialog for renaming a session.
- * Shows a text input pre-filled with the current name.
+ * Kimi-style bottom sheet dialog for renaming a session.
  */
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   StyleSheet,
-  useWindowDimensions,
+  useColorScheme,
   View,
 } from 'react-native';
-import { Button, Text, TextInput, useTheme } from 'react-native-paper';
+import { IconButton, Text, TextInput } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMessages } from '../../i18n/messages';
-
-const MAX_DIALOG_WIDTH = 340;
-const DIALOG_MARGIN = 24;
 
 type RenameDialogProps = {
   visible: boolean;
@@ -35,9 +32,8 @@ export const RenameDialog = memo(function RenameDialog({
   loading = false,
 }: RenameDialogProps) {
   const m = useMessages();
-  const theme = useTheme();
-  const { width: screenWidth } = useWindowDimensions();
-  const dialogWidth = Math.min(MAX_DIALOG_WIDTH, screenWidth - DIALOG_MARGIN * 2);
+  const isDark = useColorScheme() === 'dark';
+  const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState(currentName);
 
   useEffect(() => {
@@ -49,19 +45,17 @@ export const RenameDialog = memo(function RenameDialog({
     if (trimmed) onRename(trimmed);
   }, [draft, onRename]);
 
-  const cardStyle = useMemo(
-    () => ({
-      width: dialogWidth,
-      backgroundColor: theme.colors.elevation.level3,
-    }),
-    [dialogWidth, theme.colors.elevation.level3],
-  );
+  const sheetBg = isDark ? '#1C1C1E' : '#FFFFFF';
+  const textColor = isDark ? '#F5F5F7' : '#1C1C1E';
+  const mutedBg = isDark ? '#2C2C2E' : '#F2F2F7';
+  const mutedText = isDark ? '#8E8E93' : '#6D6D70';
+  const canSubmit = Boolean(draft.trim()) && !loading;
 
   return (
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType="slide"
       onRequestClose={onDismiss}
       statusBarTranslucent
     >
@@ -69,38 +63,66 @@ export const RenameDialog = memo(function RenameDialog({
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Pressable
-          style={styles.backdrop}
-          onPress={onDismiss}
-          accessibilityRole="button"
-          accessibilityLabel={m.renameDialog.cancel}
-        />
-        <View style={[styles.card, cardStyle]}>
-          <Text variant="titleLarge" style={styles.title}>
-            {m.renameDialog.title}
-          </Text>
+        <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" />
+        <View
+          style={[
+            styles.sheet,
+            {
+              backgroundColor: sheetBg,
+              paddingBottom: Math.max(insets.bottom, 16),
+            },
+          ]}
+        >
+          <View style={styles.sheetHeader}>
+            <Text style={[styles.title, { color: textColor }]}>{m.renameDialog.title}</Text>
+            <IconButton icon="close" size={20} onPress={onDismiss} disabled={loading} />
+          </View>
+
           <TextInput
             mode="outlined"
-            dense
             value={draft}
             onChangeText={setDraft}
             placeholder={m.renameDialog.placeholder}
             autoFocus
             onSubmitEditing={handleSubmit}
             disabled={loading}
+            outlineColor={isDark ? '#38383A' : '#E5E5EA'}
+            activeOutlineColor="#007AFF"
+            textColor={textColor}
+            placeholderTextColor={mutedText}
             style={styles.input}
+            contentStyle={styles.inputContent}
           />
+
           <View style={styles.actions}>
-            <Button onPress={onDismiss} disabled={loading}>
-              {m.renameDialog.cancel}
-            </Button>
-            <Button
-              onPress={handleSubmit}
-              disabled={!draft.trim() || loading}
-              loading={loading}
+            <Pressable
+              style={[styles.actionButton, { backgroundColor: mutedBg }]}
+              onPress={onDismiss}
+              disabled={loading}
             >
-              {m.renameDialog.rename}
-            </Button>
+              <Text style={[styles.actionLabel, { color: textColor }]}>{m.renameDialog.cancel}</Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.actionButton,
+                {
+                  backgroundColor: canSubmit
+                    ? (isDark ? '#3A3A3C' : '#E5E5EA')
+                    : (isDark ? '#2C2C2E' : '#F2F2F7'),
+                },
+              ]}
+              onPress={handleSubmit}
+              disabled={!canSubmit}
+            >
+              <Text
+                style={[
+                  styles.actionLabel,
+                  { color: canSubmit ? textColor : mutedText },
+                ]}
+              >
+                {m.renameDialog.confirm}
+              </Text>
+            </Pressable>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -111,32 +133,49 @@ export const RenameDialog = memo(function RenameDialog({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: DIALOG_MARGIN,
+    justifyContent: 'flex-end',
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
   },
-  card: {
-    borderRadius: 28,
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 8,
-    maxWidth: '100%',
+  sheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 8,
+    paddingHorizontal: 16,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
   title: {
-    marginBottom: 16,
+    fontSize: 18,
+    fontWeight: '700',
+    flex: 1,
   },
   input: {
-    marginBottom: 8,
+    marginBottom: 16,
+    backgroundColor: 'transparent',
+  },
+  inputContent: {
+    fontSize: 16,
   },
   actions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
     alignItems: 'center',
-    gap: 4,
-    marginTop: 8,
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+  actionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
