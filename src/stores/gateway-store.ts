@@ -3,9 +3,19 @@ import { create } from 'zustand';
 import { resolvePreferredBaseUrl } from '../api/connection-strategy';
 import { KEYS, storage } from '../storage/mmkv';
 
+import {
+  buildGatewayProfile,
+  gatewayProfileNameFromUrl,
+  normalizeGatewayBaseUrl,
+  type GatewayProfile,
+  type GatewayProfileInput,
+} from './gateway-types';
+
 export const DEFAULT_GATEWAY_BASE_URL = 'http://localhost:18790';
 
 export type GatewayState = {
+  profiles: GatewayProfile[];
+  activeGatewayId: string | null;
   baseUrl: string;
   lanUrl: string | null;
   activeBaseUrl: string;
@@ -19,13 +29,98 @@ export type GatewayState = {
   persist: () => void;
   onUnauthorized: () => void;
   apiUrl: (path: string) => string;
+  findProfileByBaseUrl: (url: string) => GatewayProfile | null;
+  getActiveProfile: () => GatewayProfile | null;
+  applyActiveProfile: (id: string | null) => void;
+  addProfile: (input: GatewayProfileInput, options?: { setActive?: boolean }) => string;
+  updateProfile: (id: string, patch: Partial<GatewayProfileInput>) => void;
+  removeProfile: (id: string) => void;
+  switchGateway: (id: string) => void;
 };
 
 function normalizeBaseUrl(raw: string): string {
-  return raw.trim().replace(/\/+$/, '');
+  return normalizeGatewayBaseUrl(raw);
+}
+
+function flatFieldsFromProfile(profile: GatewayProfile | null): Pick<
+  GatewayState,
+  'baseUrl' | 'lanUrl' | 'token' | 'activeBaseUrl' | 'unauthorized'
+> {
+  if (!profile) {
+    return {
+      baseUrl: '',
+      lanUrl: null,
+      token: '',
+      activeBaseUrl: '',
+      unauthorized: false,
+    };
+  }
+  const baseUrl = normalizeBaseUrl(profile.baseUrl);
+  return {
+    baseUrl,
+    lanUrl: profile.lanUrl ? normalizeBaseUrl(profile.lanUrl) : null,
+    token: profile.token.trim(),
+    activeBaseUrl: baseUrl,
+    unauthorized: false,
+  };
+}
+
+function parseProfilesJson(raw: string): GatewayProfile[] | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    return parsed
+      .filter((item): item is GatewayProfile => {
+        return (
+          typeof item === 'object' &&
+          item != null &&
+          typeof (item as GatewayProfile).id === 'string' &&
+          typeof (item as GatewayProfile).baseUrl === 'string'
+        );
+      })
+      .map((profile) => ({
+        ...profile,
+        name: profile.name?.trim() || gatewayProfileNameFromUrl(profile.baseUrl),
+        baseUrl: normalizeBaseUrl(profile.baseUrl),
+        lanUrl: profile.lanUrl ? normalizeBaseUrl(profile.lanUrl) : null,
+        token: (profile.token ?? '').trim(),
+        updatedAt: profile.updatedAt ?? Date.now(),
+      }));
+  } catch {
+    return null;
+  }
+}
+
+function deleteLegacyGatewayKeys(): void {
+  storage.delete(KEYS.baseUrl);
+  storage.delete(KEYS.lanUrl);
+  storage.delete(KEYS.token);
+}
+
+function syncActiveProfileFromFlat(
+  profiles: GatewayProfile[],
+  activeGatewayId: string | null,
+  baseUrl: string,
+  lanUrl: string | null,
+  token: string,
+): GatewayProfile[] {
+  if (!activeGatewayId) return profiles;
+  const idx = profiles.findIndex((p) => p.id === activeGatewayId);
+  if (idx < 0) return profiles;
+  const next = [...profiles];
+  next[idx] = {
+    ...next[idx],
+    baseUrl: normalizeBaseUrl(baseUrl),
+    lanUrl: lanUrl ? normalizeBaseUrl(lanUrl) : null,
+    token: token.trim(),
+    updatedAt: Date.now(),
+  };
+  return next;
 }
 
 export const useGatewayStore = create<GatewayState>((set, get) => ({
+  profiles: [],
+  activeGatewayId: null,
   baseUrl: '',
   lanUrl: null,
   activeBaseUrl: '',
@@ -34,15 +129,32 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
 
   setBaseUrl: (v) => {
     const baseUrl = normalizeBaseUrl(v);
-    set({ baseUrl, unauthorized: false });
+    const { profiles, activeGatewayId, lanUrl, token } = get();
+    set({
+      baseUrl,
+      unauthorized: false,
+      profiles: syncActiveProfileFromFlat(profiles, activeGatewayId, baseUrl, lanUrl, token),
+    });
   },
 
   setLanUrl: (v) => {
-    set({ lanUrl: v ? normalizeBaseUrl(v) : null, unauthorized: false });
+    const lanUrl = v ? normalizeBaseUrl(v) : null;
+    const { profiles, activeGatewayId, baseUrl, token } = get();
+    set({
+      lanUrl,
+      unauthorized: false,
+      profiles: syncActiveProfileFromFlat(profiles, activeGatewayId, baseUrl, lanUrl, token),
+    });
   },
 
   setToken: (v) => {
-    set({ token: v.trim(), unauthorized: false });
+    const token = v.trim();
+    const { profiles, activeGatewayId, baseUrl, lanUrl } = get();
+    set({
+      token,
+      unauthorized: false,
+      profiles: syncActiveProfileFromFlat(profiles, activeGatewayId, baseUrl, lanUrl, token),
+    });
   },
 
   refreshActiveBaseUrl: async () => {
@@ -57,27 +169,62 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
   },
 
   hydrateFromStorage: () => {
-    const baseUrl = storage.getString(KEYS.baseUrl) ?? '';
-    const lanUrl = storage.getString(KEYS.lanUrl) ?? null;
-    const token = storage.getString(KEYS.token) ?? '';
-    const normalized = normalizeBaseUrl(baseUrl);
+    const profilesJson = storage.getString(KEYS.profiles);
+    if (profilesJson) {
+      const profiles = parseProfilesJson(profilesJson) ?? [];
+      const storedActiveId = storage.getString(KEYS.activeId) ?? null;
+      const activeGatewayId =
+        storedActiveId && profiles.some((p) => p.id === storedActiveId)
+          ? storedActiveId
+          : (profiles[0]?.id ?? null);
+      const activeProfile = profiles.find((p) => p.id === activeGatewayId) ?? null;
+      set({
+        profiles,
+        activeGatewayId,
+        ...flatFieldsFromProfile(activeProfile),
+      });
+      return;
+    }
+
+    const legacyBaseUrl = storage.getString(KEYS.baseUrl) ?? '';
+    const legacyLanUrl = storage.getString(KEYS.lanUrl) ?? null;
+    const legacyToken = storage.getString(KEYS.token) ?? '';
+
+    if (legacyBaseUrl.trim()) {
+      const profile = buildGatewayProfile({
+        baseUrl: legacyBaseUrl,
+        lanUrl: legacyLanUrl,
+        token: legacyToken,
+      });
+      set({
+        profiles: [profile],
+        activeGatewayId: profile.id,
+        ...flatFieldsFromProfile(profile),
+      });
+      storage.set(KEYS.profiles, JSON.stringify([profile]));
+      storage.set(KEYS.activeId, profile.id);
+      deleteLegacyGatewayKeys();
+      return;
+    }
+
     set({
-      baseUrl: normalized,
-      lanUrl: lanUrl ? normalizeBaseUrl(lanUrl) : null,
-      activeBaseUrl: normalized,
-      token,
-      unauthorized: false,
+      profiles: [],
+      activeGatewayId: null,
+      ...flatFieldsFromProfile(null),
     });
   },
 
   persist: () => {
-    const { baseUrl, token, lanUrl } = get();
-    if (baseUrl) storage.set(KEYS.baseUrl, baseUrl);
-    else storage.delete(KEYS.baseUrl);
-    if (lanUrl) storage.set(KEYS.lanUrl, lanUrl);
-    else storage.delete(KEYS.lanUrl);
-    if (token) storage.set(KEYS.token, token);
-    else storage.delete(KEYS.token);
+    const { profiles, activeGatewayId } = get();
+    if (profiles.length > 0) {
+      storage.set(KEYS.profiles, JSON.stringify(profiles));
+      if (activeGatewayId) storage.set(KEYS.activeId, activeGatewayId);
+      else storage.delete(KEYS.activeId);
+    } else {
+      storage.delete(KEYS.profiles);
+      storage.delete(KEYS.activeId);
+    }
+    deleteLegacyGatewayKeys();
   },
 
   onUnauthorized: () => {
@@ -91,5 +238,109 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
     }
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     return `${base}${normalizedPath}`;
+  },
+
+  findProfileByBaseUrl: (url: string) => {
+    const normalized = normalizeBaseUrl(url);
+    return get().profiles.find((p) => normalizeBaseUrl(p.baseUrl) === normalized) ?? null;
+  },
+
+  getActiveProfile: () => {
+    const { profiles, activeGatewayId } = get();
+    if (!activeGatewayId) return null;
+    return profiles.find((p) => p.id === activeGatewayId) ?? null;
+  },
+
+  applyActiveProfile: (id) => {
+    const { profiles } = get();
+    const profile = id ? (profiles.find((p) => p.id === id) ?? null) : null;
+    set({
+      activeGatewayId: profile?.id ?? null,
+      ...flatFieldsFromProfile(profile),
+    });
+  },
+
+  addProfile: (input, options) => {
+    const profile = buildGatewayProfile(input);
+    const setActive = options?.setActive !== false;
+    const profiles = [...get().profiles, profile];
+    if (setActive) {
+      set({
+        profiles,
+        activeGatewayId: profile.id,
+        ...flatFieldsFromProfile(profile),
+      });
+    } else {
+      set({ profiles });
+    }
+    get().persist();
+    return profile.id;
+  },
+
+  updateProfile: (id, patch) => {
+    const { profiles, activeGatewayId } = get();
+    const idx = profiles.findIndex((p) => p.id === id);
+    if (idx < 0) return;
+
+    const current = profiles[idx];
+    const baseUrl = patch.baseUrl != null ? normalizeBaseUrl(patch.baseUrl) : current.baseUrl;
+    const updated: GatewayProfile = {
+      ...current,
+      name:
+        patch.name !== undefined
+          ? patch.name.trim() || gatewayProfileNameFromUrl(baseUrl)
+          : current.name,
+      baseUrl,
+      lanUrl:
+        patch.lanUrl !== undefined
+          ? patch.lanUrl?.trim()
+            ? normalizeBaseUrl(patch.lanUrl)
+            : null
+          : current.lanUrl,
+      token: patch.token !== undefined ? patch.token.trim() : current.token,
+      updatedAt: Date.now(),
+    };
+
+    const nextProfiles = [...profiles];
+    nextProfiles[idx] = updated;
+    const patchState: Partial<GatewayState> = { profiles: nextProfiles };
+    if (activeGatewayId === id) {
+      Object.assign(patchState, flatFieldsFromProfile(updated));
+    }
+    set(patchState);
+    get().persist();
+  },
+
+  removeProfile: (id) => {
+    const { profiles, activeGatewayId } = get();
+    const idx = profiles.findIndex((p) => p.id === id);
+    if (idx < 0) return;
+
+    const nextProfiles = profiles.filter((p) => p.id !== id);
+    if (activeGatewayId !== id) {
+      set({ profiles: nextProfiles });
+      get().persist();
+      return;
+    }
+
+    const nextActive = nextProfiles[0]?.id ?? null;
+    const nextProfile = nextActive ? (nextProfiles.find((p) => p.id === nextActive) ?? null) : null;
+    set({
+      profiles: nextProfiles,
+      activeGatewayId: nextActive,
+      ...flatFieldsFromProfile(nextProfile),
+    });
+    get().persist();
+  },
+
+  switchGateway: (id) => {
+    const profile = get().profiles.find((p) => p.id === id);
+    if (!profile) return;
+    set({
+      activeGatewayId: id,
+      ...flatFieldsFromProfile(profile),
+      unauthorized: false,
+    });
+    get().persist();
   },
 }));

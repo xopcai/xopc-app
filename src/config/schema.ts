@@ -20,6 +20,12 @@ export const gatewaySettingsSchema = z.object({
 
 export type GatewaySettingsForm = z.infer<typeof gatewaySettingsSchema>;
 
+export const gatewayProfileSchema = gatewaySettingsSchema.extend({
+  name: z.string().trim(),
+});
+
+export type GatewayProfileForm = z.infer<typeof gatewayProfileSchema>;
+
 export const sessionListItemSchema = z
   .object({
     key: z.string(),

@@ -1,10 +1,9 @@
 import type { Router } from 'expo-router';
 
-import { useGatewayStore } from '../../stores/gateway-store';
 import { openDefaultSessionAfterConnect } from './navigate-after-gateway-connect';
 import { hasPairableGatewayQr, parseGatewayQrPayload } from './parse-gateway-qr';
 import { resolveGatewayCredentialsFromQr } from './pair-gateway';
-import { syncAfterGatewaySettingsSave } from './gateway-connection-sync';
+import { upsertGatewayFromPairResult } from './upsert-gateway-from-credentials';
 
 /**
  * Expo / dev-client URLs sometimes embed the real link after `/--/` or in `?url=`.
@@ -83,12 +82,7 @@ export async function tryConsumeGatewayDeeplink(
   }
   if (!resolved?.baseUrl) return false;
 
-  const { setBaseUrl, setLanUrl, setToken, persist } = useGatewayStore.getState();
-  setBaseUrl(resolved.baseUrl);
-  setLanUrl(resolved.lanUrl);
-  setToken(resolved.token);
-  persist();
-  await syncAfterGatewaySettingsSave();
+  await upsertGatewayFromPairResult(resolved);
 
   router.replace('/');
   await openDefaultSessionAfterConnect(router.replace);

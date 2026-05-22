@@ -4,6 +4,8 @@ export const KEYS = {
   baseUrl: 'gateway.baseUrl',
   lanUrl: 'gateway.lanUrl',
   token: 'gateway.token',
+  profiles: 'gateway.profiles',
+  activeId: 'gateway.activeId',
   pendingRunPrefix: 'xopc:pendingRun:',
   language: 'prefs.language',
   themePreference: 'prefs.themePreference',

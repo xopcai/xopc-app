@@ -22,7 +22,6 @@ import { gatewaySettingsSchema } from '../../config/schema';
 import { useMessages } from '../../i18n/messages';
 import { queryKeys } from '../../query/keys';
 import { DEFAULT_GATEWAY_BASE_URL, useGatewayStore } from '../../stores/gateway-store';
-import { syncAfterGatewaySettingsSave } from './gateway-connection-sync';
 import {
   GatewayQrScannerModal,
   requestGatewayQrCameraAccess,
@@ -30,6 +29,7 @@ import {
 import type { ParsedGatewayQr } from './parse-gateway-qr';
 import { resolveGatewayCredentialsFromQr } from './pair-gateway';
 import { openDefaultSessionAfterConnect } from './navigate-after-gateway-connect';
+import { upsertGatewayFromCredentials } from './upsert-gateway-from-credentials';
 
 export type GatewayConnectLandingModalProps = {
   visible: boolean;
@@ -47,13 +47,10 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
   const s = m.settings;
 
   const unauthorized = useGatewayStore((st) => st.unauthorized);
-  const setBaseUrl = useGatewayStore((st) => st.setBaseUrl);
-  const setLanUrl = useGatewayStore((st) => st.setLanUrl);
-  const setToken = useGatewayStore((st) => st.setToken);
-  const persist = useGatewayStore((st) => st.persist);
 
   const [baseUrl, setBaseUrlField] = useState(DEFAULT_GATEWAY_BASE_URL);
   const [token, setTokenField] = useState('');
+  const [pendingLanUrl, setPendingLanUrl] = useState<string | null>(null);
   const [baseUrlError, setBaseUrlError] = useState('');
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -66,6 +63,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
     const st = useGatewayStore.getState();
     setBaseUrlField(st.baseUrl.trim() || DEFAULT_GATEWAY_BASE_URL);
     setTokenField(st.token);
+    setPendingLanUrl(st.lanUrl);
     setBaseUrlError('');
     setSaveError('');
   }, [visible]);
@@ -97,7 +95,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
           if (!resolved) return;
           setBaseUrlField(resolved.baseUrl);
           setTokenField(resolved.token);
-          setLanUrl(resolved.lanUrl);
+          setPendingLanUrl(resolved.lanUrl);
         } catch (err) {
           setSaveError(err instanceof Error ? err.message : String(err));
         } finally {
@@ -108,10 +106,10 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
 
       if (parsed.baseUrl) setBaseUrlField(parsed.baseUrl);
       if (parsed.token != null) setTokenField(parsed.token);
-      if (parsed.lanUrl) setLanUrl(parsed.lanUrl);
-      else setLanUrl(null);
+      if (parsed.lanUrl) setPendingLanUrl(parsed.lanUrl);
+      else setPendingLanUrl(null);
     })();
-  }, [setLanUrl]);
+  }, []);
 
   const openScanner = useCallback(async () => {
     const ok = await requestGatewayQrCameraAccess(
@@ -135,22 +133,34 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
       return;
     }
 
+    const snapshot = useGatewayStore.getState();
     const before = {
-      baseUrl: useGatewayStore.getState().baseUrl,
-      token: useGatewayStore.getState().token,
+      profiles: snapshot.profiles,
+      activeGatewayId: snapshot.activeGatewayId,
+      baseUrl: snapshot.baseUrl,
+      lanUrl: snapshot.lanUrl,
+      token: snapshot.token,
+      activeBaseUrl: snapshot.activeBaseUrl,
     };
     setSaving(true);
     try {
-      setBaseUrl(parsed.data.baseUrl);
-      setToken(parsed.data.token);
-      persist();
-      await syncAfterGatewaySettingsSave();
+      await upsertGatewayFromCredentials({
+        baseUrl: parsed.data.baseUrl,
+        token: parsed.data.token,
+        lanUrl: pendingLanUrl,
+      });
 
       const nav = await openDefaultSessionAfterConnect(router.replace);
       if (!nav.ok) {
-        setBaseUrl(before.baseUrl);
-        setToken(before.token);
-        persist();
+        useGatewayStore.setState({
+          profiles: before.profiles,
+          activeGatewayId: before.activeGatewayId,
+          baseUrl: before.baseUrl,
+          lanUrl: before.lanUrl,
+          token: before.token,
+          activeBaseUrl: before.activeBaseUrl,
+        });
+        useGatewayStore.getState().persist();
         setSaveError(nav.message || l.connectFailed);
         return;
       }
@@ -162,14 +172,11 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
   }, [
     baseUrl,
     token,
+    pendingLanUrl,
     l.connectFailed,
     l.invalidUrl,
-    persist,
     queryClient,
     router.replace,
-    setBaseUrl,
-    setLanUrl,
-    setToken,
   ]);
 
   const goFullSettings = useCallback(() => {
@@ -237,6 +244,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
             onChangeText={(text) => {
               setBaseUrlField(text);
               setBaseUrlError('');
+              setPendingLanUrl(null);
             }}
             mode="outlined"
             autoCapitalize="none"

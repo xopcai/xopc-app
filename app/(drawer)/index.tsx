@@ -1,19 +1,19 @@
 /**
  * Chat screen — the main page inside the drawer.
  *
- * Header layout (matching web UI design):
- *   Left:   ☰ hamburger (open drawer) | + new chat
- *   Center: model name picker (pill shape)
- *   Right:  session management icon
+ * Header layout:
+ *   Left:   menu
+ *   Center: agent name (top) + gateway name (bottom)
+ *   Right:  rename (when in session) + new chat
  */
 import * as Clipboard from 'expo-clipboard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DrawerActions } from '@react-navigation/native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, useColorScheme, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
-import { Banner, IconButton, Snackbar, Text } from 'react-native-paper';
+import { Banner, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AgentMessageSender, submitClarifyResponse, type MessagingCallbacks } from '../../src/api/agent-client';
@@ -23,6 +23,8 @@ import { canSendComposerDraft, buildOptimisticUserMessage, buildUserResendPayloa
 import type { WireAttachment } from '../../src/features/chat/composer.types';
 import { ClarifyPrompt, type ClarifyPromptState } from '../../src/features/chat/ClarifyPrompt';
 import { AgentPickerSheet } from '../../src/features/chat/AgentPickerSheet';
+import { ChatHeader } from '../../src/features/chat/ChatHeader';
+import { GatewayPickerSheet } from '../../src/features/chat/GatewayPickerSheet';
 import { ChatEmptyShortcutsBar } from '../../src/features/chat/ChatEmptyShortcutsBar';
 import { EMPTY_CHAT_GOAL_PREFILL } from '../../src/features/chat/chat-empty-shortcuts';
 import { GoalMissionCard } from '../../src/features/chat/GoalMissionCard';
@@ -40,6 +42,8 @@ import {
 import { useAgentStreamRecovery } from '../../src/features/chat/use-agent-stream-recovery';
 import { isTransientNetworkError } from '../../src/features/chat/network-errors';
 import { GatewayOfflineBanner } from '../../src/features/gateway/GatewayOfflineBanner';
+import { syncAfterGatewaySettingsSave } from '../../src/features/gateway/gateway-connection-sync';
+import { useActiveGatewayDisplay } from '../../src/features/gateway/use-active-gateway-display';
 import { subscribeGatewayEvent } from '../../src/features/gateway/gateway-event-bus';
 import { useGatewayHealth } from '../../src/features/gateway/use-gateway-health';
 import {
@@ -76,6 +80,7 @@ import {
 } from '../../src/query/sessions';
 import { useKeyboardVisible } from '../../src/hooks/use-keyboard-visible';
 import { usePreferencesStore } from '../../src/stores/preferences-store';
+import { useGatewayStore } from '../../src/stores/gateway-store';
 
 const STREAMING_RENDER_THROTTLE_MS = 50;
 
@@ -423,6 +428,10 @@ export default function ChatScreen() {
   const queryClient = useQueryClient();
   const configured = useGatewayConfigured();
   const { gatewayOnline } = useGatewayHealth();
+  const gatewayDisplay = useActiveGatewayDisplay();
+  const gatewayProfiles = useGatewayStore((s) => s.profiles);
+  const activeGatewayId = useGatewayStore((s) => s.activeGatewayId);
+  const switchGateway = useGatewayStore((s) => s.switchGateway);
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
   const keyboardVisible = useKeyboardVisible();
@@ -1252,9 +1261,57 @@ export default function ChatScreen() {
   }, [awaitingSessionRefresh, clarifyPrompt, displayMessages, send, sessionKey, streaming]);
 
   const [agentSheetVisible, setAgentSheetVisible] = useState(false);
+  const [gatewaySheetVisible, setGatewaySheetVisible] = useState(false);
+  const [switchingGatewayId, setSwitchingGatewayId] = useState<string | null>(null);
   const openAgentsPicker = useCallback(() => {
     setAgentSheetVisible(true);
   }, []);
+
+  const openGatewayPicker = useCallback(() => {
+    setGatewaySheetVisible(true);
+  }, []);
+
+  const handleGatewaySelect = useCallback(
+    async (profileId: string) => {
+      if (profileId === activeGatewayId) {
+        setGatewaySheetVisible(false);
+        return;
+      }
+      setSwitchingGatewayId(profileId);
+      try {
+        switchGateway(profileId);
+        await syncAfterGatewaySettingsSave();
+        const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
+        const key = await createSession(agentId, { forceNew: true });
+        activeSessionKeyRef.current = key;
+        void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+        setGatewaySheetVisible(false);
+        router.replace({ pathname: '/', params: { k: key } });
+      } catch (e) {
+        setSnackMsg(e instanceof Error ? e.message : String(e));
+      } finally {
+        setSwitchingGatewayId(null);
+      }
+    },
+    [
+      activeGatewayId,
+      agentsQuery.data,
+      localDefaultAgentId,
+      queryClient,
+      router,
+      switchGateway,
+    ],
+  );
+
+  const handleGatewayManageSettings = useCallback(() => {
+    setGatewaySheetVisible(false);
+    router.push('/settings/gateway');
+  }, [router]);
+
+  const handleGatewayAdd = useCallback(() => {
+    setGatewaySheetVisible(false);
+    router.push('/settings/gateway/new');
+  }, [router]);
 
   const handleAgentSelect = useCallback((agentId: string) => {
     // Start a new session with the selected agent
@@ -1274,24 +1331,49 @@ export default function ChatScreen() {
   const bootstrappingSession =
     !sessionKey && configured && gatewayOnline && creatingInitialSession && !bootstrapError;
 
+  const headerPaddingTop = insets.top + 8;
+
+  const pickerSheets = (
+    <>
+      <AgentPickerSheet
+        visible={agentSheetVisible}
+        agents={agentsQuery.data?.items ?? []}
+        currentAgentId={currentSessionAgentId}
+        onSelect={handleAgentSelect}
+        onDismiss={() => setAgentSheetVisible(false)}
+      />
+      <GatewayPickerSheet
+        visible={gatewaySheetVisible}
+        profiles={gatewayProfiles}
+        activeGatewayId={activeGatewayId}
+        gatewayOnline={gatewayOnline}
+        switchingId={switchingGatewayId}
+        onSelect={(id) => void handleGatewaySelect(id)}
+        onManageSettings={handleGatewayManageSettings}
+        onAddGateway={handleGatewayAdd}
+        onDismiss={() => setGatewaySheetVisible(false)}
+      />
+    </>
+  );
+
   // ── Render: no session key → bootstrap or fallback ───────
   if (!sessionKey) {
     return (
       <View style={[styles.screen, { backgroundColor: canvasBg }]}>
-        <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: headerBorder, paddingTop: insets.top + 8 }]}>
-          <View style={styles.headerLeft}>
-            <IconButton icon="menu" size={22} onPress={openDrawer} />
-          </View>
-          <Pressable style={styles.headerTitleArea} onPress={openAgentsPicker}>
-            <Text style={[styles.headerTitleText, { color: pillText }]} numberOfLines={1}>
-              {modelName}
-            </Text>
-            <Text style={[styles.headerChevron, { color: pillMuted }]}>›</Text>
-          </Pressable>
-          <View style={styles.headerRight}>
-            <IconButton icon="plus" size={22} onPress={handleNewChat} />
-          </View>
-        </View>
+        <ChatHeader
+          agentName={modelName}
+          gatewayName={gatewayDisplay.name}
+          gatewayConfigured={gatewayDisplay.configured}
+          paddingTop={headerPaddingTop}
+          headerBg={headerBg}
+          headerBorder={headerBorder}
+          pillText={pillText}
+          pillMuted={pillMuted}
+          onMenuPress={openDrawer}
+          onAgentPress={openAgentsPicker}
+          onGatewayPress={openGatewayPicker}
+          onNewChat={handleNewChat}
+        />
         <GatewayOfflineBanner visible={configured && !gatewayOnline} />
         <View style={styles.emptyContainer}>
           {bootstrappingSession ? (
@@ -1320,27 +1402,29 @@ export default function ChatScreen() {
             </>
           )}
         </View>
+        {pickerSheets}
       </View>
     );
   }
 
   return (
     <View style={[styles.screen, { backgroundColor: canvasBg }]}>
-      <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: headerBorder, paddingTop: insets.top + 8 }]}>
-        <View style={styles.headerLeft}>
-          <IconButton icon="menu" size={22} onPress={openDrawer} />
-        </View>
-        <Pressable style={styles.headerTitleArea} onPress={openAgentsPicker}>
-          <Text style={[styles.headerTitleText, { color: pillText }]} numberOfLines={1}>
-            {modelName}
-          </Text>
-          <Text style={[styles.headerChevron, { color: pillMuted }]}>›</Text>
-        </Pressable>
-        <View style={styles.headerRight}>
-          <IconButton icon="pencil-outline" size={22} onPress={() => setRenameVisible(true)} />
-          <IconButton icon="plus" size={22} onPress={handleNewChat} />
-        </View>
-      </View>
+      <ChatHeader
+        agentName={modelName}
+        gatewayName={gatewayDisplay.name}
+        gatewayConfigured={gatewayDisplay.configured}
+        paddingTop={headerPaddingTop}
+        headerBg={headerBg}
+        headerBorder={headerBorder}
+        pillText={pillText}
+        pillMuted={pillMuted}
+        showRename
+        onMenuPress={openDrawer}
+        onAgentPress={openAgentsPicker}
+        onGatewayPress={openGatewayPicker}
+        onRename={() => setRenameVisible(true)}
+        onNewChat={handleNewChat}
+      />
 
       <View style={[styles.chatBody, { backgroundColor: canvasBg }]}>
         <GatewayOfflineBanner visible={configured && !gatewayOnline} />
@@ -1454,13 +1538,7 @@ export default function ChatScreen() {
         {snackMsg}
       </Snackbar>
 
-      <AgentPickerSheet
-        visible={agentSheetVisible}
-        agents={agentsQuery.data?.items ?? []}
-        currentAgentId={currentSessionAgentId}
-        onSelect={handleAgentSelect}
-        onDismiss={() => setAgentSheetVisible(false)}
-      />
+      {pickerSheets}
 
     </View>
   );
@@ -1469,46 +1547,6 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-  },
-  // ── Header ──
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingBottom: 8,
-    paddingHorizontal: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  headerLeft: {
-    width: 84,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-  },
-  headerRight: {
-    width: 96,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  headerTitleArea: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingHorizontal: 6,
-    minWidth: 0,
-  },
-  headerTitleText: {
-    fontSize: 17,
-    fontWeight: '600',
-    flexShrink: 1,
-    textAlign: 'center',
-  },
-  headerChevron: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: -2,
   },
   // ── Chat body ──
   chatBody: {

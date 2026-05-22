@@ -16,7 +16,7 @@ export default function SettingsLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: s.title }} />
-      <Stack.Screen name="gateway" options={{ title: s.gateway }} />
+      <Stack.Screen name="gateway" options={{ headerShown: false }} />
       <Stack.Screen name="language" options={{ title: s.language }} />
       <Stack.Screen name="theme" options={{ title: s.theme }} />
       <Stack.Screen name="about" options={{ title: s.about }} />

@@ -16,6 +16,7 @@ import {
   useGatewayConnectionView,
 } from '../../src/features/gateway/use-gateway-connection-view';
 import { useGatewayConfigured } from '../../src/query/sessions';
+import { useGatewayStore } from '../../src/stores/gateway-store';
 import {
   type Language,
   type ThemePreference,
@@ -41,8 +42,10 @@ export default function SettingsIndexScreen() {
 
   const configured = useGatewayConfigured();
   const connectionView = useGatewayConnectionView();
-  const language = usePreferencesStore((st) => st.language);
-  const themePreference = usePreferencesStore((st) => st.themePreference);
+  const profiles = useGatewayStore((st) => st.profiles);
+  const activeProfile = useGatewayStore((st) =>
+    st.activeGatewayId ? st.profiles.find((p) => p.id === st.activeGatewayId) : null,
+  );
   const mGateway = m.gateway;
   const gatewayValue = useMemo(() => {
     if (!configured || connectionView.connectionKind === 'unconfigured') {
@@ -50,8 +53,22 @@ export default function SettingsIndexScreen() {
     }
     const host = connectionView.activeHost || connectionView.tunnelHost;
     const kind = connectionKindLabel(connectionView.connectionKind, mGateway);
-    return host ? `${host} · ${kind}` : kind;
-  }, [configured, connectionView, mGateway, s.gatewayNotConfigured]);
+    const hostPart = host ? `${host} · ${kind}` : kind;
+    if (profiles.length > 1 && activeProfile?.name) {
+      return `${activeProfile.name} · ${hostPart}`;
+    }
+    return hostPart;
+  }, [
+    activeProfile?.name,
+    configured,
+    connectionView,
+    mGateway,
+    profiles.length,
+    s.gatewayNotConfigured,
+  ]);
+
+  const language = usePreferencesStore((st) => st.language);
+  const themePreference = usePreferencesStore((st) => st.themePreference);
 
   const appVersion = Constants.expoConfig?.version ?? '1.0.0';
 
