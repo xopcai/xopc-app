@@ -113,3 +113,8 @@ export function computeGoalWallElapsedMs(g: WebchatPersistentGoalWire, now = Dat
   const end = g.status === 'active' || g.status === 'paused' ? now : g.lastTurnAt || now;
   return Math.max(0, end - start);
 }
+
+/** Cap expanded goal panel height so long checklists can scroll to runs below. */
+export function goalMissionExpandedMaxHeight(windowHeight: number): number {
+  return Math.max(220, Math.min(460, Math.round(windowHeight * 0.48)));
+}

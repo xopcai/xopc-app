@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { memo, useCallback, useState } from 'react';
-import { StyleSheet, useColorScheme, View } from 'react-native';
+import { memo, useCallback, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
 import {
@@ -19,7 +19,7 @@ import { GoalJudgementSummary } from './GoalJudgementSummary';
 import { GoalLatestRun } from './GoalLatestRun';
 import { GoalMissionHeader } from './GoalMissionHeader';
 import { GoalProgressMeter } from './GoalProgressMeter';
-import { goalUiPhase, shouldShowGoal } from './goal-utils';
+import { goalUiPhase, goalMissionExpandedMaxHeight, shouldShowGoal } from './goal-utils';
 
 type Props = {
   sessionKey: string;
@@ -27,6 +27,11 @@ type Props = {
 };
 
 export const GoalMissionCard = memo(function GoalMissionCard({ sessionKey, agentBusy }: Props) {
+  const { height: windowHeight } = useWindowDimensions();
+  const expandedMaxHeight = useMemo(
+    () => goalMissionExpandedMaxHeight(windowHeight),
+    [windowHeight],
+  );
   const queryClient = useQueryClient();
   const m = useMessages();
   const t = m.chat.goal;
@@ -97,7 +102,13 @@ export const GoalMissionCard = memo(function GoalMissionCard({ sessionKey, agent
         />
 
         {!collapsed ? (
-          <View style={styles.content}>
+          <ScrollView
+            style={{ maxHeight: expandedMaxHeight }}
+            contentContainerStyle={styles.content}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
+          >
             <GoalProgressMeter goal={goal} t={t} />
             <GoalJudgementSummary goal={goal} t={t} />
             <GoalChecklistBoard
@@ -116,7 +127,7 @@ export const GoalMissionCard = memo(function GoalMissionCard({ sessionKey, agent
               onChecklist={runChecklistMutation}
             />
             <GoalLatestRun sessionKey={sessionKey} t={t} />
-          </View>
+          </ScrollView>
         ) : null}
 
         {error || goalQuery.error ? (
