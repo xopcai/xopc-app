@@ -77,6 +77,8 @@ export const en = {
     connectionActiveUrl: 'In use',
     lanAddress: 'LAN address',
     tunnelAddress: 'Tunnel address',
+    addressReachable: 'Reachable',
+    addressUnreachable: 'Unreachable',
     lanNotConfigured: 'Not set — scan QR from desktop',
     recheckConnection: 'Re-detect route',
     refreshLanAddress: 'Refresh LAN address',

@@ -79,6 +79,8 @@ export const zh: MessageBundle = {
     connectionActiveUrl: '正在使用',
     lanAddress: '局域网地址',
     tunnelAddress: '隧道地址',
+    addressReachable: '可达',
+    addressUnreachable: '不可达',
     lanNotConfigured: '未配置 — 请用桌面端扫码',
     recheckConnection: '重新检测线路',
     refreshLanAddress: '刷新局域网地址',

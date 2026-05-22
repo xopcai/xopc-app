@@ -21,7 +21,7 @@ import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 
 import { useKeyboardListPadding } from '../../hooks/use-keyboard-list-padding';
 import { MessageBubble } from './MessageBubble';
-import { isLastAssistantMessage } from './composer-send-helpers';
+import { isLastAssistantMessage, shouldShowFollowUpChips } from './composer-send-helpers';
 import { ChatFollowUpChips } from './ChatFollowUpChips';
 import type { FollowUpSuggestionDisplay } from './follow-up-anchor';
 import type { FollowUpSuggestionId } from './follow-up-suggestions';
@@ -122,11 +122,16 @@ export const MessageList = memo(function MessageList({
     });
   }, [keyboardPadding, messages.length]);
 
-  const showFollowUpChips = useMemo(() => {
-    if (!followUpSuggestions?.length || !onFollowUpPick) return false;
-    const last = messages[messages.length - 1];
-    return last?.role === 'assistant';
-  }, [followUpSuggestions, messages, onFollowUpPick]);
+  const showFollowUpChips = useMemo(
+    () =>
+      shouldShowFollowUpChips({
+        streaming,
+        followUpSuggestions,
+        onFollowUpPick,
+        messages,
+      }),
+    [streaming, followUpSuggestions, messages, onFollowUpPick],
+  );
 
   const listFooter = useMemo(() => {
     if (!showFollowUpChips || !followUpSuggestions?.length || !onFollowUpPick) return null;

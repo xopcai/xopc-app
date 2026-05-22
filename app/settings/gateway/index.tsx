@@ -13,7 +13,6 @@ import {
   connectionKindLabel,
   useGatewayConnectionView,
 } from '../../../src/features/gateway/use-gateway-connection-view';
-import { useGatewayHealth } from '../../../src/features/gateway/use-gateway-health';
 import {
   SettingsSection,
   useSettingsColors,
@@ -49,7 +48,6 @@ export default function GatewayListScreen() {
   const switchGateway = useGatewayStore((st) => st.switchGateway);
   const configured = useGatewayConfigured();
   const connectionView = useGatewayConnectionView();
-  const { gatewayOnline } = useGatewayHealth();
 
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
@@ -154,7 +152,6 @@ export default function GatewayListScreen() {
       {configured ? (
         <>
           <GatewayConnectionCard
-            gatewayReachable={gatewayOnline}
             onSyncNotice={(message) => setSyncNotice(message)}
           />
           <GatewayTunnelStatusCard refreshToken={tunnelStatusRefreshToken} />

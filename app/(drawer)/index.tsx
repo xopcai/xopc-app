@@ -82,7 +82,7 @@ import { useKeyboardVisible } from '../../src/hooks/use-keyboard-visible';
 import { usePreferencesStore } from '../../src/stores/preferences-store';
 import { useGatewayStore } from '../../src/stores/gateway-store';
 
-const STREAMING_RENDER_THROTTLE_MS = 50;
+const STREAMING_RENDER_THROTTLE_MS = 100;
 
 // ── Session wire → UI message helpers (ported from web/src/features/chat/agent-messages.ts) ──
 
@@ -684,6 +684,7 @@ export default function ChatScreen() {
         if (!isCurrentSession()) return;
         streamRecoveryRef.current.markRecoverySucceeded();
         setStreamReconnecting(false);
+        followUp.clearFollowUpSuggestions();
         setStreaming(true);
         streamingRef.current = true;
         updateStreamingMessage(() => {}, true);
@@ -776,13 +777,15 @@ export default function ChatScreen() {
             ? prior.slice(0, -1)
             : prior;
           const merged = mergeConsecutiveAssistantMessages([...withoutStreaming, appended]);
+          finalizeMessage(callbackSessionKey);
           followUp.refreshFollowUpSuggestions({
             appended,
             messages: merged,
             clarifyActive: Boolean(clarifyPrompt),
           });
+        } else {
+          finalizeMessage(callbackSessionKey);
         }
-        finalizeMessage(callbackSessionKey);
         if (followUpFlushTimerRef.current) {
           clearTimeout(followUpFlushTimerRef.current);
         }

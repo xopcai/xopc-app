@@ -3,31 +3,49 @@ import { StyleSheet, View } from 'react-native';
 import { Button, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
-import { useGatewayStore } from '../../stores/gateway-store';
+import {
+  reachabilityStatusColor,
+  reachabilityStatusLabel,
+  type RouteReachabilityStatus,
+} from './check-gateway-routes';
 import { syncGatewayUrlsFromTunnelQr } from './apply-tunnel-qr-from-api';
 import { SettingsSection, useSettingsColors } from '../settings/settings-ui';
 import {
   useGatewayConnectionKindLabel,
   useGatewayConnectionView,
 } from './use-gateway-connection-view';
+import { useGatewayRouteReachability } from './use-gateway-route-reachability';
 
 type GatewayConnectionCardProps = {
-  gatewayReachable?: boolean | null;
   onSyncNotice?: (message: string) => void;
 };
 
 function ConnectionRow({
   label,
   value,
+  reachability,
   muted,
   isLast,
 }: {
   label: string;
   value: string;
+  reachability?: RouteReachabilityStatus;
   muted?: boolean;
   isLast?: boolean;
 }) {
   const colors = useSettingsColors();
+  const g = useMessages().gateway;
+  const statusLabel =
+    reachability != null
+      ? reachabilityStatusLabel(reachability, {
+          reachable: g.addressReachable,
+          unreachable: g.addressUnreachable,
+          checking: g.connectionDetecting,
+        })
+      : '';
+  const statusColor =
+    reachability != null ? reachabilityStatusColor(reachability, colors.textMuted) : colors.textMuted;
+
   return (
     <View
       style={[
@@ -43,27 +61,26 @@ function ConnectionRow({
       >
         {value}
       </Text>
+      {statusLabel ? (
+        <Text style={[styles.rowStatus, { color: statusColor }]}>{statusLabel}</Text>
+      ) : null}
     </View>
   );
 }
 
-export function GatewayConnectionCard({ gatewayReachable, onSyncNotice }: GatewayConnectionCardProps) {
+export function GatewayConnectionCard({ onSyncNotice }: GatewayConnectionCardProps) {
   const g = useMessages().gateway;
   const colors = useSettingsColors();
   const view = useGatewayConnectionView();
   const kindLabel = useGatewayConnectionKindLabel(view, g);
-  const refreshActiveBaseUrl = useGatewayStore((s) => s.refreshActiveBaseUrl);
-  const [rechecking, setRechecking] = useState(false);
+  const { reachability, checking, recheck } = useGatewayRouteReachability(
+    view.connectionKind !== 'unconfigured',
+  );
   const [refreshingLan, setRefreshingLan] = useState(false);
 
   const handleRecheck = useCallback(async () => {
-    setRechecking(true);
-    try {
-      await refreshActiveBaseUrl();
-    } finally {
-      setRechecking(false);
-    }
-  }, [refreshActiveBaseUrl]);
+    await recheck();
+  }, [recheck]);
 
   const handleRefreshLan = useCallback(async () => {
     setRefreshingLan(true);
@@ -76,17 +93,21 @@ export function GatewayConnectionCard({ gatewayReachable, onSyncNotice }: Gatewa
       } else {
         onSyncNotice?.(g.refreshLanUnchanged);
       }
+      await recheck();
     } finally {
       setRefreshingLan(false);
     }
-  }, [g.refreshLanFailed, g.refreshLanOk, g.refreshLanUnchanged, onSyncNotice]);
+  }, [g.refreshLanFailed, g.refreshLanOk, g.refreshLanUnchanged, onSyncNotice, recheck]);
 
   if (view.connectionKind === 'unconfigured') {
     return null;
   }
 
   const lanDisplay = view.lanHost ?? g.lanNotConfigured;
-  const showUnreachable = gatewayReachable === false;
+  const activeRouteUnreachable =
+    view.connectionKind === 'lan'
+      ? reachability.lan === 'unreachable'
+      : reachability.tunnel === 'unreachable';
 
   return (
     <SettingsSection title={g.connectionStatusTitle} style={styles.section}>
@@ -104,7 +125,7 @@ export function GatewayConnectionCard({ gatewayReachable, onSyncNotice }: Gatewa
             {g.connectionActiveUrl}: {view.activeHost}
           </Text>
         ) : null}
-        {showUnreachable ? (
+        {activeRouteUnreachable && !checking ? (
           <Text variant="bodySmall" style={{ color: '#FF3B30', marginTop: 4 }}>
             {g.gatewayUnreachable}
           </Text>
@@ -113,8 +134,8 @@ export function GatewayConnectionCard({ gatewayReachable, onSyncNotice }: Gatewa
           <Button
             mode="text"
             compact
-            loading={rechecking}
-            disabled={rechecking || refreshingLan}
+            loading={checking}
+            disabled={checking || refreshingLan}
             onPress={() => void handleRecheck()}
           >
             {g.recheckConnection}
@@ -123,15 +144,25 @@ export function GatewayConnectionCard({ gatewayReachable, onSyncNotice }: Gatewa
             mode="text"
             compact
             loading={refreshingLan}
-            disabled={refreshingLan || rechecking}
+            disabled={refreshingLan || checking}
             onPress={() => void handleRefreshLan()}
           >
             {g.refreshLanAddress}
           </Button>
         </View>
       </View>
-      <ConnectionRow label={g.lanAddress} value={lanDisplay} muted={!view.lanHost} />
-      <ConnectionRow label={g.tunnelAddress} value={view.tunnelHost} isLast />
+      <ConnectionRow
+        label={g.lanAddress}
+        value={lanDisplay}
+        reachability={reachability.lan}
+        muted={!view.lanHost}
+      />
+      <ConnectionRow
+        label={g.tunnelAddress}
+        value={view.tunnelHost}
+        reachability={reachability.tunnel}
+        isLast
+      />
     </SettingsSection>
   );
 }
@@ -165,5 +196,10 @@ const styles = StyleSheet.create({
   rowValue: {
     fontSize: 15,
     lineHeight: 20,
+  },
+  rowStatus: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
   },
 });
