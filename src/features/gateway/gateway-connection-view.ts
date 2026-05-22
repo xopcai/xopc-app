@@ -18,9 +18,9 @@ export type GatewayConnectionView = {
   hasLanFallback: boolean;
 };
 
-export function normalizeGatewayBaseUrl(raw: string): string {
-  return raw.trim().replace(/\/+$/, '');
-}
+import { normalizeGatewayBaseUrl } from '../../stores/gateway-types';
+
+export { normalizeGatewayBaseUrl };
 
 export function formatGatewayHost(url: string): string {
   const trimmed = url.trim();

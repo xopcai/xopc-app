@@ -10,6 +10,10 @@ describe('normalizeGatewayBaseUrl', () => {
   it('trims and strips trailing slashes', () => {
     expect(normalizeGatewayBaseUrl('  http://a/  ')).toBe('http://a');
   });
+
+  it('adds http for private LAN addresses without scheme', () => {
+    expect(normalizeGatewayBaseUrl('192.168.1.10:18790')).toBe('http://192.168.1.10:18790');
+  });
 });
 
 describe('formatGatewayHost', () => {

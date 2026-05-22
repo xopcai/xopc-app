@@ -1,4 +1,4 @@
-import { probeGatewayHealth } from '../../api/connection-strategy';
+import { probeGatewayRouteReachable } from '../../api/connection-strategy';
 import { useGatewayStore } from '../../stores/gateway-store';
 
 import { syncGatewayAfterConnectivityChange } from './gateway-connection-sync';
@@ -24,8 +24,8 @@ export async function probeGatewayRoutes(input: {
   const lanUrl = input.lanUrl?.trim() ?? '';
 
   const [lanOk, tunnelOk] = await Promise.all([
-    lanUrl ? probeGatewayHealth(lanUrl, probeOpts) : Promise.resolve(null),
-    tunnelUrl ? probeGatewayHealth(tunnelUrl, probeOpts) : Promise.resolve(false),
+    lanUrl ? probeGatewayRouteReachable(lanUrl, probeOpts) : Promise.resolve(null),
+    tunnelUrl ? probeGatewayRouteReachable(tunnelUrl, probeOpts) : Promise.resolve(false),
   ]);
 
   return {

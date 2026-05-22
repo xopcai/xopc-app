@@ -15,7 +15,35 @@ export type GatewayProfileInput = {
 };
 
 export function normalizeGatewayBaseUrl(raw: string): string {
-  return raw.trim().replace(/\/+$/, '');
+  return ensureGatewayUrlScheme(raw.trim().replace(/\/+$/, ''));
+}
+
+/** Add http(s) when missing so React Native fetch gets an absolute URL (browser does this implicitly). */
+export function ensureGatewayUrlScheme(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (isLocalOrPrivateGatewayHost(trimmed)) return `http://${trimmed}`;
+  return `https://${trimmed}`;
+}
+
+export function isLocalOrPrivateGatewayHost(host: string): boolean {
+  const candidate = /^https?:\/\//i.test(host) ? host : `http://${host}`;
+  try {
+    const { hostname } = new URL(candidate);
+    if (hostname === 'localhost' || hostname.endsWith('.local')) return true;
+    const parts = hostname.split('.');
+    if (parts.length !== 4) return false;
+    const octets = parts.map((p) => Number(p));
+    if (octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false;
+    if (octets[0] === 10) return true;
+    if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return true;
+    if (octets[0] === 192 && octets[1] === 168) return true;
+    if (octets[0] === 127) return true;
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 export function gatewayProfileNameFromUrl(baseUrl: string): string {
