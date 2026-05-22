@@ -7,9 +7,11 @@ export { buildTunnelQrPatch, shouldUpdateBaseUrlFromPublicUrl } from './tunnel-q
 export type { ApplyTunnelQrPatch } from './tunnel-qr-merge';
 
 export type SyncGatewayUrlsFromTunnelQrResult = {
+  ok: boolean;
   updated: boolean;
   lanUrlUpdated: boolean;
   baseUrlUpdated: boolean;
+  activeRouteChanged: boolean;
 };
 
 /**
@@ -18,7 +20,13 @@ export type SyncGatewayUrlsFromTunnelQrResult = {
 export async function syncGatewayUrlsFromTunnelQr(): Promise<SyncGatewayUrlsFromTunnelQrResult> {
   const qr = await fetchTunnelQr();
   if (!qr) {
-    return { updated: false, lanUrlUpdated: false, baseUrlUpdated: false };
+    return {
+      ok: false,
+      updated: false,
+      lanUrlUpdated: false,
+      baseUrlUpdated: false,
+      activeRouteChanged: false,
+    };
   }
 
   const st = useGatewayStore.getState();
@@ -43,14 +51,17 @@ export async function syncGatewayUrlsFromTunnelQr(): Promise<SyncGatewayUrlsFrom
   }
 
   await st.refreshActiveBaseUrl();
-  const activeChanged = useGatewayStore.getState().activeBaseUrl !== prevActive;
-  if (lanUrlUpdated || baseUrlUpdated || activeChanged) {
+  const activeRouteChanged = useGatewayStore.getState().activeBaseUrl !== prevActive;
+
+  if (lanUrlUpdated || baseUrlUpdated || activeRouteChanged) {
     syncGatewayAfterConnectivityChange();
   }
 
   return {
+    ok: true,
     updated: lanUrlUpdated || baseUrlUpdated,
     lanUrlUpdated,
     baseUrlUpdated,
+    activeRouteChanged,
   };
 }

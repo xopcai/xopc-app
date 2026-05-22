@@ -69,15 +69,17 @@ export function GatewayConnectionCard({ gatewayReachable, onSyncNotice }: Gatewa
     setRefreshingLan(true);
     try {
       const result = await syncGatewayUrlsFromTunnelQr();
-      if (result.updated) {
+      if (!result.ok) {
+        onSyncNotice?.(g.refreshLanFailed);
+      } else if (result.updated || result.activeRouteChanged) {
         onSyncNotice?.(g.refreshLanOk);
       } else {
-        onSyncNotice?.(g.refreshLanFailed);
+        onSyncNotice?.(g.refreshLanUnchanged);
       }
     } finally {
       setRefreshingLan(false);
     }
-  }, [g.refreshLanFailed, g.refreshLanOk, onSyncNotice]);
+  }, [g.refreshLanFailed, g.refreshLanOk, g.refreshLanUnchanged, onSyncNotice]);
 
   if (view.connectionKind === 'unconfigured') {
     return null;

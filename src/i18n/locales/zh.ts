@@ -83,6 +83,7 @@ export const zh: MessageBundle = {
     recheckConnection: '重新检测线路',
     refreshLanAddress: '刷新局域网地址',
     refreshLanOk: '已从网关更新局域网地址。',
+    refreshLanUnchanged: '局域网地址已是最新，并已重新检测线路。',
     refreshLanFailed: '无法从网关刷新地址。',
     remoteAccessTitle: '远程访问',
     remoteAccessLoading: '加载中…',

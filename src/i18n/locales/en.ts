@@ -81,6 +81,7 @@ export const en = {
     recheckConnection: 'Re-detect route',
     refreshLanAddress: 'Refresh LAN address',
     refreshLanOk: 'LAN address updated from gateway.',
+    refreshLanUnchanged: 'LAN address is already up to date; route re-checked.',
     refreshLanFailed: 'Could not refresh from gateway.',
     remoteAccessTitle: 'Remote access',
     remoteAccessLoading: 'Loading…',

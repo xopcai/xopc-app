@@ -160,12 +160,12 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
   },
 
   refreshActiveBaseUrl: async () => {
-    const { baseUrl, lanUrl } = get();
+    const { baseUrl, lanUrl, token } = get();
     if (!baseUrl) {
       set({ activeBaseUrl: '' });
       return '';
     }
-    const active = await resolvePreferredBaseUrl(baseUrl, lanUrl ?? undefined);
+    const active = await resolvePreferredBaseUrl(baseUrl, lanUrl ?? undefined, { token });
     set({ activeBaseUrl: active });
     return active;
   },
