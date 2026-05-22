@@ -796,8 +796,8 @@ const styles = StyleSheet.create({
     paddingVertical: Platform.OS === 'ios' ? 5 : 4,
     maxHeight: MAX_COMPOSER_INPUT_HEIGHT,
     borderWidth: 0,
+    ...(Platform.OS === 'android' ? { includeFontPadding: false as const } : null),
     ...Platform.select({
-      android: { includeFontPadding: false },
       web: { outlineStyle: 'none' } as Record<string, string>,
       default: {},
     }),
