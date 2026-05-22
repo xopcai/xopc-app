@@ -424,10 +424,10 @@ export const ChatComposer = memo(function ChatComposer({
   }, [disabled, streaming, hudOpen]);
 
   const openAttachmentSheet = useCallback(() => {
-    if (disabled || streaming) return;
+    if (disabled) return;
     Keyboard.dismiss();
     att.openSheet();
-  }, [att, disabled, streaming]);
+  }, [att, disabled]);
 
   const sheetItems = useMemo(
     () => [
@@ -453,21 +453,44 @@ export const ChatComposer = memo(function ChatComposer({
     </Pressable>
   );
 
-  const showAttachButton = !streaming;
-
   const renderAttachButton = () => (
     <Pressable
       style={styles.toolBtn}
       onPress={openAttachmentSheet}
-      disabled={disabled || streaming || att.attachments.length >= att.maxAttachments}
+      disabled={disabled || att.attachments.length >= att.maxAttachments}
       accessibilityLabel={cm.attachFile}
     >
       <Icon
         source="plus-circle-outline"
         size={24}
-        color={disabled || streaming ? '#8E8E93' : accent}
+        color={disabled ? '#8E8E93' : accent}
       />
     </Pressable>
+  );
+
+  const renderAbortButton = () => (
+    <Pressable style={styles.sendCircle} onPress={handleAbort} hitSlop={8} accessibilityLabel={cm.stop}>
+      <Icon source="stop" size={20} color="#FFFFFF" />
+    </Pressable>
+  );
+
+  const renderQueueSendButton = () => (
+    <Pressable
+      style={[styles.sendCircle, { backgroundColor: accent }]}
+      onPress={handleSend}
+      hitSlop={8}
+      accessibilityLabel={cm.send}
+    >
+      <Icon source="arrow-up" size={20} color="#FFFFFF" />
+    </Pressable>
+  );
+
+  const renderStreamingRightActions = () => (
+    <View style={styles.streamingActions}>
+      {renderAttachButton()}
+      {canQueueWhileBusy && isExpanded ? renderQueueSendButton() : null}
+      {renderAbortButton()}
+    </View>
   );
 
   const composerPlaceholder = runBusy
@@ -477,25 +500,7 @@ export const ChatComposer = memo(function ChatComposer({
     : (placeholder ?? cm.inputPlaceholder);
 
   const renderSendOrStop = () => {
-    if (streaming) {
-      return (
-        <View style={styles.streamingActions}>
-          {canQueueWhileBusy && isExpanded ? (
-            <Pressable
-              style={[styles.sendCircle, { backgroundColor: accent }]}
-              onPress={handleSend}
-              hitSlop={8}
-              accessibilityLabel={cm.send}
-            >
-              <Icon source="arrow-up" size={20} color="#FFFFFF" />
-            </Pressable>
-          ) : null}
-          <Pressable style={styles.sendCircle} onPress={handleAbort} hitSlop={8} accessibilityLabel={cm.stop}>
-            <Icon source="stop" size={20} color="#FFFFFF" />
-          </Pressable>
-        </View>
-      );
-    }
+    if (streaming) return renderStreamingRightActions();
     if (!isExpanded) return null;
     return (
       <Pressable
@@ -594,14 +599,20 @@ export const ChatComposer = memo(function ChatComposer({
                   {...textInputProps}
                 />
               </View>
-              {!isExpanded ? (showAttachButton ? renderAttachButton() : renderSendOrStop()) : null}
+              {!isExpanded ? (streaming ? renderStreamingRightActions() : renderAttachButton()) : null}
             </View>
             {isExpanded ? (
               <View style={styles.toolRow}>
                 {renderVoiceToggle()}
                 <View style={styles.toolSpacer} />
-                {showAttachButton ? renderAttachButton() : null}
-                {renderSendOrStop()}
+                {streaming ? (
+                  renderStreamingRightActions()
+                ) : (
+                  <>
+                    {renderAttachButton()}
+                    {renderSendOrStop()}
+                  </>
+                )}
               </View>
             ) : null}
           </>
@@ -618,8 +629,14 @@ export const ChatComposer = memo(function ChatComposer({
             <View style={styles.toolRow}>
               {renderVoiceToggle()}
               <View style={styles.toolSpacer} />
-              {showAttachButton ? renderAttachButton() : null}
-              {streaming ? renderSendOrStop() : null}
+              {streaming ? (
+                renderStreamingRightActions()
+              ) : (
+                <>
+                  {renderAttachButton()}
+                  {renderSendOrStop()}
+                </>
+              )}
             </View>
           </>
         ) : (
@@ -633,7 +650,7 @@ export const ChatComposer = memo(function ChatComposer({
                 {cm.holdToSpeak}
               </Text>
             </View>
-            {showAttachButton ? renderAttachButton() : renderSendOrStop()}
+            {streaming ? renderStreamingRightActions() : renderAttachButton()}
           </View>
         )}
       </View>
