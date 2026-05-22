@@ -56,11 +56,13 @@ function flatFieldsFromProfile(profile: GatewayProfile | null): Pick<
     };
   }
   const baseUrl = normalizeBaseUrl(profile.baseUrl);
+  const lanUrl = profile.lanUrl ? normalizeBaseUrl(profile.lanUrl) : null;
   return {
     baseUrl,
-    lanUrl: profile.lanUrl ? normalizeBaseUrl(profile.lanUrl) : null,
+    lanUrl,
     token: profile.token.trim(),
-    activeBaseUrl: baseUrl,
+    // Prefer LAN route until health probe confirms otherwise.
+    activeBaseUrl: lanUrl ?? baseUrl,
     unauthorized: false,
   };
 }

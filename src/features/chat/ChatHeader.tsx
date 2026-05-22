@@ -6,8 +6,7 @@ import { useMessages } from '../../i18n/messages';
 
 export const ChatHeader = memo(function ChatHeader({
   agentName,
-  gatewayName,
-  gatewayConfigured,
+  gatewaySubtitle,
   paddingTop,
   headerBg,
   headerBorder,
@@ -21,8 +20,7 @@ export const ChatHeader = memo(function ChatHeader({
   onNewChat,
 }: {
   agentName: string;
-  gatewayName: string;
-  gatewayConfigured: boolean;
+  gatewaySubtitle: string;
   paddingTop: number;
   headerBg: string;
   headerBorder: string;
@@ -36,9 +34,7 @@ export const ChatHeader = memo(function ChatHeader({
   onNewChat: () => void;
 }) {
   const m = useMessages();
-  const gatewayLabel = gatewayConfigured
-    ? gatewayName
-    : m.sessions.gatewayNotConfigured;
+  const gatewayLabel = gatewaySubtitle;
 
   return (
     <View

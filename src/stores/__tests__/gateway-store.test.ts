@@ -65,6 +65,8 @@ describe('useGatewayStore', () => {
     expect(st.profiles[0]?.token).toBe('legacy-token');
     expect(st.activeGatewayId).toBe(st.profiles[0]?.id);
     expect(st.baseUrl).toBe('https://gw1.example.com');
+    expect(st.lanUrl).toBe('http://192.168.1.10:18790');
+    expect(st.activeBaseUrl).toBe('http://192.168.1.10:18790');
     expect(memory.has(KEYS.profiles)).toBe(true);
     expect(memory.has(KEYS.baseUrl)).toBe(false);
     expect(memory.has(KEYS.lanUrl)).toBe(false);

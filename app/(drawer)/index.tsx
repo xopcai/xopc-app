@@ -1362,8 +1362,7 @@ export default function ChatScreen() {
       <View style={[styles.screen, { backgroundColor: canvasBg }]}>
         <ChatHeader
           agentName={modelName}
-          gatewayName={gatewayDisplay.name}
-          gatewayConfigured={gatewayDisplay.configured}
+          gatewaySubtitle={gatewayDisplay.subtitle}
           paddingTop={headerPaddingTop}
           headerBg={headerBg}
           headerBorder={headerBorder}
@@ -1411,8 +1410,7 @@ export default function ChatScreen() {
     <View style={[styles.screen, { backgroundColor: canvasBg }]}>
       <ChatHeader
         agentName={modelName}
-        gatewayName={gatewayDisplay.name}
-        gatewayConfigured={gatewayDisplay.configured}
+        gatewaySubtitle={gatewayDisplay.subtitle}
         paddingTop={headerPaddingTop}
         headerBg={headerBg}
         headerBorder={headerBorder}
