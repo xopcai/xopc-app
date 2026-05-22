@@ -36,18 +36,46 @@ pnpm exec expo run:ios
 # or: pnpm exec expo run:android
 ```
 
-## HTTP (cleartext) on Android
+## LAN gateway access
 
-Local gateways often use `http://` on LAN IPs. **Expo Go** allows cleartext by default, but **standalone Android builds** block HTTP unless the native manifest opts in.
+Local gateways often use `http://` on LAN IPs (for example `http://192.168.1.44:18790`). **Expo Go** can reach LAN more easily because it runs inside Expo’s own app shell. **Standalone iOS/Android builds** use your app’s native permissions and network policy — behavior can differ from Expo Go even on the same phone and Wi‑Fi.
 
-This app uses the `expo-build-properties` plugin with `android.usesCleartextTraffic: true`. After changing this, run a fresh native build:
+The app probes LAN vs FRP in **Settings → Gateway → Connection status** and prefers LAN when `/health` succeeds.
+
+### Android (HTTP cleartext)
+
+Standalone Android builds block HTTP by default (Android 9+). This project enables it via the `expo-build-properties` plugin with `android.usesCleartextTraffic: true`. After changing native network settings, run a fresh build:
 
 ```bash
 pnpm exec expo prebuild --clean
 pnpm exec expo run:android
 ```
 
-If LAN worked in Expo Go but fails in a release/dev-client APK, rebuild the Android app — the setting is applied at prebuild time, not at runtime.
+If LAN worked in Expo Go but fails in a release/dev-client APK, rebuild the Android app — cleartext is applied at **prebuild** time, not at runtime.
+
+### iOS (local network + ATS)
+
+Standalone iOS builds include, via `app.json` → `ios.infoPlist`:
+
+- `NSAppTransportSecurity.NSAllowsLocalNetworking` — allows HTTP to local IPs such as `192.168.x.x`
+- `NSLocalNetworkUsageDescription` — required for the iOS 14+ **Local Network** privacy prompt
+
+These keys are written into `Info.plist` during `expo prebuild`. Unlike Android, iOS does **not** need a separate cleartext manifest flag when `NSAllowsLocalNetworking` is set.
+
+On first LAN access, iOS shows a system dialog (“Allow xopc to find devices on your local network?”). **Expo Go and your standalone app are different bundle IDs** — allowing access in Expo Go does not grant it to an installed `xopc` build.
+
+If LAN shows unreachable after install:
+
+1. Open **Settings → Privacy & Security → Local Network** and enable **xopc**
+2. Confirm the phone and gateway are on the same Wi‑Fi
+3. In the app, open gateway settings and tap **Re-detect route**
+
+Rebuild after changing `app.json` iOS plist entries:
+
+```bash
+pnpm exec expo prebuild --clean
+pnpm exec expo run:ios
+```
 
 ## Configure
 
