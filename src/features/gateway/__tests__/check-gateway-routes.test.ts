@@ -1,21 +1,31 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 
-import { probeGatewayRoutes } from '../check-gateway-routes';
+import { formatReachabilityReason, probeGatewayRoutes } from '../check-gateway-routes';
 
 vi.mock('../../../api/connection-strategy', () => ({
-  probeGatewayRouteReachable: vi.fn(),
+  probeGatewayRouteReachability: vi.fn(),
 }));
 
-import { probeGatewayRouteReachable } from '../../../api/connection-strategy';
+import { probeGatewayRouteReachability } from '../../../api/connection-strategy';
+
+const labels = {
+  timeout: 'timeout-msg',
+  networkError: 'network-msg',
+  networkErrorWithDetail: 'network-detail: {{detail}}',
+  invalidUrl: 'invalid-url-msg',
+  httpError: 'http {{status}}',
+};
 
 describe('probeGatewayRoutes', () => {
   afterEach(() => {
-    vi.mocked(probeGatewayRouteReachable).mockReset();
+    vi.mocked(probeGatewayRouteReachability).mockReset();
   });
 
   it('marks LAN reachable and tunnel unreachable independently', async () => {
-    vi.mocked(probeGatewayRouteReachable).mockImplementation(async (url: string) =>
-      url.includes('192.168'),
+    vi.mocked(probeGatewayRouteReachability).mockImplementation(async (url: string) =>
+      url.includes('192.168')
+        ? { reachable: true }
+        : { reachable: false, reason: 'network_error', errorMessage: 'Network request failed' },
     );
 
     await expect(
@@ -25,13 +35,17 @@ describe('probeGatewayRoutes', () => {
         token: 'tok',
       }),
     ).resolves.toEqual({
-      lan: 'reachable',
-      tunnel: 'unreachable',
+      lan: { status: 'reachable' },
+      tunnel: {
+        status: 'unreachable',
+        reason: 'network_error',
+        detail: 'Network request failed',
+      },
     });
   });
 
   it('returns not_configured for LAN when lanUrl is missing', async () => {
-    vi.mocked(probeGatewayRouteReachable).mockResolvedValue(true);
+    vi.mocked(probeGatewayRouteReachability).mockResolvedValue({ reachable: true });
 
     await expect(
       probeGatewayRoutes({
@@ -40,8 +54,23 @@ describe('probeGatewayRoutes', () => {
         token: 'tok',
       }),
     ).resolves.toEqual({
-      lan: 'not_configured',
-      tunnel: 'reachable',
+      lan: { status: 'not_configured' },
+      tunnel: { status: 'reachable' },
     });
+  });
+});
+
+describe('formatReachabilityReason', () => {
+  it('formats network error detail', () => {
+    expect(
+      formatReachabilityReason(
+        { status: 'unreachable', reason: 'network_error', detail: 'Network request failed' },
+        labels,
+      ),
+    ).toBe('network-detail: Network request failed');
+  });
+
+  it('returns empty string for reachable routes', () => {
+    expect(formatReachabilityReason({ status: 'reachable' }, labels)).toBe('');
   });
 });

@@ -4,9 +4,10 @@ import { Button, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
 import {
+  formatReachabilityReason,
   reachabilityStatusColor,
   reachabilityStatusLabel,
-  type RouteReachabilityStatus,
+  type RouteReachabilityInfo,
 } from './check-gateway-routes';
 import { syncGatewayUrlsFromTunnelQr } from './apply-tunnel-qr-from-api';
 import { SettingsSection, useSettingsColors } from '../settings/settings-ui';
@@ -29,22 +30,32 @@ function ConnectionRow({
 }: {
   label: string;
   value: string;
-  reachability?: RouteReachabilityStatus;
+  reachability?: RouteReachabilityInfo;
   muted?: boolean;
   isLast?: boolean;
 }) {
   const colors = useSettingsColors();
   const g = useMessages().gateway;
-  const statusLabel =
-    reachability != null
-      ? reachabilityStatusLabel(reachability, {
-          reachable: g.addressReachable,
-          unreachable: g.addressUnreachable,
-          checking: g.connectionDetecting,
-        })
-      : '';
-  const statusColor =
-    reachability != null ? reachabilityStatusColor(reachability, colors.textMuted) : colors.textMuted;
+  const status = reachability?.status ?? 'not_configured';
+  const statusLabel = reachability
+    ? reachabilityStatusLabel(status, {
+        reachable: g.addressReachable,
+        unreachable: g.addressUnreachable,
+        checking: g.connectionDetecting,
+      })
+    : '';
+  const statusColor = reachability
+    ? reachabilityStatusColor(status, colors.textMuted)
+    : colors.textMuted;
+  const reasonText = reachability
+    ? formatReachabilityReason(reachability, {
+        timeout: g.addressUnreachableReasonTimeout,
+        networkError: g.addressUnreachableReasonNetwork,
+        networkErrorWithDetail: g.addressUnreachableReasonNetworkDetail,
+        invalidUrl: g.addressUnreachableReasonInvalidUrl,
+        httpError: g.addressUnreachableReasonHttp,
+      })
+    : '';
 
   return (
     <View
@@ -63,6 +74,11 @@ function ConnectionRow({
       </Text>
       {statusLabel ? (
         <Text style={[styles.rowStatus, { color: statusColor }]}>{statusLabel}</Text>
+      ) : null}
+      {reasonText ? (
+        <Text style={[styles.rowReason, { color: colors.textMuted }]} selectable numberOfLines={4}>
+          {reasonText}
+        </Text>
       ) : null}
     </View>
   );
@@ -104,10 +120,16 @@ export function GatewayConnectionCard({ onSyncNotice }: GatewayConnectionCardPro
   }
 
   const lanDisplay = view.lanHost ?? g.lanNotConfigured;
-  const activeRouteUnreachable =
-    view.connectionKind === 'lan'
-      ? reachability.lan === 'unreachable'
-      : reachability.tunnel === 'unreachable';
+  const activeReachability =
+    view.connectionKind === 'lan' ? reachability.lan : reachability.tunnel;
+  const activeRouteUnreachable = activeReachability.status === 'unreachable';
+  const activeRouteReason = formatReachabilityReason(activeReachability, {
+    timeout: g.addressUnreachableReasonTimeout,
+    networkError: g.addressUnreachableReasonNetwork,
+    networkErrorWithDetail: g.addressUnreachableReasonNetworkDetail,
+    invalidUrl: g.addressUnreachableReasonInvalidUrl,
+    httpError: g.addressUnreachableReasonHttp,
+  });
 
   return (
     <SettingsSection title={g.connectionStatusTitle} style={styles.section}>
@@ -126,9 +148,16 @@ export function GatewayConnectionCard({ onSyncNotice }: GatewayConnectionCardPro
           </Text>
         ) : null}
         {activeRouteUnreachable && !checking ? (
-          <Text variant="bodySmall" style={{ color: '#FF3B30', marginTop: 4 }}>
-            {g.gatewayUnreachable}
-          </Text>
+          <>
+            <Text variant="bodySmall" style={{ color: '#FF3B30', marginTop: 4 }}>
+              {g.gatewayUnreachable}
+            </Text>
+            {activeRouteReason ? (
+              <Text variant="bodySmall" style={{ color: colors.textMuted, marginTop: 2 }} selectable>
+                {activeRouteReason}
+              </Text>
+            ) : null}
+          </>
         ) : null}
         <View style={styles.actionRow}>
           <Button
@@ -201,5 +230,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '500',
+  },
+  rowReason: {
+    fontSize: 12,
+    lineHeight: 17,
   },
 });

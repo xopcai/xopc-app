@@ -1,4 +1,7 @@
-import { probeGatewayRouteReachable } from '../../api/connection-strategy';
+import {
+  probeGatewayRouteReachability,
+  type GatewayRouteProbeReason,
+} from '../../api/connection-strategy';
 import { useGatewayStore } from '../../stores/gateway-store';
 
 import { syncGatewayAfterConnectivityChange } from './gateway-connection-sync';
@@ -9,38 +12,59 @@ export type RouteReachabilityStatus =
   | 'unreachable'
   | 'not_configured';
 
-export type GatewayRouteReachability = {
-  lan: RouteReachabilityStatus;
-  tunnel: RouteReachabilityStatus;
+export type RouteReachabilityInfo = {
+  status: RouteReachabilityStatus;
+  reason?: GatewayRouteProbeReason;
+  httpStatus?: number;
+  detail?: string;
 };
+
+export type GatewayRouteReachability = {
+  lan: RouteReachabilityInfo;
+  tunnel: RouteReachabilityInfo;
+};
+
+function probeToReachability(
+  probe: Awaited<ReturnType<typeof probeGatewayRouteReachability>>,
+): RouteReachabilityInfo {
+  if (probe.reachable) {
+    return { status: 'reachable' };
+  }
+  return {
+    status: 'unreachable',
+    reason: probe.reason,
+    httpStatus: probe.httpStatus,
+    detail: probe.errorMessage,
+  };
+}
 
 export async function probeGatewayRoutes(input: {
   tunnelUrl: string;
   lanUrl: string | null;
   token: string;
-}): Promise<Pick<GatewayRouteReachability, 'lan' | 'tunnel'>> {
+}): Promise<GatewayRouteReachability> {
   const probeOpts = { token: input.token };
   const tunnelUrl = input.tunnelUrl.trim();
   const lanUrl = input.lanUrl?.trim() ?? '';
 
-  const [lanOk, tunnelOk] = await Promise.all([
-    lanUrl ? probeGatewayRouteReachable(lanUrl, probeOpts) : Promise.resolve(null),
-    tunnelUrl ? probeGatewayRouteReachable(tunnelUrl, probeOpts) : Promise.resolve(false),
+  const [lanProbe, tunnelProbe] = await Promise.all([
+    lanUrl ? probeGatewayRouteReachability(lanUrl, probeOpts) : Promise.resolve(null),
+    tunnelUrl ? probeGatewayRouteReachability(tunnelUrl, probeOpts) : Promise.resolve(null),
   ]);
 
   return {
     lan: !lanUrl
-      ? 'not_configured'
-      : lanOk
-        ? 'reachable'
-        : 'unreachable',
-    tunnel: tunnelOk ? 'reachable' : 'unreachable',
+      ? { status: 'not_configured' }
+      : probeToReachability(lanProbe!),
+    tunnel: !tunnelUrl
+      ? { status: 'unreachable', reason: 'invalid_url' }
+      : probeToReachability(tunnelProbe!),
   };
 }
 
 /** Probe LAN and tunnel reachability, then apply LAN-first active route. */
 export async function probeAndApplyPreferredRoute(): Promise<{
-  reachability: Pick<GatewayRouteReachability, 'lan' | 'tunnel'>;
+  reachability: GatewayRouteReachability;
   routeChanged: boolean;
 }> {
   const st = useGatewayStore.getState();
@@ -90,5 +114,32 @@ export function reachabilityStatusColor(status: RouteReachabilityStatus, muted: 
       return muted;
     case 'not_configured':
       return muted;
+  }
+}
+
+export function formatReachabilityReason(
+  info: RouteReachabilityInfo,
+  labels: {
+    timeout: string;
+    networkError: string;
+    networkErrorWithDetail: string;
+    invalidUrl: string;
+    httpError: string;
+  },
+): string {
+  if (info.status !== 'unreachable' || !info.reason) return '';
+
+  switch (info.reason) {
+    case 'timeout':
+      return labels.timeout;
+    case 'invalid_url':
+      return labels.invalidUrl;
+    case 'http_error':
+      return labels.httpError.replace('{{status}}', String(info.httpStatus ?? '?'));
+    case 'network_error':
+      if (info.detail) {
+        return labels.networkErrorWithDetail.replace('{{detail}}', info.detail);
+      }
+      return labels.networkError;
   }
 }

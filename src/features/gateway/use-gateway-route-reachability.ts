@@ -6,7 +6,19 @@ import { useGatewayStore } from '../../stores/gateway-store';
 import {
   probeAndApplyPreferredRoute,
   type GatewayRouteReachability,
+  type RouteReachabilityInfo,
 } from './check-gateway-routes';
+
+function initialReachability(lanUrl: string | null, enabled: boolean, baseUrl: string): GatewayRouteReachability {
+  return {
+    lan: { status: lanUrl ? 'checking' : 'not_configured' },
+    tunnel: { status: enabled && baseUrl.trim() ? 'checking' : 'unreachable' },
+  };
+}
+
+function unreachableInfo(reason?: RouteReachabilityInfo['reason']): RouteReachabilityInfo {
+  return { status: 'unreachable', reason };
+}
 
 export function useGatewayRouteReachability(enabled: boolean): {
   reachability: GatewayRouteReachability;
@@ -17,26 +29,22 @@ export function useGatewayRouteReachability(enabled: boolean): {
   const lanUrl = useGatewayStore((s) => s.lanUrl);
   const token = useGatewayStore((s) => s.token);
 
-  const [reachability, setReachability] = useState<GatewayRouteReachability>(() => ({
-    lan: lanUrl ? 'checking' : 'not_configured',
-    tunnel: enabled && baseUrl.trim() ? 'checking' : 'unreachable',
-  }));
+  const [reachability, setReachability] = useState<GatewayRouteReachability>(() =>
+    initialReachability(lanUrl, enabled, baseUrl),
+  );
   const [checking, setChecking] = useState(false);
 
   const recheck = useCallback(async () => {
     if (!enabled || !baseUrl.trim()) {
       setReachability({
-        lan: lanUrl ? 'unreachable' : 'not_configured',
-        tunnel: 'unreachable',
+        lan: lanUrl ? unreachableInfo() : { status: 'not_configured' },
+        tunnel: unreachableInfo(),
       });
       return;
     }
 
     setChecking(true);
-    setReachability({
-      lan: lanUrl ? 'checking' : 'not_configured',
-      tunnel: 'checking',
-    });
+    setReachability(initialReachability(lanUrl, enabled, baseUrl));
 
     try {
       const { reachability: next } = await probeAndApplyPreferredRoute();
