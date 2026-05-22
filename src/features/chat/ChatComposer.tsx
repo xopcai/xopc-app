@@ -550,12 +550,16 @@ export const ChatComposer = memo(function ChatComposer({
     onCursorChange: setCursorPos,
     cursorPos,
     isDark: scheme === 'dark',
-    multiline: true as const,
+    multiline: isExpanded,
     editable: !disabled,
     onContentSizeChange,
     blurOnSubmit: false,
     returnKeyType: 'default' as const,
-    textAlignVertical: (Platform.OS === 'android' ? 'top' : 'center') as 'top' | 'center',
+    textAlignVertical: (isExpanded
+      ? Platform.OS === 'android'
+        ? 'top'
+        : 'center'
+      : 'center') as 'top' | 'center',
     autoCapitalize: 'sentences' as const,
     onFocus: () => setIsFocused(true),
     onBlur: () => setIsFocused(false),
@@ -739,7 +743,7 @@ const styles = StyleSheet.create({
   },
   compactRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     paddingHorizontal: 4,
     paddingVertical: 4,
     gap: 2,
@@ -751,6 +755,8 @@ const styles = StyleSheet.create({
   },
   compactInputWrap: {
     flex: 1,
+    justifyContent: 'center',
+    minHeight: MIN_COMPOSER_INPUT_HEIGHT,
   },
   toolRow: {
     flexDirection: 'row',
@@ -791,13 +797,16 @@ const styles = StyleSheet.create({
     maxHeight: MAX_COMPOSER_INPUT_HEIGHT,
     borderWidth: 0,
     ...Platform.select({
+      android: { includeFontPadding: false },
       web: { outlineStyle: 'none' } as Record<string, string>,
       default: {},
     }),
   },
   inputCompact: {
     flex: 1,
-    minHeight: MIN_COMPOSER_INPUT_HEIGHT,
+    height: MIN_COMPOSER_INPUT_HEIGHT,
+    lineHeight: 20,
+    paddingVertical: 0,
   },
   inputExpanded: {
     alignSelf: 'stretch',
