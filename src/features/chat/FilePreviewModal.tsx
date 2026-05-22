@@ -13,6 +13,8 @@ import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMessages } from '../../i18n/messages';
+import { HtmlPreviewPane } from './HtmlPreviewPane';
+import { isHtmlFile } from './html-preview-source';
 import { MarkdownView } from './MarkdownView';
 import { mimeTypeFromFileName } from './tool-result-file-paths';
 import { readWorkspaceFile, readWorkspaceFileBase64 } from './workspace-api';
@@ -39,7 +41,7 @@ export type FilePreviewModalProps = {
   onClose: () => void;
 };
 
-type PreviewKind = 'image' | 'markdown' | 'text' | 'binary';
+type PreviewKind = 'image' | 'markdown' | 'html' | 'text' | 'binary';
 
 type LoadedPreview = {
   kind: PreviewKind;
@@ -47,6 +49,7 @@ type LoadedPreview = {
   text: string | null;
   base64: string | null;
   absolutePath?: string;
+  workspaceRelativePath?: string;
 };
 
 function extensionOf(name: string): string {
@@ -70,9 +73,10 @@ function isMarkdownFile(name: string, mimeType: string): boolean {
 }
 
 function isTextFile(name: string, mimeType: string): boolean {
+  if (isHtmlFile(name, mimeType)) return false;
   const ext = extensionOf(name);
   if (mimeType.startsWith('text/')) return true;
-  return ['txt', 'json', 'html', 'htm', 'css', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'xml', 'csv'].includes(ext);
+  return ['txt', 'json', 'css', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'xml', 'csv'].includes(ext);
 }
 
 function normalizeBase64Payload(raw: string | undefined): string | null {
@@ -94,9 +98,11 @@ async function loadPreview(file: PreviewableFile, sessionKey?: string | null): P
     ? 'image'
     : isMarkdownFile(name, mimeType)
       ? 'markdown'
-      : isTextFile(name, mimeType)
-        ? 'text'
-        : 'binary';
+      : isHtmlFile(name, mimeType)
+        ? 'html'
+        : isTextFile(name, mimeType)
+          ? 'text'
+          : 'binary';
 
   if (kind === 'image') {
     const direct = normalizeBase64Payload(file.contentBase64);
@@ -106,6 +112,30 @@ async function loadPreview(file: PreviewableFile, sessionKey?: string | null): P
       return { kind, mimeType, text: null, base64: loaded.contentBase64, absolutePath: loaded.absolutePath ?? absolutePath };
     }
     return { kind, mimeType, text: null, base64: null, absolutePath };
+  }
+
+  if (kind === 'html') {
+    if (file.workspaceRelativePath) {
+      return {
+        kind,
+        mimeType,
+        text: null,
+        base64: null,
+        absolutePath,
+        workspaceRelativePath: file.workspaceRelativePath,
+      };
+    }
+    if (file.textContent != null) {
+      return { kind, mimeType, text: file.textContent, base64: null, absolutePath };
+    }
+    const fromBase64 = normalizeBase64Payload(file.contentBase64);
+    if (fromBase64) {
+      try {
+        return { kind, mimeType, text: globalThis.atob(fromBase64), base64: null, absolutePath };
+      } catch {
+        return { kind, mimeType, text: null, base64: null, absolutePath };
+      }
+    }
   }
 
   if (kind === 'markdown' || kind === 'text') {
@@ -220,6 +250,13 @@ export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePre
             <ScrollView contentContainerStyle={styles.textContent}>
               <MarkdownView content={loaded.text} />
             </ScrollView>
+          ) : loaded?.kind === 'html' ? (
+            <HtmlPreviewPane
+              workspaceRelativePath={loaded.workspaceRelativePath ?? file?.workspaceRelativePath}
+              htmlContent={loaded.text}
+              sessionKey={sessionKey}
+              mutedColor={muted}
+            />
           ) : loaded?.kind === 'text' && loaded.text != null ? (
             <ScrollView contentContainerStyle={styles.textContent}>
               <Text selectable style={[styles.mono, { color: textColor }]}> 
