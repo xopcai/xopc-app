@@ -142,6 +142,8 @@ export class AgentMessageSender {
   private _sseChatId = '';
   /** `runId` from the `status` event for this POST/resume; do not clear a newer pending run. */
   private _trackedRunId?: string;
+  /** Local transport teardown for resume/recovery — do not abort the server run or clear pending runId. */
+  private _localDetach = false;
 
   get isSending() {
     return !!this._abort;
@@ -154,6 +156,20 @@ export class AgentMessageSender {
   trackPendingRunId(runId: string): void {
     const id = runId.trim();
     if (id) this._trackedRunId = id;
+  }
+
+  /**
+   * Drop the in-flight SSE transport without notifying the server or clearing the pending runId.
+   * Used when the connection stalls and we need to reconnect via `/api/agent/resume`.
+   */
+  detachLocalStream(): void {
+    if (!this._abort) return;
+    this._localDetach = true;
+    const abortController = this._abort;
+    abortController.abort();
+    if (this._abort === abortController) {
+      this._abort = undefined;
+    }
   }
 
   async send(
@@ -222,11 +238,20 @@ export class AgentMessageSender {
         terminal.onMissingTerminal();
       }
     } catch (e) {
-      this._preservePendingRunForRecovery(e, abortController.signal.aborted, terminal.sawTerminal);
+      this._preservePendingRunForRecovery(
+        e,
+        abortController.signal.aborted,
+        terminal.sawTerminal,
+        this._localDetach,
+      );
       throw e;
     } finally {
-      if (terminal.sawTerminal || abortController.signal.aborted) {
+      const localDetach = this._localDetach;
+      this._localDetach = false;
+      if (terminal.sawTerminal || (abortController.signal.aborted && !localDetach)) {
         this._clearPendingRun();
+      } else if (localDetach) {
+        this._rePersistPendingRunAfterDetach();
       }
       if (this._abort === abortController) {
         this._abort = undefined;
@@ -337,6 +362,9 @@ export class AgentMessageSender {
   }
 
   async resume(runId: string, chatId: string, callbacks?: MessagingCallbacks): Promise<void> {
+    if (this.isStreamingFor(chatId)) {
+      this.detachLocalStream();
+    }
     this._trackedRunId = undefined;
     this._abort = new AbortController();
     const abortController = this._abort;
@@ -384,11 +412,20 @@ export class AgentMessageSender {
         terminal.onMissingTerminal();
       }
     } catch (e) {
-      this._preservePendingRunForRecovery(e, abortController.signal.aborted, terminal.sawTerminal);
+      this._preservePendingRunForRecovery(
+        e,
+        abortController.signal.aborted,
+        terminal.sawTerminal,
+        this._localDetach,
+      );
       throw e;
     } finally {
-      if (terminal.sawTerminal || abortController.signal.aborted) {
+      const localDetach = this._localDetach;
+      this._localDetach = false;
+      if (terminal.sawTerminal || (abortController.signal.aborted && !localDetach)) {
         this._clearPendingRun();
+      } else if (localDetach) {
+        this._rePersistPendingRunAfterDetach();
       }
       if (this._abort === abortController) {
         this._abort = undefined;
@@ -396,12 +433,24 @@ export class AgentMessageSender {
     }
   }
 
+  private _rePersistPendingRunAfterDetach(): void {
+    const chatId = this._sseChatId;
+    const runId =
+      this._trackedRunId?.trim() ||
+      (chatId ? readPendingAgentRunId(chatId) : null) ||
+      undefined;
+    if (chatId && runId) {
+      setPendingAgentRun(chatId, runId);
+    }
+  }
+
   private _preservePendingRunForRecovery(
     error: unknown,
     aborted: boolean,
     sawTerminal: boolean,
+    localDetach = false,
   ): void {
-    if (aborted || sawTerminal) return;
+    if ((aborted && !localDetach) || sawTerminal) return;
     const message = error instanceof Error ? error.message : String(error);
     if (!isTransientNetworkError(message)) return;
     const chatId = this._sseChatId;

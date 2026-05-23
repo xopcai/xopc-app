@@ -40,7 +40,7 @@ import {
   type AgentStreamResumeOptions,
 } from '../../src/features/chat/use-agent-stream-resume';
 import { useAgentStreamRecovery } from '../../src/features/chat/use-agent-stream-recovery';
-import { isTransientNetworkError } from '../../src/features/chat/network-errors';
+import { isTransientNetworkError, STREAM_STALL_MS } from '../../src/features/chat/network-errors';
 import { useGatewayFullyUnreachable } from '../../src/features/gateway/use-gateway-fully-unreachable';
 import { syncAfterGatewaySettingsSave } from '../../src/features/gateway/gateway-connection-sync';
 import { subscribeGatewayEvent } from '../../src/features/gateway/gateway-event-bus';
@@ -505,6 +505,7 @@ export default function ChatScreen() {
   const [clarifySubmitting, setClarifySubmitting] = useState(false);
   const [clarifySubmitError, setClarifySubmitError] = useState<string | null>(null);
   const senderRef = useRef(new AgentMessageSender());
+  const lastStreamActivityAtRef = useRef(0);
   const streamingRef = useRef(false);
   const sendingRef = useRef(false);
   const runBusyRef = useRef(false);
@@ -683,10 +684,14 @@ export default function ChatScreen() {
 
   function buildCallbacks(callbackSessionKey: string): MessagingCallbacks {
     const isCurrentSession = () => activeSessionKeyRef.current === callbackSessionKey;
+    const touchStreamActivity = () => {
+      lastStreamActivityAtRef.current = Date.now();
+    };
 
     return {
       onStreamStart: () => {
         if (!isCurrentSession()) return;
+        touchStreamActivity();
         streamRecoveryRef.current.markRecoverySucceeded();
         setStreamReconnecting(false);
         followUp.clearFollowUpSuggestions();
@@ -696,6 +701,7 @@ export default function ChatScreen() {
       },
       onToken: (delta) => {
         if (!isCurrentSession()) return;
+        touchStreamActivity();
         updateStreamingMessage((message) => {
           appendTextDelta(message.content, delta);
         });
@@ -706,6 +712,7 @@ export default function ChatScreen() {
       },
       onThinking: (text, isDelta) => {
         if (!isCurrentSession()) return;
+        touchStreamActivity();
         updateStreamingMessage((message) => {
           if (!isDelta && text === '') startThinkingSegment(message.content);
           else appendThinkingDelta(message.content, text, isDelta);
@@ -718,6 +725,7 @@ export default function ChatScreen() {
       },
       onToolStart: (toolName, args) => {
         if (!isCurrentSession()) return;
+        touchStreamActivity();
         updateStreamingMessage((message) => {
           appendToolStart(message.content, toolName, args);
         }, true);
@@ -734,6 +742,7 @@ export default function ChatScreen() {
       },
       onProgress: (p) => {
         if (!isCurrentSession()) return;
+        touchStreamActivity();
         setProgress(p);
       },
       onTtsAudio: (payload) => {
@@ -847,6 +856,7 @@ export default function ChatScreen() {
       streamRecoveryRef.current.cancelRecovery();
       setAwaitingSessionRefresh(false);
       setSessionRefreshStartedAt(0);
+      lastStreamActivityAtRef.current = Date.now();
       try {
         await senderRef.current.sendMessage(
           text.trim(),
@@ -998,6 +1008,9 @@ export default function ChatScreen() {
     const background = opts?.background === true;
     const runId = pendingRunId ?? (sessionKey ? readPendingAgentRunId(sessionKey) : null);
     if (!sessionKey || !runId) return;
+    if (senderRef.current.isStreamingFor(sessionKey)) {
+      senderRef.current.detachLocalStream();
+    }
     if (senderRef.current.isStreamingFor(sessionKey)) return;
     if (!background && (streaming || awaitingSessionRefresh)) return;
 
@@ -1012,6 +1025,7 @@ export default function ChatScreen() {
     setProgress(null);
     setStreaming(true);
     streamingRef.current = true;
+    lastStreamActivityAtRef.current = Date.now();
     try {
       await senderRef.current.resume(runId, sessionKey, buildCallbacks(sessionKey));
       autoResumeFailedRef.current = false;
@@ -1070,6 +1084,17 @@ export default function ChatScreen() {
     },
   });
   streamRecoveryRef.current = streamRecovery;
+
+  const triggerStreamRecovery = useCallback(() => {
+    if (!sessionKey) return;
+    if (senderRef.current.isStreamingFor(sessionKey)) {
+      senderRef.current.detachLocalStream();
+    }
+    autoResumeFailedRef.current = false;
+    setResumePromptVisible(false);
+    lastStreamActivityAtRef.current = Date.now();
+    streamRecoveryRef.current.handleRecoverableFailure(new Error('Network request failed'));
+  }, [sessionKey]);
 
   // Auto-resume when a pending run id appears (e.g. stored from POST `status` before clear race).
   useEffect(() => {
@@ -1159,14 +1184,43 @@ export default function ChatScreen() {
   useEffect(() => {
     const wasOffline = !prevGatewayOnlineForStreamRef.current;
     prevGatewayOnlineForStreamRef.current = gatewayOnline;
-    if (!wasOffline || !gatewayOnline || !sessionKey || streaming) return;
-    if (!pendingRunId && !streamReconnecting && !resumePromptVisible) return;
-    autoResumeFailedRef.current = false;
-    setResumePromptVisible(false);
-    if (pendingRunId || streamReconnecting || resumePromptVisible) {
-      streamRecoveryRef.current.handleRecoverableFailure(new Error('Network request failed'));
-    }
-  }, [gatewayOnline, sessionKey, streaming, pendingRunId, streamReconnecting, resumePromptVisible]);
+    if (!wasOffline || !gatewayOnline || !sessionKey) return;
+    const hasResumableStream =
+      Boolean(pendingRunId) ||
+      streamReconnecting ||
+      resumePromptVisible ||
+      (streaming && senderRef.current.isStreamingFor(sessionKey));
+    if (!hasResumableStream) return;
+    triggerStreamRecovery();
+  }, [
+    gatewayOnline,
+    sessionKey,
+    streaming,
+    pendingRunId,
+    streamReconnecting,
+    resumePromptVisible,
+    triggerStreamRecovery,
+  ]);
+
+  /** Start recovery when gateway goes offline while a stream is still open locally. */
+  useEffect(() => {
+    if (gatewayOnline || !sessionKey) return;
+    if (!streaming && !senderRef.current.isStreamingFor(sessionKey)) return;
+    if (!pendingRunId && !senderRef.current.isStreamingFor(sessionKey)) return;
+    triggerStreamRecovery();
+  }, [gatewayOnline, sessionKey, streaming, pendingRunId, triggerStreamRecovery]);
+
+  /** Detect stalled SSE (no tokens/progress) and reconnect via resume. */
+  useEffect(() => {
+    if (!streaming || !sessionKey) return;
+    const interval = setInterval(() => {
+      if (!streamingRef.current || activeSessionKeyRef.current !== sessionKey) return;
+      if (!readPendingAgentRunId(sessionKey)) return;
+      if (Date.now() - lastStreamActivityAtRef.current < STREAM_STALL_MS) return;
+      triggerStreamRecovery();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [streaming, sessionKey, triggerStreamRecovery]);
 
   // ── New chat ─────────────────────────────────────────────
   const handleNewChat = useCallback(() => {
