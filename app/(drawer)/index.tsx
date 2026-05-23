@@ -65,7 +65,6 @@ import {
   ensureAssistantMessage,
   finalizeRunningTools,
   finalizeStreamingThinking,
-  hasRenderableAssistantContent,
   startThinkingSegment,
 } from '../../src/features/chat/streaming';
 import { fetchChatAgents, resolveEffectiveDefaultAgentId } from '../../src/query/agents';
@@ -633,7 +632,6 @@ export default function ChatScreen() {
   const followUp = useChatFollowUp({
     sessionKey,
     sessionKeyRef: activeSessionKeyRef,
-    runBusyRef,
     streamActiveRef,
     clarifyActiveRef,
     sendRef,
@@ -694,7 +692,6 @@ export default function ChatScreen() {
         touchStreamActivity();
         streamRecoveryRef.current.markRecoverySucceeded();
         setStreamReconnecting(false);
-        followUp.clearFollowUpSuggestions();
         setStreaming(true);
         streamingRef.current = true;
         updateStreamingMessage(() => {}, true);
@@ -763,7 +760,6 @@ export default function ChatScreen() {
       onClarifyRequest: (payload) => {
         if (!isCurrentSession()) return;
         flushStreamingMessage();
-        followUp.clearFollowUpSuggestions();
         setClarifyPrompt(payload);
         setClarifySubmitError(null);
         setClarifySubmitting(false);
@@ -776,30 +772,12 @@ export default function ChatScreen() {
         sendingRef.current = false;
         streamActiveRef.current = false;
         runBusyRef.current = true;
-        let appended: Message | null = null;
         if (streamingMsgRef.current) {
           finalizeStreamingThinking(streamingMsgRef.current.content);
           finalizeRunningTools(streamingMsgRef.current.content);
-          appended = cloneMessageForRender(
-            ensureAssistantMessage(streamingMsgRef.current, Date.now()),
-          );
           flushStreamingMessage();
         }
-        if (appended && hasRenderableAssistantContent(appended)) {
-          const prior = displayMessagesRef.current;
-          const withoutStreaming = prior.length > 0 && prior[prior.length - 1]?.role === 'assistant'
-            ? prior.slice(0, -1)
-            : prior;
-          const merged = mergeConsecutiveAssistantMessages([...withoutStreaming, appended]);
-          finalizeMessage(callbackSessionKey);
-          followUp.refreshFollowUpSuggestions({
-            appended,
-            messages: merged,
-            clarifyActive: Boolean(clarifyPrompt),
-          });
-        } else {
-          finalizeMessage(callbackSessionKey);
-        }
+        finalizeMessage(callbackSessionKey);
         if (followUpFlushTimerRef.current) {
           clearTimeout(followUpFlushTimerRef.current);
         }
@@ -842,7 +820,6 @@ export default function ChatScreen() {
       if (!canSendComposerDraft(text, attachments?.length ?? 0) || !sessionKey || streaming) {
         return false;
       }
-      followUp.clearFollowUpSuggestions();
       sendingRef.current = true;
       streamActiveRef.current = true;
       runBusyRef.current = true;
@@ -1500,13 +1477,6 @@ export default function ChatScreen() {
             onUserMessageEdit={handleUserMessageEdit}
             onAssistantCopy={handleAssistantCopy}
             onAssistantRegenerate={handleAssistantRegenerate}
-            followUpSuggestions={followUp.followUpSuggestions}
-            followUpDisabled={
-              sessionQuery.isLoading ||
-              awaitingSessionRefresh ||
-              Boolean(clarifyPrompt)
-            }
-            onFollowUpPick={followUp.pickFollowUpSuggestion}
             networkUnreachableTip={
               gatewayFullyUnreachable
                 ? {

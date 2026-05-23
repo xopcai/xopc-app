@@ -26,47 +26,25 @@ describe('follow-up-queue-storage', () => {
     memory.clear();
   });
 
-  it('roundtrips pending rows, suggestions, and editing id', () => {
+  it('roundtrips pending rows and editing id', () => {
     writeFollowUpQueueSnapshot('session-a', {
       pending: [{ id: 'row-1', text: 'queued text', thinkingLevel: 'off' }],
-      suggestions: ['what_next', 'code_explain'],
-      suggestionDisplays: [
-        { id: 'what_next', label: 'What next?' },
-        { id: 'code_explain', label: 'Explain code' },
-      ],
       editingId: 'row-1',
-      recentPickedIds: ['code_explain'],
-      sessionToolUses: [{ name: 'web_search', status: 'done' }],
     });
     expect(readFollowUpQueueSnapshot('session-a')).toEqual({
       pending: [{ id: 'row-1', text: 'queued text', thinkingLevel: 'off' }],
-      suggestions: ['what_next', 'code_explain'],
-      suggestionDisplays: [
-        { id: 'what_next', label: 'What next?' },
-        { id: 'code_explain', label: 'Explain code' },
-      ],
       editingId: 'row-1',
-      recentPickedIds: ['code_explain'],
-      sessionToolUses: [{ name: 'web_search', status: 'done' }],
     });
   });
 
   it('isolates keys per session', () => {
     writeFollowUpQueueSnapshot('a', {
       pending: [{ id: '1', text: 'a' }],
-      suggestions: [],
-      suggestionDisplays: [],
       editingId: null,
-      recentPickedIds: [],
-      sessionToolUses: [],
     });
     writeFollowUpQueueSnapshot('b', {
       pending: [{ id: '2', text: 'b' }],
-      suggestions: [],
-      suggestionDisplays: [],
       editingId: null,
-      recentPickedIds: [],
-      sessionToolUses: [],
     });
     expect(readFollowUpQueueSnapshot('a')?.pending[0]?.text).toBe('a');
     expect(readFollowUpQueueSnapshot('b')?.pending[0]?.text).toBe('b');
@@ -75,19 +53,11 @@ describe('follow-up-queue-storage', () => {
   it('clears storage when queue is empty', () => {
     writeFollowUpQueueSnapshot('x', {
       pending: [{ id: '1', text: 't' }],
-      suggestions: [],
-      suggestionDisplays: [],
       editingId: null,
-      recentPickedIds: [],
-      sessionToolUses: [],
     });
     writeFollowUpQueueSnapshot('x', {
       pending: [],
-      suggestions: [],
-      suggestionDisplays: [],
       editingId: null,
-      recentPickedIds: [],
-      sessionToolUses: [],
     });
     expect(readFollowUpQueueSnapshot('x')).toBeNull();
   });
@@ -95,11 +65,7 @@ describe('follow-up-queue-storage', () => {
   it('clearFollowUpQueueSnapshot removes key', () => {
     writeFollowUpQueueSnapshot('z', {
       pending: [{ id: '1', text: 't' }],
-      suggestions: [],
-      suggestionDisplays: [],
       editingId: null,
-      recentPickedIds: [],
-      sessionToolUses: [],
     });
     clearFollowUpQueueSnapshot('z');
     expect(readFollowUpQueueSnapshot('z')).toBeNull();
@@ -121,27 +87,26 @@ describe('follow-up-queue-storage', () => {
           ],
         },
       ],
-      suggestions: [],
-      suggestionDisplays: [],
       editingId: null,
-      recentPickedIds: [],
-      sessionToolUses: [],
     });
     expect(snap.pending[0]?.attachments?.[0]).not.toHaveProperty('data');
     expect(snap.pending[0]?.attachments?.[0]?.workspaceRelativePath).toBe('inbound/foo.png');
   });
 
-  it('drops unknown suggestion ids on read', () => {
+  it('reads legacy snapshots with extra chip fields', () => {
     memory.set(
       'xopc.chat.followUpQueue:v1:z',
       JSON.stringify({
-        v: 1,
-        pending: [],
-        suggestions: ['what_next', 'not_a_real_id'],
+        v: 2,
+        pending: [{ id: '1', text: 't' }],
+        suggestions: ['what_next'],
         editingId: null,
+        recentPickedIds: ['code_explain'],
       }),
     );
-    expect(readFollowUpQueueSnapshot('z')?.suggestions).toEqual(['what_next']);
-    expect(readFollowUpQueueSnapshot('z')?.recentPickedIds).toEqual([]);
+    expect(readFollowUpQueueSnapshot('z')).toEqual({
+      pending: [{ id: '1', text: 't' }],
+      editingId: null,
+    });
   });
 });

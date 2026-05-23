@@ -9,7 +9,7 @@ export type SendOrQueueInput = {
   onQueueFull?: () => void;
 };
 
-/** Send immediately when idle; otherwise enqueue a follow-up (same as follow-up chips). */
+/** Send immediately when idle; otherwise enqueue a pending follow-up. */
 export function sendOrQueueMessage(input: SendOrQueueInput): void {
   const trimmed = input.text.trim();
   if (!trimmed) return;

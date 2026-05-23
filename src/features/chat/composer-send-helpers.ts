@@ -51,18 +51,6 @@ export function isLastAssistantMessage(messages: Message[], index: number): bool
   return false;
 }
 
-export function shouldShowFollowUpChips(input: {
-  streaming: boolean;
-  followUpSuggestions: unknown[] | undefined;
-  onFollowUpPick: unknown;
-  messages: Message[];
-}): boolean {
-  if (input.streaming) return false;
-  if (!input.followUpSuggestions?.length || !input.onFollowUpPick) return false;
-  const last = input.messages[input.messages.length - 1];
-  return last?.role === 'assistant';
-}
-
 export function wireAttachmentsToMessageAttachments(wire: WireAttachment[]): MessageAttachment[] {
   return wire.map((w, index) => ({
     id: `pending-${index}-${Date.now()}`,

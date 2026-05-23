@@ -22,10 +22,7 @@ import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 import { useKeyboardListPadding } from '../../hooks/use-keyboard-list-padding';
 import { GatewayUnreachableTip } from '../gateway/GatewayUnreachableTip';
 import { MessageBubble } from './MessageBubble';
-import { isLastAssistantMessage, shouldShowFollowUpChips } from './composer-send-helpers';
-import { ChatFollowUpChips } from './ChatFollowUpChips';
-import type { FollowUpSuggestionDisplay } from './follow-up-anchor';
-import type { FollowUpSuggestionId } from './follow-up-suggestions';
+import { isLastAssistantMessage } from './composer-send-helpers';
 import type { Message, ProgressState } from './messages.types';
 
 const LIST_BASE_PADDING_BOTTOM = 8;
@@ -50,9 +47,6 @@ export const MessageList = memo(function MessageList({
   onUserMessageEdit,
   onAssistantCopy,
   onAssistantRegenerate,
-  followUpSuggestions,
-  followUpDisabled,
-  onFollowUpPick,
   networkUnreachableTip,
 }: {
   messages: Message[];
@@ -69,9 +63,6 @@ export const MessageList = memo(function MessageList({
   onUserMessageEdit?: (text: string) => void;
   onAssistantCopy?: (text: string) => void;
   onAssistantRegenerate?: (messageIndex: number) => void;
-  followUpSuggestions?: FollowUpSuggestionDisplay[];
-  followUpDisabled?: boolean;
-  onFollowUpPick?: (id: FollowUpSuggestionId) => void;
   networkUnreachableTip?: { message: string; onPress: () => void } | null;
 }) {
   const colorScheme = useColorScheme();
@@ -125,17 +116,6 @@ export const MessageList = memo(function MessageList({
     });
   }, [keyboardPadding, messages.length]);
 
-  const showFollowUpChips = useMemo(
-    () =>
-      shouldShowFollowUpChips({
-        streaming,
-        followUpSuggestions,
-        onFollowUpPick,
-        messages,
-      }),
-    [streaming, followUpSuggestions, messages, onFollowUpPick],
-  );
-
   const listHeader = useMemo(() => {
     if (!networkUnreachableTip) return null;
     return (
@@ -145,28 +125,6 @@ export const MessageList = memo(function MessageList({
       />
     );
   }, [networkUnreachableTip]);
-
-  const listFooter = useMemo(() => {
-    if (!showFollowUpChips || !followUpSuggestions?.length || !onFollowUpPick) return null;
-    return (
-      <ChatFollowUpChips
-        suggestions={followUpSuggestions}
-        disabled={followUpDisabled}
-        onPick={onFollowUpPick}
-      />
-    );
-  }, [showFollowUpChips, followUpSuggestions, followUpDisabled, onFollowUpPick]);
-
-  useEffect(() => {
-    if (!showFollowUpChips || messages.length === 0) return;
-    if (isAtBottomRef.current) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          listRef.current?.scrollToEnd({ animated: true });
-        });
-      });
-    }
-  }, [showFollowUpChips, followUpSuggestions, messages.length]);
 
   const listContentStyle = useMemo(
     () => ({
@@ -306,7 +264,6 @@ export const MessageList = memo(function MessageList({
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={listHeader}
-        ListFooterComponent={listFooter}
       />
       {showScrollToBottom ? (
         <IconButton

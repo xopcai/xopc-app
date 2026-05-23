@@ -1,65 +1,11 @@
-import type { FollowUpSuggestionDisplay } from './follow-up-anchor';
-import type { ToolUseSummary } from './follow-up-context';
-import { FOLLOW_UP_SUGGESTION_IDS, type FollowUpSuggestionId } from './follow-up-suggestions.types';
 import type { PendingFollowUp, PendingFollowUpAttachment } from './pending-follow-up.types';
 import { storage } from '../../storage/mmkv';
 
 const STORAGE_PREFIX = 'xopc.chat.followUpQueue:v1:';
 
-const KNOWN_SUGGESTION_IDS = new Set<string>(FOLLOW_UP_SUGGESTION_IDS);
-
-function coerceStoredSuggestionIds(raw: unknown): FollowUpSuggestionId[] {
-  if (!Array.isArray(raw)) return [];
-  const out: FollowUpSuggestionId[] = [];
-  for (const x of raw) {
-    if (typeof x === 'string' && KNOWN_SUGGESTION_IDS.has(x)) {
-      out.push(x as FollowUpSuggestionId);
-    }
-  }
-  return out;
-}
-
-function parseSuggestionDisplays(raw: unknown): FollowUpSuggestionDisplay[] {
-  if (!Array.isArray(raw)) return [];
-  const out: FollowUpSuggestionDisplay[] = [];
-  for (const row of raw) {
-    if (typeof row !== 'object' || row === null || Array.isArray(row)) continue;
-    const id = (row as { id?: unknown }).id;
-    const label = (row as { label?: unknown }).label;
-    if (typeof id !== 'string' || !KNOWN_SUGGESTION_IDS.has(id)) continue;
-    if (typeof label !== 'string' || !label.trim()) continue;
-    out.push({ id: id as FollowUpSuggestionId, label: label.trim() });
-  }
-  return out;
-}
-
-function parseToolUses(raw: unknown): ToolUseSummary[] {
-  if (!Array.isArray(raw)) return [];
-  const out: ToolUseSummary[] = [];
-  for (const row of raw) {
-    if (typeof row !== 'object' || row === null || Array.isArray(row)) continue;
-    const name = (row as { name?: unknown }).name;
-    const status = (row as { status?: unknown }).status;
-    if (typeof name !== 'string' || !name.trim()) continue;
-    if (status !== 'running' && status !== 'done' && status !== 'error') continue;
-    const item: ToolUseSummary = { name: name.trim(), status };
-    const preview = (row as { resultPreview?: unknown }).resultPreview;
-    if (typeof preview === 'string' && preview.trim()) {
-      item.resultPreview = preview.trim().slice(0, 200);
-    }
-    out.push(item);
-    if (out.length >= 24) break;
-  }
-  return out;
-}
-
 export type FollowUpQueueSnapshot = {
   pending: PendingFollowUp[];
-  suggestions: FollowUpSuggestionId[];
-  suggestionDisplays: FollowUpSuggestionDisplay[];
   editingId: string | null;
-  recentPickedIds: FollowUpSuggestionId[];
-  sessionToolUses: ToolUseSummary[];
 };
 
 function storageKey(sessionKey: string): string {
@@ -109,14 +55,7 @@ function parsePendingFollowUps(raw: unknown): PendingFollowUp[] {
 }
 
 function snapshotIsEmpty(snap: FollowUpQueueSnapshot): boolean {
-  return (
-    snap.pending.length === 0 &&
-    snap.suggestions.length === 0 &&
-    snap.suggestionDisplays.length === 0 &&
-    snap.editingId == null &&
-    snap.recentPickedIds.length === 0 &&
-    snap.sessionToolUses.length === 0
-  );
+  return snap.pending.length === 0 && snap.editingId == null;
 }
 
 /**
@@ -126,10 +65,6 @@ function snapshotIsEmpty(snap: FollowUpQueueSnapshot): boolean {
 export function sanitizeFollowUpQueueSnapshot(snap: FollowUpQueueSnapshot): FollowUpQueueSnapshot {
   return {
     editingId: snap.editingId,
-    suggestions: [...snap.suggestions],
-    suggestionDisplays: snap.suggestionDisplays.map((d) => ({ ...d })),
-    recentPickedIds: [...snap.recentPickedIds],
-    sessionToolUses: snap.sessionToolUses.map((t) => ({ ...t })),
     pending: snap.pending.map((row) => ({
       ...row,
       attachments: row.attachments?.map((a) => {
@@ -149,10 +84,6 @@ export function readFollowUpQueueSnapshot(sessionKey: string): FollowUpQueueSnap
     const parsed = JSON.parse(raw) as unknown;
     if (!isRecord(parsed)) return null;
     const pending = parsePendingFollowUps(parsed.pending);
-    const suggestions = coerceStoredSuggestionIds(parsed.suggestions);
-    const suggestionDisplays = parseSuggestionDisplays(parsed.suggestionDisplays);
-    const recentPickedIds = coerceStoredSuggestionIds(parsed.recentPickedIds);
-    const sessionToolUses = parseToolUses(parsed.sessionToolUses);
     const editingId =
       parsed.editingId === null
         ? null
@@ -160,17 +91,7 @@ export function readFollowUpQueueSnapshot(sessionKey: string): FollowUpQueueSnap
           ? parsed.editingId.trim()
           : null;
 
-    const snap: FollowUpQueueSnapshot = {
-      pending,
-      suggestions,
-      suggestionDisplays:
-        suggestionDisplays.length > 0
-          ? suggestionDisplays
-          : suggestions.map((id) => ({ id, label: id })),
-      editingId,
-      recentPickedIds,
-      sessionToolUses,
-    };
+    const snap: FollowUpQueueSnapshot = { pending, editingId };
     if (snapshotIsEmpty(snap)) return null;
     return snap;
   } catch {
@@ -187,7 +108,7 @@ export function writeFollowUpQueueSnapshot(sessionKey: string, snap: FollowUpQue
     return;
   }
   try {
-    storage.set(storageKey(sk), JSON.stringify({ v: 2, ...sanitized }));
+    storage.set(storageKey(sk), JSON.stringify({ v: 3, ...sanitized }));
   } catch {
     /* ignore quota */
   }
