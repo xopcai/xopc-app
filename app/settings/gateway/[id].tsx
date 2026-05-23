@@ -295,14 +295,6 @@ export default function GatewayEditScreen() {
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
-        {Platform.OS !== 'web' ? (
-          <View style={styles.scanRow}>
-            <Button mode="outlined" onPress={() => void openScanner()} icon="barcode-scan">
-              {l.scanQr}
-            </Button>
-          </View>
-        ) : null}
-
         <Controller
           control={control}
           name="name"
@@ -362,7 +354,14 @@ export default function GatewayEditScreen() {
           )}
         />
 
-        <View style={styles.testRow}>
+        <View style={styles.actionRow}>
+          {Platform.OS !== 'web' ? (
+            <Button mode="outlined" onPress={() => void openScanner()} icon="barcode-scan">
+              {l.scanQr}
+            </Button>
+          ) : (
+            <View />
+          )}
           <Button mode="outlined" loading={testing} disabled={testing} onPress={() => void handleTestConnection()}>
             {testing ? g.testingConnection : g.testConnection}
           </Button>
@@ -415,16 +414,15 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 32,
   },
-  scanRow: {
-    marginBottom: 12,
-    alignItems: 'flex-start',
-  },
   fieldGap: {
     marginTop: 8,
   },
-  testRow: {
+  actionRow: {
     marginTop: 16,
-    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
   },
   saveRow: {
     marginTop: 24,
