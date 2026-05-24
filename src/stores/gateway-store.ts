@@ -13,7 +13,8 @@ import {
   type GatewayProfileInput,
 } from './gateway-types';
 
-export const DEFAULT_GATEWAY_BASE_URL = 'http://localhost:18790';
+export const DEFAULT_GATEWAY_BASE_URL = '';
+export const GATEWAY_BASE_URL_PLACEHOLDER = 'http://192.168.x.x:18790';
 
 export type GatewayState = {
   profiles: GatewayProfile[];

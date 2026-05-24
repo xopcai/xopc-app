@@ -11,6 +11,11 @@ import { type GatewayProfileForm, gatewayProfileSchema } from '../../../src/conf
 import { syncGatewayUrlsFromTunnelQr } from '../../../src/features/gateway/apply-tunnel-qr-from-api';
 import { syncAfterGatewaySettingsSave } from '../../../src/features/gateway/gateway-connection-sync';
 import {
+  gatewayUrlValidationMessage,
+  zodGatewayBaseUrlErrorMessage,
+} from '../../../src/features/gateway/gateway-url-messages';
+import { validateGatewayUrlForManualConnect } from '../../../src/features/gateway/validate-gateway-url';
+import {
   GatewayQrScannerModal,
   requestGatewayQrCameraAccess,
 } from '../../../src/features/gateway/GatewayQrScannerModal';
@@ -160,6 +165,25 @@ export default function GatewayEditScreen() {
     setTestMessage(null);
     setTestOk(null);
     try {
+      const formBaseUrl = normalizeBaseUrl(watchedBaseUrl ?? '');
+      const formToken = watchedToken ?? '';
+      if (!formBaseUrl) return;
+
+      const urlCheck = await validateGatewayUrlForManualConnect(formBaseUrl, {
+        requireReachable: true,
+      });
+      if (!urlCheck.ok) {
+        setTestOk(false);
+        setTestMessage(
+          gatewayUrlValidationMessage(urlCheck.code, {
+            invalidUrl: s.baseUrlInvalid,
+            loopbackUrl: g.loopbackUrl,
+            unreachableUrl: g.unreachableUrl,
+          }),
+        );
+        return;
+      }
+
       const st = useGatewayStore.getState();
       const prev = {
         baseUrl: st.baseUrl,
@@ -167,18 +191,20 @@ export default function GatewayEditScreen() {
         token: st.token,
         activeBaseUrl: st.activeBaseUrl,
       };
-      const formBaseUrl = normalizeBaseUrl(watchedBaseUrl ?? '');
-      const formToken = watchedToken ?? '';
-      if (!formBaseUrl) return;
 
       useGatewayStore.setState({
-        baseUrl: formBaseUrl,
+        baseUrl: urlCheck.url,
         lanUrl: pendingLanUrl,
         token: formToken,
-        activeBaseUrl: formBaseUrl,
+        activeBaseUrl: urlCheck.url,
       });
       const active = await st.refreshActiveBaseUrl();
-      if (!active) return;
+      if (!active) {
+        useGatewayStore.setState(prev);
+        setTestOk(false);
+        setTestMessage(g.unreachableUrl);
+        return;
+      }
 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);
@@ -202,21 +228,37 @@ export default function GatewayEditScreen() {
     } finally {
       setTesting(false);
     }
-  }, [g.testFailed, g.testOk, pendingLanUrl, watchedBaseUrl, watchedToken]);
+  }, [g.loopbackUrl, g.testFailed, g.testOk, g.unreachableUrl, pendingLanUrl, s.baseUrlInvalid, watchedBaseUrl, watchedToken]);
 
   const onSubmit = async (data: GatewayProfileForm) => {
     const nextBaseUrl = normalizeBaseUrl(data.baseUrl);
     const prevBaseUrl = existingProfile ? normalizeBaseUrl(existingProfile.baseUrl) : '';
     const baseUrlChanged = !isNew && prevBaseUrl !== nextBaseUrl;
 
+    const urlCheck = await validateGatewayUrlForManualConnect(data.baseUrl, {
+      requireReachable: !data.token.trim(),
+    });
+    if (!urlCheck.ok) {
+      Alert.alert(
+        s.editGateway,
+        gatewayUrlValidationMessage(urlCheck.code, {
+          invalidUrl: s.baseUrlInvalid,
+          loopbackUrl: g.loopbackUrl,
+          unreachableUrl: g.unreachableUrl,
+        }),
+      );
+      return;
+    }
+
     setSaving(true);
     try {
+      const saveBaseUrl = urlCheck.url;
       if (isNew) {
         const duplicate = useGatewayStore.getState().findProfileByBaseUrl(nextBaseUrl);
         if (duplicate) {
           updateProfile(duplicate.id, {
             name: data.name,
-            baseUrl: data.baseUrl,
+            baseUrl: saveBaseUrl,
             lanUrl: pendingLanUrl,
             token: data.token,
           });
@@ -225,7 +267,7 @@ export default function GatewayEditScreen() {
           addProfile(
             {
               name: data.name,
-              baseUrl: data.baseUrl,
+              baseUrl: saveBaseUrl,
               lanUrl: pendingLanUrl,
               token: data.token,
             },
@@ -235,7 +277,7 @@ export default function GatewayEditScreen() {
       } else if (existingProfile) {
         updateProfile(existingProfile.id, {
           name: data.name,
-          baseUrl: data.baseUrl,
+          baseUrl: saveBaseUrl,
           lanUrl: pendingLanUrl,
           token: data.token,
         });
@@ -317,6 +359,7 @@ export default function GatewayEditScreen() {
             <TextInput
               label={s.baseUrl}
               value={value}
+              placeholder={l.baseUrlPlaceholder}
               onBlur={onBlur}
               onChangeText={(text) => {
                 onChange(text);
@@ -334,7 +377,11 @@ export default function GatewayEditScreen() {
           )}
         />
         <HelperText type="error" visible={!!errors.baseUrl}>
-          {errors.baseUrl?.message}
+          {zodGatewayBaseUrlErrorMessage(errors.baseUrl?.message, {
+            invalidUrl: s.baseUrlInvalid,
+            loopbackUrl: g.loopbackUrl,
+            unreachableUrl: g.unreachableUrl,
+          })}
         </HelperText>
 
         <Controller

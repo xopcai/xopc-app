@@ -67,6 +67,9 @@ export const en = {
     testingConnection: 'Testing…',
     testOk: 'Gateway is reachable.',
     testFailed: 'Could not reach the gateway.',
+    loopbackUrl:
+      '127.0.0.1 and localhost only work on the gateway computer. Use a LAN IP or tunnel URL instead.',
+    unreachableUrl: 'Could not reach the gateway at this address.',
     connectionModeLan: 'LAN',
     connectionModeTunnel: 'Tunnel',
     connectionStatusTitle: 'Connection',
@@ -124,6 +127,10 @@ export const en = {
     saveContinue: 'Save & continue',
     openFullSettings: 'All settings',
     invalidUrl: 'Enter a valid http(s) gateway URL.',
+    loopbackUrl:
+      '127.0.0.1 and localhost only work on the gateway computer. Use a LAN IP from the desktop console or enable remote access.',
+    unreachableUrl: 'Could not reach the gateway at this address. Check Wi‑Fi, firewall, and that the gateway is running.',
+    baseUrlPlaceholder: 'http://192.168.x.x:18790',
     connectFailed: 'Could not reach the gateway. Check the URL, token, and network.',
     cameraDenied: 'Camera access is required to scan QR codes.',
   },

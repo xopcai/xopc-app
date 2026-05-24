@@ -46,6 +46,21 @@ export function isLocalOrPrivateGatewayHost(host: string): boolean {
   }
 }
 
+/** True when phones on the network cannot reach this gateway root URL. */
+export function isLoopbackGatewayBaseUrl(raw: string): boolean {
+  const normalized = normalizeGatewayBaseUrl(raw);
+  if (!normalized) return false;
+  try {
+    const { hostname } = new URL(normalized);
+    const host = hostname.toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+    if (/^127\.\d+\.\d+\.\d+$/.test(host)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export function gatewayProfileNameFromUrl(baseUrl: string): string {
   try {
     return new URL(baseUrl).hostname || baseUrl;

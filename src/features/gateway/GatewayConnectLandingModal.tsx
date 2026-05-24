@@ -21,7 +21,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { gatewaySettingsSchema } from '../../config/schema';
 import { useMessages } from '../../i18n/messages';
 import { queryKeys } from '../../query/keys';
-import { DEFAULT_GATEWAY_BASE_URL, useGatewayStore } from '../../stores/gateway-store';
+import { DEFAULT_GATEWAY_BASE_URL, GATEWAY_BASE_URL_PLACEHOLDER, useGatewayStore } from '../../stores/gateway-store';
+import {
+  gatewayUrlValidationMessage,
+  zodGatewayBaseUrlErrorMessage,
+} from './gateway-url-messages';
+import { validateGatewayUrlForManualConnect } from './validate-gateway-url';
 import {
   GatewayQrScannerModal,
   requestGatewayQrCameraAccess,
@@ -129,7 +134,27 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
     });
     if (!parsed.success) {
       const urlIssue = parsed.error.flatten().fieldErrors.baseUrl?.[0];
-      setBaseUrlError(urlIssue ?? l.invalidUrl);
+      setBaseUrlError(
+        zodGatewayBaseUrlErrorMessage(urlIssue, {
+          invalidUrl: l.invalidUrl,
+          loopbackUrl: l.loopbackUrl,
+          unreachableUrl: l.unreachableUrl,
+        }),
+      );
+      return;
+    }
+
+    const urlCheck = await validateGatewayUrlForManualConnect(parsed.data.baseUrl, {
+      requireReachable: true,
+    });
+    if (!urlCheck.ok) {
+      setBaseUrlError(
+        gatewayUrlValidationMessage(urlCheck.code, {
+          invalidUrl: l.invalidUrl,
+          loopbackUrl: l.loopbackUrl,
+          unreachableUrl: l.unreachableUrl,
+        }),
+      );
       return;
     }
 
@@ -145,7 +170,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
     setSaving(true);
     try {
       await upsertGatewayFromCredentials({
-        baseUrl: parsed.data.baseUrl,
+        baseUrl: urlCheck.url,
         token: parsed.data.token,
         lanUrl: pendingLanUrl,
       });
@@ -175,6 +200,8 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
     pendingLanUrl,
     l.connectFailed,
     l.invalidUrl,
+    l.loopbackUrl,
+    l.unreachableUrl,
     queryClient,
     router.replace,
   ]);
@@ -241,6 +268,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
           <TextInput
             label={s.baseUrl}
             value={baseUrl}
+            placeholder={l.baseUrlPlaceholder}
             onChangeText={(text) => {
               setBaseUrlField(text);
               setBaseUrlError('');

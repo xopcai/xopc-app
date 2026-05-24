@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isLoopbackGatewayBaseUrl,
   preferredActiveBaseUrlFromFlat,
   resolveEffectiveGatewayBaseUrl,
 } from '../gateway-types';
+
+describe('isLoopbackGatewayBaseUrl', () => {
+  it('detects localhost and 127.x addresses', () => {
+    expect(isLoopbackGatewayBaseUrl('http://127.0.0.1:28790')).toBe(true);
+    expect(isLoopbackGatewayBaseUrl('http://127.0.0.2:18790')).toBe(true);
+    expect(isLoopbackGatewayBaseUrl('http://192.168.1.5:28790')).toBe(false);
+  });
+});
 
 describe('resolveEffectiveGatewayBaseUrl', () => {
   it('prefers activeBaseUrl, then baseUrl, then lanUrl', () => {
