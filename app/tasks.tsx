@@ -14,7 +14,7 @@ import { fetchCronRunsHistory, type CronRunRow } from '../src/query/cron';
 import { queryKeys } from '../src/query/keys';
 import { useGatewayConfigured } from '../src/query/sessions';
 
-const DOCS_URL = 'https://github.com/nicepkg/xopc';
+const DOCS_URL = 'https://xopcai.github.io/xopc/cron';
 const RUNS_LIMIT = 50;
 
 export default function TasksScreen() {

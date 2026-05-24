@@ -20,7 +20,7 @@ import {
 import { queryKeys } from '../src/query/keys';
 import { useGatewayConfigured } from '../src/query/sessions';
 
-const DOCS_URL = 'https://github.com/nicepkg/xopc';
+const DOCS_URL = 'https://xopcai.github.io/xopc/cron';
 
 export default function SchedulesScreen() {
   const router = useRouter();

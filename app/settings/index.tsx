@@ -150,7 +150,7 @@ export default function SettingsIndexScreen() {
           icon="book-open-variant"
           iconColor="#5856D6"
           label={s.helpDocs}
-          onPress={() => void Linking.openURL('https://github.com/nicepkg/xopc')}
+          onPress={() => void Linking.openURL('https://xopcai.github.io/xopc')}
         />
         <SettingsRow
           icon="tag-outline"
