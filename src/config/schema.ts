@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { isLoopbackGatewayBaseUrl } from '../stores/gateway-types';
+import { shouldRejectLoopbackGatewayBaseUrl } from '../stores/gateway-types';
 
 function isValidHttpUrl(s: string): boolean {
   try {
@@ -17,7 +17,7 @@ export const gatewaySettingsSchema = z.object({
     .trim()
     .min(1, 'Base URL is required')
     .refine(isValidHttpUrl, 'Must be a valid http(s) URL')
-    .refine((url) => !isLoopbackGatewayBaseUrl(url), 'LOOPBACK_NOT_REACHABLE'),
+    .refine((url) => !shouldRejectLoopbackGatewayBaseUrl(url), 'LOOPBACK_NOT_REACHABLE'),
   token: z.string(),
 });
 

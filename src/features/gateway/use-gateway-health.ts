@@ -16,7 +16,7 @@ export function useGatewayHealth(): { gatewayOnline: boolean } {
       return;
     }
     const monitor = getGatewayHealthMonitor();
-    monitor.start((online) => {
+    return monitor.subscribe((online) => {
       if (!online) {
         wasOfflineRef.current = true;
         setGatewayOnline(false);
@@ -28,7 +28,6 @@ export function useGatewayHealth(): { gatewayOnline: boolean } {
         syncGatewayAfterConnectivityChange();
       }
     });
-    return () => monitor.stop();
   }, [configured]);
 
   return { gatewayOnline };

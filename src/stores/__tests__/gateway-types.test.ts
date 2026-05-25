@@ -1,16 +1,29 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   isLoopbackGatewayBaseUrl,
   preferredActiveBaseUrlFromFlat,
   resolveEffectiveGatewayBaseUrl,
+  shouldRejectLoopbackGatewayBaseUrl,
 } from '../gateway-types';
 
 describe('isLoopbackGatewayBaseUrl', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('detects localhost and 127.x addresses', () => {
     expect(isLoopbackGatewayBaseUrl('http://127.0.0.1:28790')).toBe(true);
     expect(isLoopbackGatewayBaseUrl('http://127.0.0.2:18790')).toBe(true);
     expect(isLoopbackGatewayBaseUrl('http://192.168.1.5:28790')).toBe(false);
+  });
+
+  it('allows loopback gateway URLs only in dev builds', () => {
+    expect(shouldRejectLoopbackGatewayBaseUrl('http://127.0.0.1:28790')).toBe(true);
+
+    vi.stubGlobal('__DEV__', true);
+
+    expect(shouldRejectLoopbackGatewayBaseUrl('http://127.0.0.1:28790')).toBe(false);
   });
 });
 

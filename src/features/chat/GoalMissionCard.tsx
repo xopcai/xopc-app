@@ -51,7 +51,7 @@ export const GoalMissionCard = memo(function GoalMissionCard({ sessionKey, agent
   const refreshGoal = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoal(sessionKey) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoalRuns(sessionKey, 1) });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionKey) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.sessionHistory(sessionKey) });
   }, [queryClient, sessionKey]);
 
   const runAction = useCallback(async (action: GoalWebchatAction) => {

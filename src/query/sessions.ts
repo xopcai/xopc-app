@@ -28,6 +28,18 @@ export type SessionDetail = {
   status?: SessionStatus;
 };
 
+export type SessionMessagePage = {
+  session: SessionDetail;
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+    before?: string;
+    nextBeforeCursor?: string;
+  };
+};
+
 // ── Helpers ──────────────────────────────────────────────────────
 
 function throwApiError(res: Response, body: unknown): never {
@@ -65,6 +77,23 @@ export async function fetchSession(key: string): Promise<SessionDetail | null> {
   if (!res.ok) throwApiError(res, await parseErrorBody(res));
   const data = (await res.json()) as { session?: SessionDetail };
   return data.session ?? null;
+}
+
+export async function fetchSessionMessagePage(
+  key: string,
+  options?: { limit?: number; before?: string },
+): Promise<SessionMessagePage | null> {
+  const params = new URLSearchParams();
+  params.set('limit', String(options?.limit ?? 50));
+  const before = options?.before?.trim();
+  if (before) {
+    params.set('before', before);
+  }
+
+  const res = await apiFetch(`/api/sessions/${encKey(key)}/history?${params.toString()}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throwApiError(res, await parseErrorBody(res));
+  return (await res.json()) as SessionMessagePage;
 }
 
 export async function createSession(

@@ -225,7 +225,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
       await renameSession(actionSession.key, name);
       void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
       if (actionSession.key === activeKey) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.session(actionSession.key) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.sessionHistory(actionSession.key) });
       }
       setRenameVisible(false);
       setActionSession(null);

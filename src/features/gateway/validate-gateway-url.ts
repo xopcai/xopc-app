@@ -2,7 +2,7 @@ import {
   fetchMobilePairPing,
   validateMobilePairBaseUrlPublic,
 } from '../../api/mobile-pair';
-import { isLoopbackGatewayBaseUrl, normalizeGatewayBaseUrl } from '../../stores/gateway-types';
+import { normalizeGatewayBaseUrl, shouldRejectLoopbackGatewayBaseUrl } from '../../stores/gateway-types';
 
 export type GatewayUrlValidationCode =
   | 'INVALID_URL'
@@ -38,7 +38,7 @@ export function assertNotLoopbackGatewayUrl(rawUrl: string): GatewayUrlValidatio
   if (!url) {
     return { ok: false, code: 'INVALID_URL', message: invalidUrlMessage() };
   }
-  if (isLoopbackGatewayBaseUrl(url)) {
+  if (shouldRejectLoopbackGatewayBaseUrl(url)) {
     return { ok: false, code: 'LOOPBACK_NOT_REACHABLE', message: loopbackMessage() };
   }
   return null;

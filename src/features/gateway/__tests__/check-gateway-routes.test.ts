@@ -6,6 +6,22 @@ vi.mock('../../../api/connection-strategy', () => ({
   probeGatewayRouteReachability: vi.fn(),
 }));
 
+vi.mock('../../../stores/gateway-store', () => ({
+  useGatewayStore: {
+    getState: vi.fn(() => ({
+      activeBaseUrl: '',
+      baseUrl: '',
+      lanUrl: null,
+      refreshActiveBaseUrl: vi.fn(async () => ''),
+      token: '',
+    })),
+  },
+}));
+
+vi.mock('../gateway-connection-sync', () => ({
+  syncGatewayAfterConnectivityChange: vi.fn(),
+}));
+
 import { probeGatewayRouteReachability } from '../../../api/connection-strategy';
 
 const labels = {

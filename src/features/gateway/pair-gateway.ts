@@ -1,4 +1,4 @@
-import { isLoopbackGatewayBaseUrl } from '../../stores/gateway-types';
+import { shouldRejectLoopbackGatewayBaseUrl } from '../../stores/gateway-types';
 import type { ParsedGatewayQr } from './parse-gateway-qr';
 
 export type PairGatewayInput = {
@@ -23,8 +23,8 @@ export function buildPairExchangeOrigins(baseUrl: string, lanUrl?: string | null
   const tunnel = normalizeOrigin(baseUrl);
   const lan = lanUrl?.trim() ? normalizeOrigin(lanUrl) : '';
   const out: string[] = [];
-  if (lan && !isLoopbackGatewayBaseUrl(lan)) out.push(lan);
-  if (tunnel && !isLoopbackGatewayBaseUrl(tunnel) && tunnel !== lan) out.push(tunnel);
+  if (lan && !shouldRejectLoopbackGatewayBaseUrl(lan)) out.push(lan);
+  if (tunnel && !shouldRejectLoopbackGatewayBaseUrl(tunnel) && tunnel !== lan) out.push(tunnel);
   return out;
 }
 
@@ -34,7 +34,7 @@ export function resolvePairExchangeOrigins(
 ): string[] {
   const fromServer = (connectUrls ?? [])
     .map((url) => normalizeOrigin(url))
-    .filter((url) => url && !isLoopbackGatewayBaseUrl(url));
+    .filter((url) => url && !shouldRejectLoopbackGatewayBaseUrl(url));
   if (fromServer.length > 0) {
     return [...new Set(fromServer)];
   }
@@ -67,7 +67,7 @@ export async function pairWithGateway(input: PairGatewayInput): Promise<PairGate
   const pairingSecret = input.pairingSecret.trim();
   if (!pairingSecret) throw new Error('Pairing secret is required');
 
-  if (isLoopbackGatewayBaseUrl(input.baseUrl)) {
+  if (shouldRejectLoopbackGatewayBaseUrl(input.baseUrl)) {
     throw new Error(
       '127.0.0.1 and localhost only work on the gateway computer. Scan the QR from the desktop console or enter a LAN IP.',
     );
@@ -133,7 +133,7 @@ export async function resolveGatewayCredentialsFromQr(
   parsed: ParsedGatewayQr,
 ): Promise<ResolvedGatewayCredentials | null> {
   if (parsed.pairingSecret?.trim() && parsed.baseUrl?.trim()) {
-    if (isLoopbackGatewayBaseUrl(parsed.baseUrl)) {
+    if (shouldRejectLoopbackGatewayBaseUrl(parsed.baseUrl)) {
       throw new Error(
         'This QR points at localhost, which your phone cannot reach. Enable LAN pairing or remote access on the desktop gateway and scan again.',
       );
@@ -147,7 +147,7 @@ export async function resolveGatewayCredentialsFromQr(
 
   if (!parsed.baseUrl?.trim() && !parsed.token?.trim()) return null;
 
-  if (parsed.baseUrl?.trim() && isLoopbackGatewayBaseUrl(parsed.baseUrl)) {
+  if (parsed.baseUrl?.trim() && shouldRejectLoopbackGatewayBaseUrl(parsed.baseUrl)) {
     throw new Error(
       '127.0.0.1 and localhost only work on the gateway computer. Enter a LAN IP or scan a valid pairing QR.',
     );

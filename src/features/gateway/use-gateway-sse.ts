@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 
 import { useGatewayConfigured } from '../../query/sessions';
 import { useGatewayStore } from '../../stores/gateway-store';
@@ -7,6 +7,46 @@ import { resolveEffectiveGatewayBaseUrl } from '../../stores/gateway-types';
 import { GatewaySseConnection } from './gateway-sse-connection';
 
 let sharedConnection: GatewaySseConnection | null = null;
+let sharedConnectionKey = '';
+let subscriberCount = 0;
+let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+function createGatewaySseConnection(): GatewaySseConnection {
+  return new GatewaySseConnection({
+    onConnected: () => {},
+    onReconnecting: () => {},
+    onDisconnected: () => {},
+    onError: () => {},
+  });
+}
+
+function acquireSharedConnection(connectionKey: string): void {
+  subscriberCount += 1;
+  if (disconnectTimer) {
+    clearTimeout(disconnectTimer);
+    disconnectTimer = null;
+  }
+
+  if (sharedConnection && sharedConnectionKey === connectionKey) return;
+
+  sharedConnection?.disconnect();
+  sharedConnection = createGatewaySseConnection();
+  sharedConnectionKey = connectionKey;
+  sharedConnection.connect();
+}
+
+function releaseSharedConnection(): void {
+  subscriberCount = Math.max(0, subscriberCount - 1);
+  if (subscriberCount > 0 || disconnectTimer) return;
+
+  disconnectTimer = setTimeout(() => {
+    disconnectTimer = null;
+    if (subscriberCount > 0) return;
+    sharedConnection?.disconnect();
+    sharedConnection = null;
+    sharedConnectionKey = '';
+  }, 250);
+}
 
 /**
  * Keeps a single SSE connection to `GET /api/events` while the app is configured (web parity).
@@ -14,7 +54,6 @@ let sharedConnection: GatewaySseConnection | null = null;
 export function useGatewaySse(): void {
   const configured = useGatewayConfigured();
   const token = useGatewayStore((s) => s.token);
-  const connRef = useRef<GatewaySseConnection | null>(null);
   const gatewayEndpoint = useGatewayStore((s) =>
     resolveEffectiveGatewayBaseUrl({
       activeBaseUrl: s.activeBaseUrl,
@@ -25,27 +64,12 @@ export function useGatewaySse(): void {
 
   useEffect(() => {
     if (!configured || !token || !gatewayEndpoint) {
-      connRef.current?.disconnect();
-      connRef.current = null;
-      sharedConnection = null;
+      releaseSharedConnection();
       return;
     }
 
-    const conn = new GatewaySseConnection({
-      onConnected: () => {},
-      onReconnecting: () => {},
-      onDisconnected: () => {},
-      onError: () => {},
-    });
-    connRef.current = conn;
-    sharedConnection = conn;
-    conn.connect();
-
-    return () => {
-      conn.disconnect();
-      if (sharedConnection === conn) sharedConnection = null;
-      connRef.current = null;
-    };
+    acquireSharedConnection(`${gatewayEndpoint}|${token}`);
+    return () => releaseSharedConnection();
   }, [configured, token, gatewayEndpoint]);
 }
 

@@ -18,8 +18,6 @@ export function useGatewayConnectionWatch(enabled: boolean): void {
   useEffect(() => {
     if (!enabled || !baseUrl) return;
 
-    let intervalId: ReturnType<typeof setInterval> | undefined;
-
     const run = async () => {
       const prev = useGatewayStore.getState().activeBaseUrl;
       const next = await refreshActiveBaseUrl();
@@ -35,11 +33,11 @@ export function useGatewayConnectionWatch(enabled: boolean): void {
     };
 
     const sub = AppState.addEventListener('change', onAppState);
-    intervalId = setInterval(run, REFRESH_MS);
+    const intervalId = setInterval(run, REFRESH_MS);
 
     return () => {
       sub.remove();
-      if (intervalId) clearInterval(intervalId);
+      clearInterval(intervalId);
     };
   }, [enabled, baseUrl, lanUrl, refreshActiveBaseUrl]);
 }

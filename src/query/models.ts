@@ -84,24 +84,24 @@ export async function fetchChatModels(agentId?: string): Promise<ChatModelsPaylo
   const agentQ = agentId?.trim()
     ? `?agentId=${encodeURIComponent(agentId.trim().toLowerCase())}`
     : '';
-  const paths = [`/api/models${agentQ}`, `/api/agent/models${agentQ}`];
-
-  let lastError: Error | null = null;
-  for (const path of paths) {
-    const res = await apiFetch(path);
-    if (res.status === 404 || res.status === 405 || res.status === 501) continue;
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-      lastError = new Error(formatApiHttpError(res.status, res.statusText, body.error?.message));
-      continue;
+  const res = await apiFetch(`/api/models${agentQ}`);
+  if (res.status === 404 || res.status === 405 || res.status === 501) {
+    const fallbackRes = await apiFetch(`/api/agent/models${agentQ}`);
+    if (!fallbackRes.ok) {
+      const body = (await fallbackRes.json().catch(() => ({}))) as { error?: { message?: string } };
+      throw new Error(formatApiHttpError(fallbackRes.status, fallbackRes.statusText, body.error?.message));
     }
-    const raw = await res.json().catch(() => null);
-    const parsed = parseModelsPayload(raw);
-    if (parsed) return parsed;
+    const raw = await fallbackRes.json().catch(() => null);
+    return parseModelsPayload(raw) ?? { defaultId: '', items: [] };
   }
 
-  if (lastError) throw lastError;
-  return { defaultId: '', items: [] };
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw new Error(formatApiHttpError(res.status, res.statusText, body.error?.message));
+  }
+
+  const raw = await res.json().catch(() => null);
+  return parseModelsPayload(raw) ?? { defaultId: '', items: [] };
 }
 
 export async function setSessionModelRef(sessionKey: string, modelRef: string): Promise<boolean> {

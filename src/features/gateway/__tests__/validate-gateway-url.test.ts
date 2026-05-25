@@ -7,12 +7,24 @@ import {
 } from '../validate-gateway-url';
 
 describe('assertNotLoopbackGatewayUrl', () => {
-  it('blocks localhost manual config', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('blocks localhost manual config outside dev builds', () => {
     const result = assertNotLoopbackGatewayUrl('http://127.0.0.1:28790');
     expect(result?.ok).toBe(false);
     if (result && !result.ok) {
       expect(result.code).toBe('LOOPBACK_NOT_REACHABLE');
     }
+  });
+
+  it('allows localhost manual config in dev builds', () => {
+    vi.stubGlobal('__DEV__', true);
+
+    const result = assertNotLoopbackGatewayUrl('http://127.0.0.1:28790');
+
+    expect(result).toBeNull();
   });
 });
 

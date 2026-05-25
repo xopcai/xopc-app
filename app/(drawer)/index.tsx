@@ -16,12 +16,9 @@ import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { Banner, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AgentMessageSender, submitClarifyResponse, type MessagingCallbacks } from '../../src/api/agent-client';
 import { ChatComposer } from '../../src/features/chat/ChatComposer';
 import { ChatStreamNotice } from '../../src/features/chat/ChatStreamNotice';
-import { canSendComposerDraft, buildOptimisticUserMessage, buildUserResendPayload, findPrecedingUserMessage } from '../../src/features/chat/composer-send-helpers';
-import type { WireAttachment } from '../../src/features/chat/composer.types';
-import { ClarifyPrompt, type ClarifyPromptState } from '../../src/features/chat/ClarifyPrompt';
+import { ClarifyPrompt } from '../../src/features/chat/ClarifyPrompt';
 import { AgentPickerSheet } from '../../src/features/chat/AgentPickerSheet';
 import { ChatHeader } from '../../src/features/chat/ChatHeader';
 import { GatewayPickerSheet } from '../../src/features/chat/GatewayPickerSheet';
@@ -29,405 +26,41 @@ import { ChatEmptyShortcutsBar } from '../../src/features/chat/ChatEmptyShortcut
 import { EMPTY_CHAT_GOAL_PREFILL } from '../../src/features/chat/chat-empty-shortcuts';
 import { GoalMissionCard } from '../../src/features/chat/GoalMissionCard';
 import { MessageList } from '../../src/features/chat/MessageList';
-import { sendOrQueueMessage } from '../../src/features/chat/send-or-queue';
 import {
-  FOLLOW_UP_AUTO_SEND_IDLE_MS,
-  MAX_PENDING_FOLLOW_UPS,
-} from '../../src/features/chat/pending-follow-up.types';
-import { useChatFollowUp } from '../../src/features/chat/use-chat-follow-up';
-import {
-  useAgentStreamResume,
-  type AgentStreamResumeOptions,
-} from '../../src/features/chat/use-agent-stream-resume';
-import { useAgentStreamRecovery } from '../../src/features/chat/use-agent-stream-recovery';
-import { isTransientNetworkError, STREAM_STALL_MS } from '../../src/features/chat/network-errors';
+  buildUserResendPayload, findPrecedingUserMessage,
+} from '../../src/features/chat/composer-send-helpers';
 import { useGatewayFullyUnreachable } from '../../src/features/gateway/use-gateway-fully-unreachable';
 import { syncAfterGatewaySettingsSave } from '../../src/features/gateway/gateway-connection-sync';
-import { subscribeGatewayEvent } from '../../src/features/gateway/gateway-event-bus';
 import { useGatewayHealth } from '../../src/features/gateway/use-gateway-health';
-import {
-  readPendingAgentRunId,
-  subscribePendingAgentRunChanged,
-} from '../../src/features/gateway/pending-agent-run';
-import {
-  applyStripToUserContent,
-  extractAttachmentsFromUserContent,
-  mergeUserAttachments,
-} from '../../src/features/chat/inbound-message-text';
-import type { Message, MessageAttachment, MessageContent, ProgressState } from '../../src/features/chat/messages.types';
-import { useMessages, t } from '../../src/i18n/messages';
-import {
-  appendTextDelta,
-  appendThinkingDelta,
-  appendToolStart,
-  cloneMessageForRender,
-  completeTool,
-  ensureAssistantMessage,
-  finalizeRunningTools,
-  finalizeStreamingThinking,
-  startThinkingSegment,
-} from '../../src/features/chat/streaming';
-import { fetchChatAgents, resolveEffectiveDefaultAgentId } from '../../src/query/agents';
-import { fetchChatModels, resolveEffectiveModelId, setSessionModelRef } from '../../src/query/models';
-import { queryKeys } from '../../src/query/keys';
-import {
-  createSession,
-  fetchSession,
-  useGatewayConfigured,
-} from '../../src/query/sessions';
 import { useKeyboardVisible } from '../../src/hooks/use-keyboard-visible';
 import { usePreferencesStore } from '../../src/stores/preferences-store';
 import { useGatewayStore } from '../../src/stores/gateway-store';
-
-const STREAMING_RENDER_THROTTLE_MS = 100;
-
-// ── Session wire → UI message helpers (ported from web/src/features/chat/agent-messages.ts) ──
-
-type WireContentBlock = {
-  type?: string;
-  text?: string;
-  thinking?: string;
-  source?: { data?: string; media_type?: string };
-  data?: string;
-  mimeType?: string;
-  workspaceRelativePath?: string;
-  uri?: string;
-  durationSeconds?: number;
-  id?: string;
-  name?: string;
-  input?: unknown;
-  args?: unknown;
-  arguments?: unknown;
-  function?: { name?: string; arguments?: unknown };
-  result?: string;
-  status?: string;
-};
-
-type WireMessage = {
-  role?: string;
-  content?: unknown;
-  timestamp?: string | number;
-  attachments?: unknown;
-  tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
-  toolCalls?: Array<{ id?: string; name: string; args?: Record<string, unknown> }>;
-  tool_call_id?: string;
-  toolCallId?: string;
-  isError?: boolean;
-};
-
-function wireImageBlockToContent(block: WireContentBlock): MessageContent | null {
-  const fromSource = block.source?.data;
-  if (typeof fromSource === 'string' && fromSource.length > 0) {
-    return { type: 'image', source: { data: fromSource, media_type: block.source?.media_type } };
-  }
-
-  const raw = block.data;
-  if (typeof raw !== 'string' || raw.length === 0) {
-    return null;
-  }
-
-  const trimmed = raw.trim();
-  if (trimmed.startsWith('data:') || /^https?:\/\//i.test(trimmed) || trimmed.startsWith('/')) {
-    return { type: 'image', source: { data: trimmed } };
-  }
-
-  const mime =
-    typeof block.mimeType === 'string' && block.mimeType.includes('/')
-      ? block.mimeType
-      : 'image/png';
-  return { type: 'image', source: { data: `data:${mime};base64,${trimmed.replace(/\s/g, '')}` } };
-}
-
-/** Parse a single content block from wire format. */
-function parseContentBlock(b: Record<string, unknown>): MessageContent | null {
-  const block = b as WireContentBlock;
-  const t = block.type;
-  if (t === 'text') return { type: 'text', text: String(block.text ?? '') };
-  if (t === 'thinking') return { type: 'thinking', text: String(block.text ?? block.thinking ?? ''), streaming: false };
-  if (t === 'audio' || t === 'tts_audio' || block.mimeType?.startsWith('audio/')) {
-    return {
-      type: 'audio',
-      workspaceRelativePath: block.workspaceRelativePath,
-      uri: block.uri ?? (typeof block.data === 'string' && block.data.startsWith('data:') ? block.data : undefined),
-      mimeType: block.mimeType,
-      name: block.name,
-      durationSeconds: block.durationSeconds,
-    };
-  }
-  if (t === 'image' || (typeof block.data === 'string' && typeof block.mimeType === 'string')) {
-    return wireImageBlockToContent(block);
-  }
-  if (t === 'tool_use' || t === 'tool_call' || t === 'toolCall') {
-    return {
-      type: 'tool_use',
-      id: String(block.id ?? `tool-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),
-      name: String(block.name ?? block.function?.name ?? 'tool'),
-      input: block.input ?? block.args ?? block.arguments ?? block.function?.arguments,
-      status: (block.status === 'running' || block.status === 'error') ? block.status : 'done' as const,
-      result: block.result,
-    };
-  }
-  return { type: 'text', text: String(block.text ?? '') };
-}
-
-/** Normalize raw content to MessageContent[]. */
-function normalizeContentBlocks(raw: unknown): MessageContent[] {
-  if (raw == null) return [];
-  if (typeof raw === 'string') return raw.trim() ? [{ type: 'text', text: raw }] : [];
-  if (!Array.isArray(raw)) return [{ type: 'text', text: String(raw) }];
-  return raw
-    .filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
-    .map(parseContentBlock)
-    .filter((block): block is MessageContent => block != null);
-}
-
-/** Build assistant content, including top-level tool_calls / toolCalls fields. */
-function buildAssistantContent(m: WireMessage): MessageContent[] {
-  const blocks = normalizeContentBlocks(m.content);
-
-  // OpenAI format: top-level tool_calls array
-  if (Array.isArray(m.tool_calls)) {
-    for (const call of m.tool_calls) {
-      if (!call?.id || blocks.some((b) => b.type === 'tool_use' && b.id === call.id)) continue;
-      let input: unknown = call.function?.arguments;
-      if (typeof input === 'string') { try { input = JSON.parse(input); } catch { /* keep string */ } }
-      blocks.push({ type: 'tool_use', id: call.id, name: call.function?.name || 'tool', input, status: 'running' });
-    }
-  }
-
-  // Pi format: top-level toolCalls array
-  if (Array.isArray(m.toolCalls)) {
-    for (const call of m.toolCalls) {
-      const id = call.id ?? `tc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      if (blocks.some((b) => b.type === 'tool_use' && b.id === id)) continue;
-      blocks.push({ type: 'tool_use', id, name: call.name || 'tool', input: call.args, status: 'running' });
-    }
-  }
-
-  return blocks;
-}
-
-/** Extract plain-text from toolResult content. */
-function extractToolResultText(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content
-      .filter((c): c is Record<string, unknown> => c != null && typeof c === 'object' && c.type === 'text')
-      .map((c) => String(c.text ?? ''))
-      .join('\n');
-  }
-  return String(content ?? '');
-}
-
-/** Apply a toolResult message's result to the last assistant's matching tool_use block. */
-function applyToolResultToLastAssistant(out: Message[], m: WireMessage): void {
-  let lastAssistant: Message | null = null;
-  for (let i = out.length - 1; i >= 0; i--) {
-    if (out[i].role === 'assistant') { lastAssistant = out[i]; break; }
-  }
-  if (!lastAssistant) return;
-
-  const id = String(m.tool_call_id ?? m.toolCallId ?? '');
-  const text = extractToolResultText(m.content);
-  const isError = Boolean(m.isError);
-
-  // Match by tool_call_id
-  if (id) {
-    const block = lastAssistant.content.find(
-      (b): b is import('../../src/features/chat/messages.types').ToolUseContent =>
-        b.type === 'tool_use' && b.id === id,
-    );
-    if (block) {
-      block.status = isError ? 'error' : 'done';
-      block.result = text;
-      return;
-    }
-  }
-
-  // Fallback: if exactly one tool is still running, apply to it
-  const running = lastAssistant.content.filter(
-    (b): b is import('../../src/features/chat/messages.types').ToolUseContent =>
-      b.type === 'tool_use' && b.status === 'running',
-  );
-  if (running.length === 1) {
-    running[0].status = isError ? 'error' : 'done';
-    running[0].result = text;
-  }
-}
-
-/** Merge two assistant content arrays: dedupe tool_use by id, dedupe adjacent identical thinking. */
-function mergeAssistantContentFragments(left: MessageContent[], right: MessageContent[]): MessageContent[] {
-  const out: MessageContent[] = left.map((b) => ({ ...b }));
-  const toolIndexById = new Map<string, number>();
-  for (let i = 0; i < out.length; i++) {
-    const b = out[i];
-    if (b.type === 'tool_use') toolIndexById.set(b.id, i);
-  }
-
-  for (const b of right) {
-    if (b.type === 'tool_use' && toolIndexById.has(b.id)) {
-      const idx = toolIndexById.get(b.id)!;
-      out[idx] = { ...b }; // keep the later (more complete) version
-      continue;
-    }
-    if (b.type === 'thinking' && out.length > 0) {
-      const last = out[out.length - 1];
-      if (last.type === 'thinking' && (last.text || '').trim() === (b.text || '').trim()) continue;
-    }
-    if (b.type === 'tool_use') toolIndexById.set(b.id, out.length);
-    out.push({ ...b });
-  }
-  return out;
-}
-
-/** Merge consecutive assistant messages into a single bubble (session stores fragments). */
-function mergeConsecutiveAssistantMessages(messages: Message[]): Message[] {
-  if (messages.length < 2) return messages;
-  const out: Message[] = [];
-  for (const m of messages) {
-    if (m.role !== 'assistant') { out.push(m); continue; }
-    const prev = out[out.length - 1];
-    if (prev?.role === 'assistant') {
-      prev.content = mergeAssistantContentFragments(prev.content, m.content);
-      if (m.timestamp != null) prev.timestamp = m.timestamp;
-      if (m.usage) prev.usage = m.usage;
-    } else {
-      out.push({ ...m, content: [...m.content] });
-    }
-  }
-  return out;
-}
-
-function parseTimestamp(raw: string | number | undefined): number | undefined {
-  if (typeof raw === 'number') return raw;
-  if (typeof raw === 'string') {
-    const t = Date.parse(raw);
-    return Number.isNaN(t) ? undefined : t;
-  }
-  return undefined;
-}
-
-function normalizeAttachments(raw: unknown): MessageAttachment[] | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const out = raw
-    .filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
-    .map((item): MessageAttachment => ({
-      id: typeof item.id === 'string' ? item.id : undefined,
-      name: typeof item.name === 'string' ? item.name : undefined,
-      type: typeof item.type === 'string' ? item.type : undefined,
-      mimeType: typeof item.mimeType === 'string' ? item.mimeType : undefined,
-      size: typeof item.size === 'number' ? item.size : undefined,
-      content: typeof item.content === 'string' ? item.content : undefined,
-      data: typeof item.data === 'string' ? item.data : undefined,
-      preview: typeof item.preview === 'string' ? item.preview : undefined,
-      extractedText: typeof item.extractedText === 'string' ? item.extractedText : undefined,
-      workspaceRelativePath: typeof item.workspaceRelativePath === 'string' ? item.workspaceRelativePath : undefined,
-      durationSeconds: typeof item.durationSeconds === 'number' ? item.durationSeconds : undefined,
-    }));
-  return out.length ? out : undefined;
-}
-
-function isAudioAttachment(att: MessageAttachment): boolean {
-  return att.type === 'voice' || att.type === 'audio' || att.mimeType?.startsWith('audio/') === true;
-}
-
-function audioAttachmentToContent(att: MessageAttachment): MessageContent | null {
-  if (!isAudioAttachment(att)) return null;
-  const payload = att.preview || att.content || att.data;
-  const mimeType = att.mimeType || 'audio/mpeg';
-  return {
-    type: 'audio',
-    workspaceRelativePath: att.workspaceRelativePath,
-    uri: payload ? (payload.startsWith('data:') ? payload : `data:${mimeType};base64,${payload.replace(/\s/g, '')}`) : undefined,
-    mimeType,
-    name: att.name,
-    durationSeconds: att.durationSeconds,
-  };
-}
-
-function appendAudioAttachments(content: MessageContent[], attachments: MessageAttachment[] | undefined): MessageContent[] {
-  if (!attachments?.length) return content;
-  const existingKeys = new Set(
-    content
-      .filter((b) => b.type === 'audio')
-      .map((b) => b.workspaceRelativePath || b.uri || b.name || '')
-      .filter(Boolean),
-  );
-  const audioBlocks = attachments
-    .map(audioAttachmentToContent)
-    .filter((b): b is MessageContent => b != null)
-    .filter((b) => {
-      const key = b.type === 'audio' ? b.workspaceRelativePath || b.uri || b.name || '' : '';
-      if (!key || existingKeys.has(key)) return false;
-      existingKeys.add(key);
-      return true;
-    });
-  return audioBlocks.length ? [...content, ...audioBlocks] : content;
-}
-
-/**
- * Convert raw session messages (unknown content shape) to typed Message[].
- *
- * Handles toolResult/tool role messages, merges consecutive assistant fragments,
- * and supports OpenAI tool_calls / pi toolCalls formats — matching the web gateway console.
- */
-function parseSessionMessages(raw: Array<Record<string, unknown>>): Message[] {
-  const out: Message[] = [];
-
-  for (const item of raw) {
-    const m = item as unknown as WireMessage;
-    const role = String(m.role ?? '');
-
-    // Skip system messages
-    if (role === 'system') continue;
-
-    // Tool results → apply to the last assistant's tool_use block
-    if (role === 'toolResult' || role === 'tool') {
-      applyToolResultToLastAssistant(out, m);
-      continue;
-    }
-
-    if (role === 'user' || role === 'user-with-attachments') {
-      const roleTyped = role as Message['role'];
-      const fromContent = extractAttachmentsFromUserContent(m.content);
-      const attachments = mergeUserAttachments(normalizeAttachments(m.attachments), fromContent);
-      out.push({
-        role: roleTyped,
-        content: applyStripToUserContent(roleTyped, normalizeContentBlocks(m.content)),
-        attachments,
-        timestamp: parseTimestamp(m.timestamp),
-      });
-      continue;
-    }
-
-    if (role === 'assistant') {
-      const attachments = normalizeAttachments(m.attachments);
-      out.push({
-        role: 'assistant',
-        content: appendAudioAttachments(buildAssistantContent(m), attachments),
-        attachments,
-        timestamp: parseTimestamp(m.timestamp),
-      });
-      continue;
-    }
-
-    // Unknown roles → skip (don't render as assistant)
-  }
-
-  return mergeConsecutiveAssistantMessages(out);
-}
+import { useMessages } from '../../src/i18n/messages';
+import { fetchChatAgents, resolveEffectiveDefaultAgentId } from '../../src/query/agents';
+import { fetchChatModels, resolveEffectiveModelId, setSessionModelRef } from '../../src/query/models';
+import { queryKeys } from '../../src/query/keys';
+import { createSession } from '../../src/query/sessions';
+import { useSessionHistory } from '../../src/features/chat/use-session-history';
+import { useChatSession } from '../../src/features/chat/use-chat-session';
+import {
+  parseSessionMessages,
+  dedupeWireMessages,
+  appendOlderSessionHistoryPage,
+} from '../../src/features/chat/session-message-parser';
+import type { Message } from '../../src/features/chat/messages.types';
+import { sendOrQueueMessage } from '../../src/features/chat/send-or-queue';
+import { MAX_PENDING_FOLLOW_UPS } from '../../src/features/chat/pending-follow-up.types';
+import { t } from '../../src/i18n/messages';
 
 export default function ChatScreen() {
   const { k: rawKey } = useLocalSearchParams<{ k?: string }>();
   const urlSessionKey =
     typeof rawKey === 'string' ? rawKey : Array.isArray(rawKey) ? rawKey[0] : '';
-  /** Fallback until expo-router applies `k` after auto-bootstrap createSession. */
   const [pendingBootstrapKey, setPendingBootstrapKey] = useState('');
   const sessionKey = urlSessionKey || pendingBootstrapKey;
   const navigation = useNavigation();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const configured = useGatewayConfigured();
   const { gatewayOnline } = useGatewayHealth();
   const { fullyUnreachable: gatewayFullyUnreachable } = useGatewayFullyUnreachable();
   const gatewayProfiles = useGatewayStore((s) => s.profiles);
@@ -442,10 +75,10 @@ export default function ChatScreen() {
   const agentsQuery = useQuery({
     queryKey: queryKeys.agents,
     queryFn: fetchChatAgents,
-    enabled: configured,
+    enabled: true,
   });
 
-  const localDefaultAgentId = usePreferencesStore((s) => s.defaultAgentId);
+  const localDefaultAgentId = usePreferencesStore((s) => s.defaultAgentId) ?? '';
   const localSelectedModelRef = usePreferencesStore((s) => s.selectedModelRef);
   const setSelectedModelRef = usePreferencesStore((s) => s.setSelectedModelRef);
 
@@ -453,12 +86,11 @@ export default function ChatScreen() {
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const autoSessionAttemptedRef = useRef(false);
   const autoSessionInFlightRef = useRef(false);
+  const prevGatewayOnlineBootRef = useRef(gatewayOnline);
 
   useEffect(() => {
     if (urlSessionKey) setPendingBootstrapKey('');
   }, [urlSessionKey]);
-  const prevGatewayOnlineRef = useRef(gatewayOnline);
-  const prevGatewayOnlineForStreamRef = useRef(gatewayOnline);
 
   const currentSessionAgentId = useMemo(() => {
     return sessionKey ? sessionKey.split(':')[0]?.trim().toLowerCase() ?? '' : '';
@@ -467,7 +99,7 @@ export default function ChatScreen() {
   const modelsQuery = useQuery({
     queryKey: queryKeys.models(currentSessionAgentId),
     queryFn: () => fetchChatModels(currentSessionAgentId || undefined),
-    enabled: configured,
+    enabled: true,
   });
 
   const effectiveModelId = resolveEffectiveModelId(modelsQuery.data, localSelectedModelRef);
@@ -487,619 +119,15 @@ export default function ChatScreen() {
     return model?.name ?? model?.id ?? (effectiveModelId || m.chat.modelPickerSelect);
   }, [effectiveModelId, m.chat.modelPickerSelect, modelsQuery.data?.items]);
 
-  // ── Session data ─────────────────────────────────────────
-  const sessionQuery = useQuery({
-    queryKey: queryKeys.session(sessionKey),
-    queryFn: () => fetchSession(sessionKey),
-    enabled: Boolean(sessionKey),
-  });
+  // ── Session history ──────────────────────────────────────
+  const { sessionHistoryQuery } = useSessionHistory(sessionKey);
 
-  const [streamingMsg, setStreamingMsg] = useState<Message | null>(null);
-  const [streaming, setStreaming] = useState(false);
-  const [streamReconnecting, setStreamReconnecting] = useState(false);
-  const [resumePromptVisible, setResumePromptVisible] = useState(false);
-  const [progress, setProgress] = useState<ProgressState | null>(null);
-  const [snackMsg, setSnackMsg] = useState('');
-  const [clarifyPrompt, setClarifyPrompt] = useState<ClarifyPromptState | null>(null);
-  const [clarifySubmitting, setClarifySubmitting] = useState(false);
-  const [clarifySubmitError, setClarifySubmitError] = useState<string | null>(null);
-  const senderRef = useRef(new AgentMessageSender());
-  const lastStreamActivityAtRef = useRef(0);
-  const streamingRef = useRef(false);
-  const sendingRef = useRef(false);
-  const runBusyRef = useRef(false);
-  const streamActiveRef = useRef(false);
-  const clarifyActiveRef = useRef(false);
-  const streamingMsgRef = useRef<Message | null>(null);
-  const streamingFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const activeSessionKeyRef = useRef(sessionKey);
-  const autoResumeFailedRef = useRef(false);
-  const streamRecoveryRef = useRef({
-    handleRecoverableFailure: (_error: unknown): boolean => false,
-    markRecoverySucceeded: () => {},
-    cancelRecovery: () => {},
-  });
-  const displayMessagesRef = useRef<Message[]>([]);
-  const sendRef = useRef<(text: string, attachments?: WireAttachment[]) => Promise<boolean>>(
-    async () => false,
-  );
-  const followUpFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ── Chat session (streaming / send / resume) ─────────────
+  const chat = useChatSession({ sessionKey, effectiveModelId });
 
-  const clearStreamingFlushTimer = useCallback(() => {
-    if (!streamingFlushTimerRef.current) return;
-    clearTimeout(streamingFlushTimerRef.current);
-    streamingFlushTimerRef.current = null;
-  }, []);
-
-  const flushStreamingMessage = useCallback(() => {
-    clearStreamingFlushTimer();
-    const message = streamingMsgRef.current;
-    setStreamingMsg(message ? cloneMessageForRender(message) : null);
-  }, [clearStreamingFlushTimer]);
-
-  const updateStreamingMessage = useCallback((update: (message: Message) => void, flushImmediately = false) => {
-    const message = ensureAssistantMessage(streamingMsgRef.current, Date.now());
-    update(message);
-    streamingMsgRef.current = message;
-
-    if (flushImmediately) {
-      flushStreamingMessage();
-      return;
-    }
-
-    if (streamingFlushTimerRef.current) return;
-    streamingFlushTimerRef.current = setTimeout(
-      flushStreamingMessage,
-      STREAMING_RENDER_THROTTLE_MS,
-    );
-  }, [flushStreamingMessage]);
-
-  const clearStreamingMessage = useCallback(() => {
-    clearStreamingFlushTimer();
-    streamingMsgRef.current = null;
-    setStreamingMsg(null);
-  }, [clearStreamingFlushTimer]);
-
-  /** Optimistic user messages appended before the server responds. */
-  const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
-  const [awaitingSessionRefresh, setAwaitingSessionRefresh] = useState(false);
-  const [sessionRefreshStartedAt, setSessionRefreshStartedAt] = useState(0);
-  const sessionDataUpdatedAtRef = useRef(0);
-
-  useEffect(() => {
-    sessionDataUpdatedAtRef.current = sessionQuery.dataUpdatedAt;
-  }, [sessionQuery.dataUpdatedAt]);
-
-  useEffect(() => {
-    activeSessionKeyRef.current = sessionKey;
-    autoResumeFailedRef.current = false;
-    setResumePromptVisible(false);
-    setStreamReconnecting(false);
-  }, [sessionKey]);
-
-  const invalidateSessionByKey = useCallback((targetSessionKey: string) => {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.session(targetSessionKey) });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoal(targetSessionKey) });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoalRuns(targetSessionKey, 1) });
-  }, [queryClient]);
-
-  const invalidateSession = useCallback(() => {
-    invalidateSessionByKey(sessionKey);
-  }, [invalidateSessionByKey, sessionKey]);
-
-  const [composerSuggestion, setComposerSuggestion] = useState<string | undefined>(undefined);
-
-  // ── Header: hide default, use custom ─────────────────────
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerShown: false });
-  }, [navigation]);
-
-  /** Parsed messages from the loaded session. */
-  const sessionMessages = useMemo<Message[]>(() => {
-    const raw = sessionQuery.data?.messages;
-    if (!raw || !Array.isArray(raw)) return [];
-    return parseSessionMessages(raw);
-  }, [sessionQuery.data?.messages]);
-
-  const sessionRefreshComplete = awaitingSessionRefresh
-    && sessionQuery.dataUpdatedAt > sessionRefreshStartedAt;
-
-  /** Display messages: session history + optimistic user msgs + streaming assistant bubble. */
-  const displayMessages = useMemo<Message[]>(() => {
-    if (sessionRefreshComplete) return sessionMessages;
-
-    const base = optimisticMessages.length > 0
-      ? [...sessionMessages, ...optimisticMessages]
-      : sessionMessages;
-    if (!streamingMsg) return base;
-    return [...base, streamingMsg];
-  }, [sessionRefreshComplete, sessionMessages, optimisticMessages, streamingMsg]);
-
-  useEffect(() => {
-    displayMessagesRef.current = displayMessages;
-  }, [displayMessages]);
-
-  useEffect(() => {
-    clarifyActiveRef.current = Boolean(clarifyPrompt);
-  }, [clarifyPrompt]);
-
-  useEffect(() => {
-    streamActiveRef.current = streaming || sendingRef.current;
-    runBusyRef.current = streaming || awaitingSessionRefresh || sendingRef.current;
-  }, [streaming, awaitingSessionRefresh]);
-
-  const followUp = useChatFollowUp({
-    sessionKey,
-    sessionKeyRef: activeSessionKeyRef,
-    streamActiveRef,
-    clarifyActiveRef,
-    sendRef,
-    onQueueFull: () => {
-      setSnackMsg(t(m.chat.followUpQueueMaxReached, { max: MAX_PENDING_FOLLOW_UPS }));
-    },
-  });
-
-  /** Finalize a streaming turn and keep local messages visible until session refetch completes. */
-  const finalizeMessage = useCallback((targetSessionKey = sessionKey) => {
-    if (activeSessionKeyRef.current !== targetSessionKey) {
-      invalidateSessionByKey(targetSessionKey);
-      return;
-    }
-
-    setStreaming(false);
-    streamingRef.current = false;
-    setProgress(null);
-    setClarifyPrompt(null);
-    setClarifySubmitError(null);
-    setClarifySubmitting(false);
-    setAwaitingSessionRefresh(true);
-    setSessionRefreshStartedAt(sessionDataUpdatedAtRef.current);
-    invalidateSessionByKey(targetSessionKey);
-  }, [invalidateSessionByKey, sessionKey]);
-
-  useEffect(() => {
-    if (!sessionRefreshComplete) return;
-
-    clearStreamingMessage();
-    setOptimisticMessages([]);
-    setAwaitingSessionRefresh(false);
-    setSessionRefreshStartedAt(0);
-  }, [sessionRefreshComplete, clearStreamingMessage]);
-
-  useEffect(() => {
-    clearStreamingMessage();
-    setStreaming(false);
-    streamingRef.current = false;
-    setProgress(null);
-    setClarifyPrompt(null);
-    setClarifySubmitError(null);
-    setClarifySubmitting(false);
-    setOptimisticMessages([]);
-    setAwaitingSessionRefresh(false);
-    setSessionRefreshStartedAt(0);
-  }, [sessionKey, clearStreamingMessage]);
-
-  function buildCallbacks(callbackSessionKey: string): MessagingCallbacks {
-    const isCurrentSession = () => activeSessionKeyRef.current === callbackSessionKey;
-    const touchStreamActivity = () => {
-      lastStreamActivityAtRef.current = Date.now();
-    };
-
-    return {
-      onStreamStart: () => {
-        if (!isCurrentSession()) return;
-        touchStreamActivity();
-        streamRecoveryRef.current.markRecoverySucceeded();
-        setStreamReconnecting(false);
-        setStreaming(true);
-        streamingRef.current = true;
-        updateStreamingMessage(() => {}, true);
-      },
-      onToken: (delta) => {
-        if (!isCurrentSession()) return;
-        touchStreamActivity();
-        updateStreamingMessage((message) => {
-          appendTextDelta(message.content, delta);
-        });
-        if (!streamingRef.current) {
-          setStreaming(true);
-          streamingRef.current = true;
-        }
-      },
-      onThinking: (text, isDelta) => {
-        if (!isCurrentSession()) return;
-        touchStreamActivity();
-        updateStreamingMessage((message) => {
-          if (!isDelta && text === '') startThinkingSegment(message.content);
-          else appendThinkingDelta(message.content, text, isDelta);
-        });
-      },
-      onThinkingEnd: () => {
-        if (!isCurrentSession() || !streamingMsgRef.current) return;
-        finalizeStreamingThinking(streamingMsgRef.current.content);
-        flushStreamingMessage();
-      },
-      onToolStart: (toolName, args) => {
-        if (!isCurrentSession()) return;
-        touchStreamActivity();
-        updateStreamingMessage((message) => {
-          appendToolStart(message.content, toolName, args);
-        }, true);
-        if (!streamingRef.current) {
-          setStreaming(true);
-          streamingRef.current = true;
-        }
-      },
-      onToolEnd: (toolName, isErr, result) => {
-        if (!isCurrentSession()) return;
-        updateStreamingMessage((message) => {
-          completeTool(message.content, toolName, isErr, result);
-        }, true);
-      },
-      onProgress: (p) => {
-        if (!isCurrentSession()) return;
-        touchStreamActivity();
-        setProgress(p);
-      },
-      onTtsAudio: (payload) => {
-        if (!isCurrentSession()) return;
-        updateStreamingMessage((message) => {
-          message.content.push({
-            type: 'audio',
-            workspaceRelativePath: payload.workspaceRelativePath,
-            mimeType: payload.mimeType,
-            name: payload.name,
-          });
-        }, true);
-        if (!streamingRef.current) {
-          setStreaming(true);
-          streamingRef.current = true;
-        }
-      },
-      onClarifyRequest: (payload) => {
-        if (!isCurrentSession()) return;
-        flushStreamingMessage();
-        setClarifyPrompt(payload);
-        setClarifySubmitError(null);
-        setClarifySubmitting(false);
-      },
-      onResult: () => {
-        if (!isCurrentSession()) {
-          invalidateSessionByKey(callbackSessionKey);
-          return;
-        }
-        sendingRef.current = false;
-        streamActiveRef.current = false;
-        runBusyRef.current = true;
-        if (streamingMsgRef.current) {
-          finalizeStreamingThinking(streamingMsgRef.current.content);
-          finalizeRunningTools(streamingMsgRef.current.content);
-          flushStreamingMessage();
-        }
-        finalizeMessage(callbackSessionKey);
-        if (followUpFlushTimerRef.current) {
-          clearTimeout(followUpFlushTimerRef.current);
-        }
-        followUpFlushTimerRef.current = setTimeout(() => {
-          void followUp.flushSteeringQueue(callbackSessionKey);
-        }, FOLLOW_UP_AUTO_SEND_IDLE_MS);
-      },
-      onError: (msg) => {
-        if (!isCurrentSession()) {
-          invalidateSessionByKey(callbackSessionKey);
-          return;
-        }
-        if (isTransientNetworkError(msg) && streamRecoveryRef.current.handleRecoverableFailure(msg)) {
-          sendingRef.current = false;
-          streamActiveRef.current = streamingRef.current;
-          runBusyRef.current = streamingRef.current || awaitingSessionRefresh;
-          return;
-        }
-        sendingRef.current = false;
-        setStreaming(false);
-        streamingRef.current = false;
-        streamActiveRef.current = false;
-        runBusyRef.current = awaitingSessionRefresh;
-        streamingRef.current = false;
-        clearStreamingMessage();
-        setProgress(null);
-        setClarifyPrompt(null);
-        setClarifySubmitError(null);
-        setClarifySubmitting(false);
-        setSnackMsg(msg);
-        setAwaitingSessionRefresh(false);
-        setSessionRefreshStartedAt(0);
-        invalidateSession();
-      },
-    };
-  }
-
-  const send = useCallback(
-    async (text: string, attachments?: WireAttachment[]): Promise<boolean> => {
-      if (!canSendComposerDraft(text, attachments?.length ?? 0) || !sessionKey || streaming) {
-        return false;
-      }
-      sendingRef.current = true;
-      streamActiveRef.current = true;
-      runBusyRef.current = true;
-      const userMsg = buildOptimisticUserMessage(text, attachments);
-      setOptimisticMessages([userMsg]);
-      clearStreamingMessage();
-      setProgress(null);
-      setClarifyPrompt(null);
-      setClarifySubmitError(null);
-      setClarifySubmitting(false);
-      streamRecoveryRef.current.cancelRecovery();
-      setAwaitingSessionRefresh(false);
-      setSessionRefreshStartedAt(0);
-      lastStreamActivityAtRef.current = Date.now();
-      try {
-        await senderRef.current.sendMessage(
-          text.trim(),
-          sessionKey,
-          buildCallbacks(sessionKey),
-          attachments,
-          effectiveModelId ? { modelRef: effectiveModelId } : undefined,
-        );
-        return true;
-      } catch (e) {
-        if (activeSessionKeyRef.current !== sessionKey) {
-          invalidateSessionByKey(sessionKey);
-          return true;
-        }
-        if (streamRecoveryRef.current.handleRecoverableFailure(e)) {
-          sendingRef.current = false;
-          streamActiveRef.current = streamingRef.current;
-          runBusyRef.current = streamingRef.current || awaitingSessionRefresh;
-          return true;
-        }
-        setOptimisticMessages([]);
-        setSnackMsg(e instanceof Error ? e.message : String(e));
-        setStreaming(false);
-        streamingRef.current = false;
-        sendingRef.current = false;
-        streamActiveRef.current = streaming || false;
-        runBusyRef.current = streaming || awaitingSessionRefresh;
-        return false;
-      }
-    },
-    [sessionKey, streaming, awaitingSessionRefresh, invalidateSessionByKey, clearStreamingMessage, followUp, effectiveModelId],
-  );
-
-  sendRef.current = send;
-
-  const sendVoice = useCallback(
-    async (payload: { uri: string; durationMillis: number; mimeType?: string }) => {
-      if (!payload.uri || !sessionKey || streaming || awaitingSessionRefresh) return;
-      const userMsg: Message = {
-        role: 'user-with-attachments',
-        content: [
-          {
-            type: 'audio',
-            uri: payload.uri,
-            mimeType: payload.mimeType,
-            name: 'voice.m4a',
-            durationSeconds: Math.round(payload.durationMillis / 1000),
-          },
-        ],
-        timestamp: Date.now(),
-      };
-      setOptimisticMessages([userMsg]);
-      clearStreamingMessage();
-      setProgress({
-        stage: 'voice',
-        message: m.chat.voiceSending,
-        timestamp: Date.now(),
-      });
-      setClarifyPrompt(null);
-      setClarifySubmitError(null);
-      setClarifySubmitting(false);
-      streamRecoveryRef.current.cancelRecovery();
-      setAwaitingSessionRefresh(false);
-      setSessionRefreshStartedAt(0);
-      try {
-        await senderRef.current.sendVoiceMessage(
-          payload,
-          sessionKey,
-          buildCallbacks(sessionKey),
-          effectiveModelId ? { modelRef: effectiveModelId } : undefined,
-        );
-      } catch (e) {
-        if (activeSessionKeyRef.current !== sessionKey) {
-          invalidateSessionByKey(sessionKey);
-          return;
-        }
-        if (streamRecoveryRef.current.handleRecoverableFailure(e)) {
-          return;
-        }
-        setSnackMsg(e instanceof Error ? e.message : String(e));
-        setStreaming(false);
-        streamingRef.current = false;
-        setProgress(null);
-      }
-    },
-    [sessionKey, streaming, awaitingSessionRefresh, invalidateSessionByKey, clearStreamingMessage, m.chat.voiceSending, effectiveModelId],
-  );
-
-  const abort = useCallback(() => {
-    streamRecoveryRef.current.cancelRecovery();
-    setStreamReconnecting(false);
-    setResumePromptVisible(false);
-    setClarifyPrompt(null);
-    setClarifySubmitError(null);
-    setClarifySubmitting(false);
-    senderRef.current.abort();
-    if (streamingMsgRef.current) {
-      finalizeStreamingThinking(streamingMsgRef.current.content);
-      finalizeRunningTools(streamingMsgRef.current.content);
-      flushStreamingMessage();
-    }
-    finalizeMessage();
-  }, [finalizeMessage, flushStreamingMessage]);
-
-  const submitClarifyAnswer = useCallback(async (answer: string) => {
-    if (!clarifyPrompt || clarifySubmitting) return;
-    setClarifySubmitting(true);
-    setClarifySubmitError(null);
-    try {
-      await submitClarifyResponse(clarifyPrompt.requestId, { answer });
-      setClarifyPrompt(null);
-    } catch (e) {
-      setClarifySubmitError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setClarifySubmitting(false);
-    }
-  }, [clarifyPrompt, clarifySubmitting]);
-
-  const skipClarifyAnswer = useCallback(async () => {
-    if (!clarifyPrompt || clarifySubmitting) return;
-    setClarifySubmitting(true);
-    setClarifySubmitError(null);
-    try {
-      await submitClarifyResponse(clarifyPrompt.requestId, { skip: true });
-      setClarifyPrompt(null);
-    } catch (e) {
-      setClarifySubmitError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setClarifySubmitting(false);
-    }
-  }, [clarifyPrompt, clarifySubmitting]);
-
-  const [pendingRunTick, setPendingRunTick] = useState(0);
-
-  useEffect(() => {
-    return subscribePendingAgentRunChanged((detail) => {
-      if (detail.chatId === sessionKey) {
-        setPendingRunTick((n) => n + 1);
-      }
-    });
-  }, [sessionKey]);
-
-  const pendingRunId = useMemo(() => {
-    if (!sessionKey) return null;
-    return readPendingAgentRunId(sessionKey);
-  }, [sessionKey, streaming, pendingRunTick]);
-
-  const resume = useCallback(async (opts?: AgentStreamResumeOptions) => {
-    const background = opts?.background === true;
-    const runId = pendingRunId ?? (sessionKey ? readPendingAgentRunId(sessionKey) : null);
-    if (!sessionKey || !runId) return;
-    if (senderRef.current.isStreamingFor(sessionKey)) {
-      senderRef.current.detachLocalStream();
-    }
-    if (senderRef.current.isStreamingFor(sessionKey)) return;
-    if (!background && (streaming || awaitingSessionRefresh)) return;
-
-    if (background) {
-      setAwaitingSessionRefresh(false);
-      setSessionRefreshStartedAt(0);
-    } else {
-      clearStreamingMessage();
-      setAwaitingSessionRefresh(false);
-      setSessionRefreshStartedAt(0);
-    }
-    setProgress(null);
-    setStreaming(true);
-    streamingRef.current = true;
-    lastStreamActivityAtRef.current = Date.now();
-    try {
-      await senderRef.current.resume(runId, sessionKey, buildCallbacks(sessionKey));
-      autoResumeFailedRef.current = false;
-      setResumePromptVisible(false);
-      streamRecoveryRef.current.markRecoverySucceeded();
-    } catch (e) {
-      if (activeSessionKeyRef.current !== sessionKey) {
-        invalidateSessionByKey(sessionKey);
-        return;
-      }
-      const message = e instanceof Error ? e.message : String(e);
-      if (background && isTransientNetworkError(message)) {
-        throw e;
-      }
-      if (!background && streamRecoveryRef.current.handleRecoverableFailure(e)) {
-        setStreaming(false);
-        streamingRef.current = false;
-        return;
-      }
-      autoResumeFailedRef.current = true;
-      setResumePromptVisible(true);
-      setStreaming(false);
-      streamingRef.current = false;
-      if (!background) {
-        setSnackMsg(message);
-      }
-    }
-  }, [
-    sessionKey,
-    pendingRunId,
-    streaming,
-    awaitingSessionRefresh,
-    invalidateSessionByKey,
-    clearStreamingMessage,
-  ]);
-
-  useAgentStreamResume({
-    sessionKey,
-    senderRef,
-    activeSessionKeyRef,
-    tryResume: resume,
-    streaming,
-  });
-
-  const streamRecovery = useAgentStreamRecovery({
-    sessionKey,
-    activeSessionKeyRef,
-    tryResume: resume,
-    autoResumeFailedRef,
-    onReconnectingChange: setStreamReconnecting,
-    onRecoveryExhausted: () => {
-      setResumePromptVisible(true);
-      if (!readPendingAgentRunId(sessionKey)) {
-        setSnackMsg(m.chat.streamRecoveryFailed);
-      }
-    },
-  });
-  streamRecoveryRef.current = streamRecovery;
-
-  const triggerStreamRecovery = useCallback(() => {
-    if (!sessionKey) return;
-    if (senderRef.current.isStreamingFor(sessionKey)) {
-      senderRef.current.detachLocalStream();
-    }
-    autoResumeFailedRef.current = false;
-    setResumePromptVisible(false);
-    lastStreamActivityAtRef.current = Date.now();
-    streamRecoveryRef.current.handleRecoverableFailure(new Error('Network request failed'));
-  }, [sessionKey]);
-
-  // Auto-resume when a pending run id appears (e.g. stored from POST `status` before clear race).
-  useEffect(() => {
-    if (!pendingRunId || autoResumeFailedRef.current) return;
-    if (senderRef.current.isStreamingFor(sessionKey)) return;
-    if (streaming && !awaitingSessionRefresh) return;
-    void resume({ background: awaitingSessionRefresh });
-  }, [pendingRunId, streaming, awaitingSessionRefresh, resume, sessionKey]);
-
-  useEffect(() => {
-    return subscribeGatewayEvent('session-updated', (detail) => {
-      const key = (detail as { key?: string }).key;
-      if (key && key === sessionKey) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoal(sessionKey) });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoalRuns(sessionKey, 1) });
-      }
-    });
-  }, [queryClient, sessionKey]);
-
-  useEffect(() => {
-    return () => {
-      senderRef.current.abort();
-      clearStreamingFlushTimer();
-    };
-  }, [clearStreamingFlushTimer]);
-
+  // ── Bootstrap (auto-create session on landing) ───────────
   const startAutoSession = useCallback(() => {
-    if (urlSessionKey || !configured || !gatewayOnline || autoSessionInFlightRef.current) return;
+    if (urlSessionKey || !gatewayOnline || autoSessionInFlightRef.current) return;
 
     autoSessionAttemptedRef.current = true;
     autoSessionInFlightRef.current = true;
@@ -1108,10 +136,9 @@ export default function ChatScreen() {
     const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
     void (async () => {
       try {
-        // Probe LAN vs FRP before the first session API call (cold start uses optimistic LAN).
         await useGatewayStore.getState().refreshActiveBaseUrl();
         const key = await createSession(agentId);
-        activeSessionKeyRef.current = key;
+        chat.activeSessionKeyRef.current = key;
         setPendingBootstrapKey(key);
         void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
         router.replace({ pathname: '/', params: { k: key } });
@@ -1125,160 +152,166 @@ export default function ChatScreen() {
     })();
   }, [
     urlSessionKey,
-    configured,
     gatewayOnline,
     agentsQuery.data,
     localDefaultAgentId,
     router,
     queryClient,
     m.sessions.bootstrapFailed,
+    chat.activeSessionKeyRef,
   ]);
 
-  /** Create a fresh session when landing on home without `k` (once; no retry loop on failure). */
   useEffect(() => {
-    if (urlSessionKey || !configured || !gatewayOnline) return;
+    if (urlSessionKey || !gatewayOnline) return;
     if (autoSessionAttemptedRef.current || autoSessionInFlightRef.current) return;
     startAutoSession();
-  }, [urlSessionKey, configured, gatewayOnline, startAutoSession]);
+  }, [urlSessionKey, gatewayOnline, startAutoSession]);
 
   const retryBootstrapSession = useCallback(() => {
-    if (urlSessionKey || !configured || !gatewayOnline || autoSessionInFlightRef.current) return;
+    if (urlSessionKey || !gatewayOnline || autoSessionInFlightRef.current) return;
     autoSessionAttemptedRef.current = false;
     startAutoSession();
-  }, [urlSessionKey, configured, gatewayOnline, startAutoSession]);
+  }, [urlSessionKey, gatewayOnline, startAutoSession]);
 
-  /** Retry bootstrap once when gateway connectivity returns. */
   useEffect(() => {
-    const wasOffline = !prevGatewayOnlineRef.current;
-    prevGatewayOnlineRef.current = gatewayOnline;
-    if (!wasOffline || !gatewayOnline || !bootstrapError || urlSessionKey || !configured) return;
+    const wasOffline = !prevGatewayOnlineBootRef.current;
+    prevGatewayOnlineBootRef.current = gatewayOnline;
+    if (!wasOffline || !gatewayOnline || !bootstrapError || urlSessionKey) return;
     autoSessionAttemptedRef.current = false;
     setBootstrapError(null);
     startAutoSession();
-  }, [gatewayOnline, bootstrapError, urlSessionKey, configured, startAutoSession]);
+  }, [gatewayOnline, bootstrapError, urlSessionKey, startAutoSession]);
 
-  /** Resume in-flight agent streams when gateway connectivity returns. */
+  // ── Parsed messages ──────────────────────────────────────
+  const sessionMessages = useMemo<Message[]>(() => {
+    const pages = sessionHistoryQuery.data?.pages ?? [];
+    const raw = [...pages]
+      .reverse()
+      .flatMap((page) => page?.session.messages ?? []);
+    if (!raw.length) return [];
+    return parseSessionMessages(dedupeWireMessages(raw as Array<Record<string, unknown>>));
+  }, [sessionHistoryQuery.data?.pages]);
+
+  const sessionRefreshComplete =
+    chat.awaitingSessionRefresh && sessionHistoryQuery.dataUpdatedAt > chat.sessionDataUpdatedAtRef.current;
+
+  // Track dataUpdatedAt for the chat session hook
   useEffect(() => {
-    const wasOffline = !prevGatewayOnlineForStreamRef.current;
-    prevGatewayOnlineForStreamRef.current = gatewayOnline;
-    if (!wasOffline || !gatewayOnline || !sessionKey) return;
-    const hasResumableStream =
-      Boolean(pendingRunId) ||
-      streamReconnecting ||
-      resumePromptVisible ||
-      (streaming && senderRef.current.isStreamingFor(sessionKey));
-    if (!hasResumableStream) return;
-    triggerStreamRecovery();
-  }, [
-    gatewayOnline,
-    sessionKey,
-    streaming,
-    pendingRunId,
-    streamReconnecting,
-    resumePromptVisible,
-    triggerStreamRecovery,
-  ]);
+    chat.sessionDataUpdatedAtRef.current = sessionHistoryQuery.dataUpdatedAt;
+  }, [sessionHistoryQuery.dataUpdatedAt, chat.sessionDataUpdatedAtRef]);
 
-  /** Start recovery when gateway goes offline while a stream is still open locally. */
+  const displayMessages = useMemo<Message[]>(() => {
+    if (sessionRefreshComplete) return sessionMessages;
+
+    const base = chat.optimisticMessages.length > 0
+      ? [...sessionMessages, ...chat.optimisticMessages]
+      : sessionMessages;
+    if (!chat.streamingMsg) return base;
+    return [...base, chat.streamingMsg];
+  }, [sessionRefreshComplete, sessionMessages, chat.optimisticMessages, chat.streamingMsg]);
+
   useEffect(() => {
-    if (gatewayOnline || !sessionKey) return;
-    if (!streaming && !senderRef.current.isStreamingFor(sessionKey)) return;
-    if (!pendingRunId && !senderRef.current.isStreamingFor(sessionKey)) return;
-    triggerStreamRecovery();
-  }, [gatewayOnline, sessionKey, streaming, pendingRunId, triggerStreamRecovery]);
+    chat.displayMessagesRef.current = displayMessages;
+  }, [displayMessages, chat.displayMessagesRef]);
 
-  /** Detect stalled SSE (no tokens/progress) and reconnect via resume. */
+  // Refresh-complete cleanup
   useEffect(() => {
-    if (!streaming || !sessionKey) return;
-    const interval = setInterval(() => {
-      if (!streamingRef.current || activeSessionKeyRef.current !== sessionKey) return;
-      if (!readPendingAgentRunId(sessionKey)) return;
-      if (Date.now() - lastStreamActivityAtRef.current < STREAM_STALL_MS) return;
-      triggerStreamRecovery();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [streaming, sessionKey, triggerStreamRecovery]);
+    if (!sessionRefreshComplete) return;
+    chat.clearAllState();
+  }, [sessionRefreshComplete, chat]);
 
-  // ── New chat ─────────────────────────────────────────────
-  const handleNewChat = useCallback(() => {
-    activeSessionKeyRef.current = '';
-    senderRef.current.abort();
-    clearStreamingMessage();
-    setStreaming(false);
-    streamingRef.current = false;
-    setProgress(null);
-    setClarifyPrompt(null);
-    setClarifySubmitError(null);
-    setClarifySubmitting(false);
-    streamRecoveryRef.current.cancelRecovery();
-    setOptimisticMessages([]);
-    setAwaitingSessionRefresh(false);
-    setSessionRefreshStartedAt(0);
-
-    const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
-    void createSession(agentId, { forceNew: true })
-      .then((key) => {
-        activeSessionKeyRef.current = key;
-        setPendingBootstrapKey(key);
-        void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
-        router.replace({ pathname: '/', params: { k: key } });
-      })
-      .catch((e) => {
-        activeSessionKeyRef.current = sessionKey;
-        setSnackMsg(e instanceof Error ? e.message : String(e));
-      });
-  }, [agentsQuery.data, localDefaultAgentId, queryClient, router, sessionKey, clearStreamingMessage]);
-
-  // ── Open drawer ──────────────────────────────────────────
-  const openDrawer = useCallback(() => {
-    navigation.dispatch(DrawerActions.openDrawer());
+  // ── Header ───────────────────────────────────────────────
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
-  // ── Header / chrome colors (Kimi-like neutral + blue accent) ──
   const headerBg = isDark ? '#000000' : '#FFFFFF';
   const headerBorder = isDark ? '#38383A' : '#E5E5EA';
   const canvasBg = isDark ? '#000000' : '#F5F5F7';
   const pillText = isDark ? '#F5F5F7' : '#1C1C1E';
   const pillMuted = isDark ? '#8E8E93' : '#8E8E93';
 
+  // ── Derived UI state ─────────────────────────────────────
   const chatSuggestions = useMemo(
     () => [m.chat.suggestion1, m.chat.suggestion2, m.chat.suggestion3],
     [m.chat.suggestion1, m.chat.suggestion2, m.chat.suggestion3],
   );
 
   const isEmptyChat =
-    displayMessages.length === 0 && !streaming && !sessionQuery.isLoading;
+    displayMessages.length === 0 && !chat.streaming && !sessionHistoryQuery.isLoading;
 
   const composerDisabled =
     !sessionKey ||
     creatingInitialSession ||
-    (configured && !gatewayOnline) ||
-    sessionQuery.isLoading ||
-    awaitingSessionRefresh ||
-    Boolean(clarifyPrompt);
+    !gatewayOnline ||
+    sessionHistoryQuery.isLoading ||
+    chat.awaitingSessionRefresh ||
+    Boolean(chat.clarifyPrompt);
+
+  // ── Handlers ─────────────────────────────────────────────
+  const openDrawer = useCallback(() => {
+    navigation.dispatch(DrawerActions.openDrawer());
+  }, [navigation]);
+
+  const handleModelSelect = useCallback((modelId: string) => {
+    setSelectedModelRef(modelId);
+    if (sessionKey) {
+      void setSessionModelRef(sessionKey, modelId).catch(() => {});
+    }
+  }, [sessionKey, setSelectedModelRef]);
+
+  const handleAgentSelect = useCallback((agentId: string) => {
+    void createSession(agentId, { forceNew: true }).then((key) => {
+      chat.activeSessionKeyRef.current = key;
+      setPendingBootstrapKey(key);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+      router.replace({ pathname: '/', params: { k: key } });
+    }).catch((e) => {
+      chat.setSnackMsg(e instanceof Error ? e.message : String(e));
+    });
+  }, [queryClient, router, chat.setSnackMsg, chat.activeSessionKeyRef]);
+
+  const handleNewChat = useCallback(() => {
+    chat.activeSessionKeyRef.current = '';
+    chat.streamRecoveryRef.current.cancelRecovery();
+    chat.clearAllState();
+
+    const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
+    void createSession(agentId, { forceNew: true })
+      .then((key) => {
+        chat.activeSessionKeyRef.current = key;
+        setPendingBootstrapKey(key);
+        void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+        router.replace({ pathname: '/', params: { k: key } });
+      })
+      .catch((e) => {
+        chat.activeSessionKeyRef.current = sessionKey;
+        chat.setSnackMsg(e instanceof Error ? e.message : String(e));
+      });
+  }, [agentsQuery.data, localDefaultAgentId, queryClient, router, sessionKey, chat]);
 
   const queueFollowUpOrSend = useCallback(
     (text: string) => {
       sendOrQueueMessage({
         text,
-        runBusy: runBusyRef.current,
-        pendingCount: followUp.pendingFollowUps.length,
-        send,
-        addPendingFollowUp: (msg) => followUp.addPendingFollowUp(msg),
+        runBusy: chat.runningRef.current,
+        pendingCount: chat.followUp.pendingFollowUps.length,
+        send: chat.send,
+        addPendingFollowUp: (msg) => chat.followUp.addPendingFollowUp(msg),
         onQueueFull: () => {
-          setSnackMsg(t(m.chat.followUpQueueMaxReached, { max: MAX_PENDING_FOLLOW_UPS }));
+          chat.setSnackMsg(t(m.chat.followUpQueueMaxReached, { max: MAX_PENDING_FOLLOW_UPS }));
         },
       });
     },
-    [followUp, send, m.chat.followUpQueueMaxReached],
+    [chat, m.chat.followUpQueueMaxReached],
   );
 
   const handleStarterSend = useCallback(
-    (text: string) => {
-      queueFollowUpOrSend(text);
-    },
+    (text: string) => queueFollowUpOrSend(text),
     [queueFollowUpOrSend],
   );
+
+  const [composerSuggestion, setComposerSuggestion] = useState<string | undefined>(undefined);
 
   const handleGoalShortcutPress = useCallback(() => {
     if (composerDisabled) return;
@@ -1287,73 +320,57 @@ export default function ChatScreen() {
 
   const handleUserMessageCopy = useCallback((text: string) => {
     void Clipboard.setStringAsync(text)
-      .then(() => setSnackMsg(m.chat.messageCopied))
-      .catch(() => setSnackMsg(m.chat.messageCopyFailed));
-  }, [m.chat.messageCopied, m.chat.messageCopyFailed]);
+      .then(() => chat.setSnackMsg(m.chat.messageCopied))
+      .catch(() => chat.setSnackMsg(m.chat.messageCopyFailed));
+  }, [m.chat.messageCopied, m.chat.messageCopyFailed, chat.setSnackMsg]);
 
   const handleUserMessageEdit = useCallback((text: string) => {
     setComposerSuggestion(text);
-    setSnackMsg(m.chat.messageReadyToEdit);
-  }, [m.chat.messageReadyToEdit]);
+    chat.setSnackMsg(m.chat.messageReadyToEdit);
+  }, [m.chat.messageReadyToEdit, chat.setSnackMsg]);
 
   const handleAssistantCopy = useCallback((text: string) => {
     void Clipboard.setStringAsync(text)
-      .then(() => setSnackMsg(m.chat.messageCopied))
-      .catch(() => setSnackMsg(m.chat.messageCopyFailed));
-  }, [m.chat.messageCopied, m.chat.messageCopyFailed]);
+      .then(() => chat.setSnackMsg(m.chat.messageCopied))
+      .catch(() => chat.setSnackMsg(m.chat.messageCopyFailed));
+  }, [m.chat.messageCopied, m.chat.messageCopyFailed, chat.setSnackMsg]);
 
   const handleAssistantRegenerate = useCallback((assistantIndex: number) => {
-    if (!sessionKey || streaming || awaitingSessionRefresh || Boolean(clarifyPrompt)) return;
+    if (!sessionKey || chat.streaming || chat.awaitingSessionRefresh || Boolean(chat.clarifyPrompt)) return;
     const userMessage = findPrecedingUserMessage(displayMessages, assistantIndex);
     if (!userMessage) return;
     const payload = buildUserResendPayload(userMessage);
     if (!payload) return;
-    void send(payload.text, payload.attachments);
-  }, [awaitingSessionRefresh, clarifyPrompt, displayMessages, send, sessionKey, streaming]);
+    void chat.send(payload.text, payload.attachments);
+  }, [chat, displayMessages, sessionKey]);
 
   const [agentSheetVisible, setAgentSheetVisible] = useState(false);
   const [gatewaySheetVisible, setGatewaySheetVisible] = useState(false);
   const [switchingGatewayId, setSwitchingGatewayId] = useState<string | null>(null);
 
-  const openAgentsPicker = useCallback(() => {
-    setAgentSheetVisible(true);
-  }, []);
-
-  const openGatewayPicker = useCallback(() => {
-    setGatewaySheetVisible(true);
-  }, []);
+  const openAgentsPicker = useCallback(() => setAgentSheetVisible(true), []);
 
   const handleGatewaySelect = useCallback(
     async (profileId: string) => {
-      if (profileId === activeGatewayId) {
-        setGatewaySheetVisible(false);
-        return;
-      }
+      if (profileId === activeGatewayId) { setGatewaySheetVisible(false); return; }
       setSwitchingGatewayId(profileId);
       try {
         switchGateway(profileId);
         await syncAfterGatewaySettingsSave();
         const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
         const key = await createSession(agentId, { forceNew: true });
-        activeSessionKeyRef.current = key;
+        chat.activeSessionKeyRef.current = key;
         setPendingBootstrapKey(key);
         void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
         setGatewaySheetVisible(false);
         router.replace({ pathname: '/', params: { k: key } });
       } catch (e) {
-        setSnackMsg(e instanceof Error ? e.message : String(e));
+        chat.setSnackMsg(e instanceof Error ? e.message : String(e));
       } finally {
         setSwitchingGatewayId(null);
       }
     },
-    [
-      activeGatewayId,
-      agentsQuery.data,
-      localDefaultAgentId,
-      queryClient,
-      router,
-      switchGateway,
-    ],
+    [activeGatewayId, agentsQuery.data, localDefaultAgentId, queryClient, router, switchGateway, chat],
   );
 
   const handleGatewayManageSettings = useCallback(() => {
@@ -1366,29 +383,9 @@ export default function ChatScreen() {
     router.push('/settings/gateway/new');
   }, [router]);
 
-  const handleAgentSelect = useCallback((agentId: string) => {
-    // Start a new session with the selected agent
-    void createSession(agentId, { forceNew: true }).then((key) => {
-      activeSessionKeyRef.current = key;
-      setPendingBootstrapKey(key);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
-      router.replace({ pathname: '/', params: { k: key } });
-    }).catch((e) => {
-      setSnackMsg(e instanceof Error ? e.message : String(e));
-    });
-  }, [queryClient, router]);
-
-  const handleModelSelect = useCallback((modelId: string) => {
-    setSelectedModelRef(modelId);
-    if (sessionKey) {
-      void setSessionModelRef(sessionKey, modelId).catch(() => {
-        /* session-level model override is optional on the gateway */
-      });
-    }
-  }, [sessionKey, setSelectedModelRef]);
-
   const headerPaddingTop = insets.top + 8;
 
+  // ── Picker sheets ────────────────────────────────────────
   const pickerSheets = (
     <>
       <AgentPickerSheet
@@ -1412,6 +409,7 @@ export default function ChatScreen() {
     </>
   );
 
+  // ── Render ───────────────────────────────────────────────
   return (
     <View style={[styles.screen, { backgroundColor: canvasBg }]}>
       <ChatHeader
@@ -1448,26 +446,60 @@ export default function ChatScreen() {
         ) : null}
         <ChatStreamNotice
           isDark={isDark}
-          reconnecting={streamReconnecting}
+          reconnecting={chat.streamReconnecting}
           reconnectingLabel={m.chat.streamReconnecting}
-          resumeVisible={Boolean(pendingRunId && !streaming && resumePromptVisible && !streamReconnecting)}
+          resumeVisible={
+            !chat.streaming && chat.resumePromptVisible && !chat.streamReconnecting
+          }
           resumeLabel={m.chat.resumeBanner}
           resumeActionLabel={m.chat.resumeButton}
           onResume={() => {
-            autoResumeFailedRef.current = false;
-            setResumePromptVisible(false);
-            void resume({ background: true });
+            void chat.resume({ background: true });
           }}
         />
 
-        <GoalMissionCard sessionKey={sessionKey} agentBusy={streaming || awaitingSessionRefresh} />
+        <GoalMissionCard
+          sessionKey={sessionKey}
+          agentBusy={chat.streaming || chat.awaitingSessionRefresh}
+        />
 
         <View style={styles.listFill}>
           <MessageList
             messages={displayMessages}
-            streaming={streaming}
-            progress={progress}
-            loading={sessionQuery.isLoading || (!sessionKey && creatingInitialSession)}
+            streaming={chat.streaming}
+            progress={chat.progress}
+            loading={sessionHistoryQuery.isLoading || (!sessionKey && creatingInitialSession)}
+            loadingOlder={sessionHistoryQuery.isFetchingNextPage}
+            hasOlder={sessionHistoryQuery.hasNextPage}
+            onLoadOlder={() => {
+              if (!sessionHistoryQuery.hasNextPage || sessionHistoryQuery.isFetchingNextPage) return;
+              const loadedPages = sessionHistoryQuery.data?.pages ?? [];
+              const lastLoadedPage = loadedPages[loadedPages.length - 1];
+              const olderCursor = lastLoadedPage?.pagination.nextBeforeCursor;
+              if (!olderCursor) { void sessionHistoryQuery.fetchNextPage(); return; }
+
+              const prefetchedOlderPage = queryClient.getQueryData(
+                queryKeys.sessionHistoryOlderPreview(sessionKey, olderCursor),
+              );
+
+              if (prefetchedOlderPage) {
+                queryClient.setQueryData(
+                  queryKeys.sessionHistory(sessionKey),
+                  (oldData) => appendOlderSessionHistoryPage(
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    oldData as any,
+                    prefetchedOlderPage as Parameters<typeof appendOlderSessionHistoryPage>[1],
+                    olderCursor,
+                  ),
+                );
+                return;
+              }
+
+              void sessionHistoryQuery.fetchNextPage();
+            }}
+            onAtBottomChange={(isAtBottom) => {
+              chat.messageListAtBottomRef.current = isAtBottom;
+            }}
             sessionKey={sessionKey}
             welcomeTitle={m.chat.welcomeTitle}
             welcomeSubtitle={m.chat.welcomeSubtitle}
@@ -1479,10 +511,7 @@ export default function ChatScreen() {
             onAssistantRegenerate={handleAssistantRegenerate}
             networkUnreachableTip={
               gatewayFullyUnreachable
-                ? {
-                    message: m.gateway.routesUnreachableBanner,
-                    onPress: handleGatewayManageSettings,
-                  }
+                ? { message: m.gateway.routesUnreachableBanner, onPress: handleGatewayManageSettings }
                 : null
             }
           />
@@ -1493,94 +522,63 @@ export default function ChatScreen() {
           style={{ backgroundColor: canvasBg }}
         >
           <ClarifyPrompt
-            prompt={clarifyPrompt}
-            submitting={clarifySubmitting}
-            submitError={clarifySubmitError}
-            onSubmit={(answer) => void submitClarifyAnswer(answer)}
-            onSkip={() => void skipClarifyAnswer()}
+            prompt={chat.clarifyPrompt}
+            submitting={chat.clarifySubmitting}
+            submitError={chat.clarifySubmitError}
+            onSubmit={(answer) => void chat.submitClarifyAnswer(answer)}
+            onSkip={() => void chat.skipClarifyAnswer()}
           />
           {isEmptyChat ? (
-            <ChatEmptyShortcutsBar
-              disabled={composerDisabled}
-              onPressGoal={handleGoalShortcutPress}
-            />
+            <ChatEmptyShortcutsBar disabled={composerDisabled} onPressGoal={handleGoalShortcutPress} />
           ) : null}
           <ChatComposer
             disabled={composerDisabled}
-            streaming={streaming}
-            onSend={send}
+            streaming={chat.streaming}
+            onSend={chat.send}
             keyboardVisible={keyboardVisible}
-            onSendVoice={(payload) => void sendVoice(payload)}
-            onAbort={abort}
+            onSendVoice={(payload) => void chat.sendVoice(payload)}
+            onAbort={chat.abort}
             placeholder={m.chat.inputPlaceholder}
             suggestionDraft={composerSuggestion}
             onConsumeSuggestionDraft={() => setComposerSuggestion(undefined)}
-            onAddPendingFollowUp={(text, atts) => followUp.addPendingFollowUp(text, atts)}
-            pendingFollowUps={followUp.pendingFollowUps}
-            editingFollowUpId={followUp.editingFollowUpId}
-            onBeginEditFollowUp={followUp.beginEditFollowUp}
-            onCancelEditFollowUp={followUp.cancelEditFollowUp}
-            onCommitEditFollowUp={followUp.commitEditFollowUp}
-            onPendingFollowUpRemove={followUp.removePendingFollowUp}
-            onPendingFollowUpMove={followUp.movePendingFollowUp}
-            onPendingFollowUpSteer={(id) => void followUp.steerPendingFollowUp(id)}
-            steeringFollowUpId={followUp.steeringFollowUpId}
-            onQueueFull={() => setSnackMsg(t(m.chat.followUpQueueMaxReached, { max: MAX_PENDING_FOLLOW_UPS }))}
+            onAddPendingFollowUp={(text, atts) => chat.followUp.addPendingFollowUp(text, atts)}
+            pendingFollowUps={chat.followUp.pendingFollowUps}
+            editingFollowUpId={chat.followUp.editingFollowUpId}
+            onBeginEditFollowUp={chat.followUp.beginEditFollowUp}
+            onCancelEditFollowUp={chat.followUp.cancelEditFollowUp}
+            onCommitEditFollowUp={chat.followUp.commitEditFollowUp}
+            onPendingFollowUpRemove={chat.followUp.removePendingFollowUp}
+            onPendingFollowUpMove={chat.followUp.movePendingFollowUp}
+            onPendingFollowUpSteer={(id) => void chat.followUp.steerPendingFollowUp(id)}
+            steeringFollowUpId={chat.followUp.steeringFollowUpId}
+            onQueueFull={() => chat.setSnackMsg(t(m.chat.followUpQueueMaxReached, { max: MAX_PENDING_FOLLOW_UPS }))}
           />
           {!keyboardVisible ? (
-            <Text
-              style={[
-                styles.aiDisclaimer,
-                { color: pillMuted, paddingBottom: Math.max(10, insets.bottom) },
-              ]}
-            >
+            <Text style={[styles.aiDisclaimer, { color: pillMuted, paddingBottom: Math.max(10, insets.bottom) }]}>
               {m.chat.aiDisclaimer}
             </Text>
           ) : null}
         </KeyboardStickyView>
       </View>
 
-      {/* ── Dialogs ──────────────────────────────────── */}
-      <Snackbar
-        visible={Boolean(snackMsg)}
-        onDismiss={() => setSnackMsg('')}
-        duration={2500}
-      >
-        {snackMsg}
+      <Snackbar visible={Boolean(chat.snackMsg)} onDismiss={() => chat.setSnackMsg('')} duration={2500}>
+        {chat.snackMsg}
       </Snackbar>
 
       {pickerSheets}
-
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
-  // ── Chat body ──
-  chatBody: {
-    flex: 1,
-    minHeight: 0,
-  },
+  screen: { flex: 1 },
+  chatBody: { flex: 1, minHeight: 0 },
   bootstrapRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, paddingHorizontal: 16, paddingVertical: 10,
   },
-  /** Lets FlashList shrink when the keyboard opens (flex parent must allow min height 0). */
-  listFill: {
-    flex: 1,
-    minHeight: 0,
-  },
+  listFill: { flex: 1, minHeight: 0 },
   aiDisclaimer: {
-    fontSize: 11,
-    textAlign: 'center',
-    paddingBottom: 10,
-    paddingHorizontal: 16,
+    fontSize: 11, textAlign: 'center', paddingBottom: 10, paddingHorizontal: 16,
   },
 });

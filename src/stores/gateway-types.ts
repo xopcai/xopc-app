@@ -46,7 +46,7 @@ export function isLocalOrPrivateGatewayHost(host: string): boolean {
   }
 }
 
-/** True when phones on the network cannot reach this gateway root URL. */
+/** True when this gateway root URL points back to the current device. */
 export function isLoopbackGatewayBaseUrl(raw: string): boolean {
   const normalized = normalizeGatewayBaseUrl(raw);
   if (!normalized) return false;
@@ -59,6 +59,14 @@ export function isLoopbackGatewayBaseUrl(raw: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function isGatewayLoopbackAllowedInDev(): boolean {
+  return (globalThis as { __DEV__?: boolean }).__DEV__ === true;
+}
+
+export function shouldRejectLoopbackGatewayBaseUrl(raw: string): boolean {
+  return isLoopbackGatewayBaseUrl(raw) && !isGatewayLoopbackAllowedInDev();
 }
 
 export function gatewayProfileNameFromUrl(baseUrl: string): string {

@@ -38,6 +38,10 @@ export const MessageList = memo(function MessageList({
   streaming,
   progress,
   loading,
+  loadingOlder,
+  hasOlder,
+  onLoadOlder,
+  onAtBottomChange,
   sessionKey,
   welcomeTitle,
   welcomeSubtitle,
@@ -53,6 +57,10 @@ export const MessageList = memo(function MessageList({
   streaming: boolean;
   progress: ProgressState | null;
   loading: boolean;
+  loadingOlder?: boolean;
+  hasOlder?: boolean;
+  onLoadOlder?: () => void;
+  onAtBottomChange?: (isAtBottom: boolean) => void;
   /** Pass the current session key so we can reset scroll state on session switch. */
   sessionKey?: string;
   welcomeTitle?: string;
@@ -71,6 +79,8 @@ export const MessageList = memo(function MessageList({
   const listRef = useRef<FlashListRef<Message>>(null);
   const isAtBottomRef = useRef(true);
   const prevLengthRef = useRef(messages.length);
+  const prevFirstKeyRef = useRef(messages[0] ? messageKey(messages[0], 0) : '');
+  const prevLastKeyRef = useRef(messages.length > 0 ? messageKey(messages[messages.length - 1], messages.length - 1) : '');
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   /**
@@ -85,19 +95,35 @@ export const MessageList = memo(function MessageList({
     if (sessionKey !== prevSessionKeyRef.current) {
       prevSessionKeyRef.current = sessionKey;
       prevLengthRef.current = 0;
+      prevFirstKeyRef.current = '';
+      prevLastKeyRef.current = '';
       isAtBottomRef.current = true;
+      onAtBottomChange?.(true);
       // Bump key → FlashList unmounts/remounts with fresh scroll position
       setListKey((k) => k + 1);
     }
-  }, [sessionKey]);
+  }, [sessionKey, onAtBottomChange]);
 
-  // Auto-scroll when new messages arrive or during streaming
+  // Auto-scroll when new messages arrive at the tail or during streaming.
   useEffect(() => {
     if (messages.length === 0) return;
-    const lengthChanged = messages.length !== prevLengthRef.current;
-    prevLengthRef.current = messages.length;
 
-    if (isAtBottomRef.current || lengthChanged || streaming) {
+    const firstKey = messageKey(messages[0], 0);
+    const lastIndex = messages.length - 1;
+    const lastKey = messageKey(messages[lastIndex], lastIndex);
+    const initialLoad = prevLengthRef.current === 0;
+    const appendedToTail = prevFirstKeyRef.current === firstKey && prevLastKeyRef.current !== lastKey;
+    const shouldScrollToEnd = initialLoad || isAtBottomRef.current || (streaming && isAtBottomRef.current);
+
+    prevLengthRef.current = messages.length;
+    prevFirstKeyRef.current = firstKey;
+    prevLastKeyRef.current = lastKey;
+
+    if (loadingOlder && !appendedToTail && !initialLoad && !streaming) {
+      return;
+    }
+
+    if (shouldScrollToEnd) {
       // Use double-rAF to ensure FlashList has laid out the new content before scrolling
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -105,10 +131,10 @@ export const MessageList = memo(function MessageList({
         });
       });
     }
-  }, [messages, streaming]);
+  }, [messages, streaming, loadingOlder]);
 
   useEffect(() => {
-    if (keyboardPadding <= 0 || messages.length === 0) return;
+    if (keyboardPadding <= 0 || messages.length === 0 || !isAtBottomRef.current) return;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         listRef.current?.scrollToEnd({ animated: true });
@@ -117,14 +143,23 @@ export const MessageList = memo(function MessageList({
   }, [keyboardPadding, messages.length]);
 
   const listHeader = useMemo(() => {
-    if (!networkUnreachableTip) return null;
+    if (!networkUnreachableTip && !loadingOlder) return null;
     return (
-      <GatewayUnreachableTip
-        message={networkUnreachableTip.message}
-        onPress={networkUnreachableTip.onPress}
-      />
+      <View>
+        {networkUnreachableTip ? (
+          <GatewayUnreachableTip
+            message={networkUnreachableTip.message}
+            onPress={networkUnreachableTip.onPress}
+          />
+        ) : null}
+        {loadingOlder ? (
+          <View style={styles.loadingOlderRow}>
+            <ActivityIndicator size="small" />
+          </View>
+        ) : null}
+      </View>
     );
-  }, [networkUnreachableTip]);
+  }, [networkUnreachableTip, loadingOlder]);
 
   const listContentStyle = useMemo(
     () => ({
@@ -177,16 +212,18 @@ export const MessageList = memo(function MessageList({
       const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
       const nextIsAtBottom = distanceFromBottom < 80;
       isAtBottomRef.current = nextIsAtBottom;
+      onAtBottomChange?.(nextIsAtBottom);
       setShowScrollToBottom(!nextIsAtBottom && messages.length > 0);
     },
-    [messages.length],
+    [messages.length, onAtBottomChange],
   );
 
   const scrollToBottom = useCallback(() => {
     listRef.current?.scrollToEnd({ animated: true });
     isAtBottomRef.current = true;
+    onAtBottomChange?.(true);
     setShowScrollToBottom(false);
-  }, []);
+  }, [onAtBottomChange]);
 
   if (loading) {
     return (
@@ -259,6 +296,11 @@ export const MessageList = memo(function MessageList({
         onScroll={updateScrollPosition}
         onMomentumScrollEnd={updateScrollPosition}
         onScrollEndDrag={updateScrollPosition}
+        onStartReached={() => {
+          if (!hasOlder || loadingOlder) return;
+          onLoadOlder?.();
+        }}
+        onStartReachedThreshold={0.2}
         scrollEventThrottle={80}
         showsVerticalScrollIndicator={false}
         keyboardDismissMode="interactive"
@@ -296,6 +338,11 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     paddingHorizontal: 28,
     gap: 10,
+  },
+  loadingOlderRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
   },
   botAvatar: {
     width: 52,

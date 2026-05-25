@@ -9,7 +9,6 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
 
 import { tryConsumeGatewayDeeplink } from '../src/features/gateway/apply-gateway-deeplink';
-import { syncGatewayAfterConnectivityChange } from '../src/features/gateway/gateway-connection-sync';
 import { themedStackScreenOptions } from '../src/lib/stack-screen-theme';
 import { GatewayConnectLandingContext } from '../src/features/gateway/gateway-connect-context';
 import { GatewayConnectLandingModal } from '../src/features/gateway/GatewayConnectLandingModal';
@@ -46,21 +45,6 @@ export default function RootLayout() {
     hydratePrefs();
     return subscribeSystemAppearance();
   }, [hydrateGateway, hydratePrefs]);
-
-  /** Probe LAN vs FRP immediately after storage hydrate so first requests prefer LAN. */
-  useEffect(() => {
-    if (!configured) return;
-    let cancelled = false;
-    const prev = useGatewayStore.getState().activeBaseUrl;
-    void useGatewayStore.getState().refreshActiveBaseUrl().then((next) => {
-      if (cancelled || !prev || !next || prev === next) return;
-      syncGatewayAfterConnectivityChange();
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [configured]);
-
   useEffect(() => {
     if (configured) setUserDismissedConnect(false);
   }, [configured]);
