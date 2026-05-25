@@ -151,7 +151,6 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
   const [clarifySubmitError, setClarifySubmitError] = useState<string | null>(null);
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
   const [awaitingSessionRefresh, setAwaitingSessionRefresh] = useState(false);
-  const [sessionRefreshStartedAt, setSessionRefreshStartedAt] = useState(0);
   const [pendingRunTick, setPendingRunTick] = useState(0);
 
   // ── Streaming helpers ────────────────────────────────────
@@ -200,7 +199,6 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
     setClarifySubmitting(false);
     setOptimisticMessages([]);
     setAwaitingSessionRefresh(false);
-    setSessionRefreshStartedAt(0);
   }, [clearStreamingMessage]);
 
   // ── Session invalidation ─────────────────────────────────
@@ -282,7 +280,6 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
     setClarifySubmitError(null);
     setClarifySubmitting(false);
     setAwaitingSessionRefresh(true);
-    setSessionRefreshStartedAt(sessionDataUpdatedAtRef.current);
     void refreshSessionHeadByKey(targetSessionKey).catch(() => {
       invalidateSessionByKey(targetSessionKey);
     });
@@ -417,7 +414,6 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
         setClarifySubmitting(false);
         setSnackMsg(msg);
         setAwaitingSessionRefresh(false);
-        setSessionRefreshStartedAt(0);
         invalidateSession();
       },
     };
@@ -450,7 +446,6 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       setClarifySubmitting(false);
       streamRecoveryRef.current.cancelRecovery();
       setAwaitingSessionRefresh(false);
-      setSessionRefreshStartedAt(0);
       lastStreamActivityAtRef.current = Date.now();
       try {
         await senderRef.current.sendMessage(
@@ -516,7 +511,6 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       setClarifySubmitting(false);
       streamRecoveryRef.current.cancelRecovery();
       setAwaitingSessionRefresh(false);
-      setSessionRefreshStartedAt(0);
       try {
         await senderRef.current.sendVoiceMessage(
           payload,
@@ -614,11 +608,9 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
 
     if (background) {
       setAwaitingSessionRefresh(false);
-      setSessionRefreshStartedAt(0);
     } else {
       clearStreamingMessage();
       setAwaitingSessionRefresh(false);
-      setSessionRefreshStartedAt(0);
     }
     setProgress(null);
     setStreaming(true);

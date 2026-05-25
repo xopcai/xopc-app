@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { gatewaySettingsSchema } from '../../config/schema';
 import { useMessages } from '../../i18n/messages';
 import { queryKeys } from '../../query/keys';
-import { DEFAULT_GATEWAY_BASE_URL, GATEWAY_BASE_URL_PLACEHOLDER, useGatewayStore } from '../../stores/gateway-store';
+import { DEFAULT_GATEWAY_BASE_URL, useGatewayStore } from '../../stores/gateway-store';
 import {
   gatewayUrlValidationMessage,
   zodGatewayBaseUrlErrorMessage,

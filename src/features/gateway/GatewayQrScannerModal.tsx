@@ -20,12 +20,12 @@ export function GatewayQrScannerModal({
   visible,
   onRequestClose,
   onScanned,
-  onCameraDenied,
+  onCameraDenied: _onCameraDenied,
 }: GatewayQrScannerModalProps) {
   const insets = useSafeAreaInsets();
   const m = useMessages();
   const l = m.gatewayConnect;
-  const [camPermission, requestCamPermission] = useCameraPermissions();
+  const [camPermission] = useCameraPermissions();
   const scanCooldown = useRef(0);
 
   const onBarcodeScanned = useCallback(

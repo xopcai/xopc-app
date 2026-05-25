@@ -7,7 +7,7 @@
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 import { queryKeys } from '../../query/keys';
-import { fetchSessionMessagePage, useGatewayConfigured, type SessionMessagePage } from '../../query/sessions';
+import { fetchSessionMessagePage, useGatewayConfigured } from '../../query/sessions';
 import {
   readCachedSessionHistoryHead,
   writeCachedSessionHistoryHead,

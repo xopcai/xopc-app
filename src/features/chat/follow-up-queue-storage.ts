@@ -68,7 +68,8 @@ export function sanitizeFollowUpQueueSnapshot(snap: FollowUpQueueSnapshot): Foll
     pending: snap.pending.map((row) => ({
       ...row,
       attachments: row.attachments?.map((a) => {
-        const { data: _d, ...rest } = a;
+        const { data, ...rest } = a;
+        void data;
         return rest;
       }),
     })),
