@@ -36,7 +36,10 @@ import {
 } from './composer-layout';
 import { useCommandPalette } from './useCommandPalette';
 import { useComposerAttachments } from './use-composer-attachments';
-import { VoiceMeterBars } from './VoiceMeterBars';
+import {
+  VoiceRecordingOverlay,
+  type VoiceRecordingZone,
+} from './VoiceRecordingOverlay';
 import {
   beginRecording,
   discardRecording,
@@ -47,8 +50,16 @@ import {
   type ExpoRecording,
 } from './voiceRecording';
 
-const SWIPE_CANCEL_PX = 56;
+const ZONE_CANCEL_DX = -72;
+const ZONE_TEXT_DX = 72;
 const MIN_VOICE_MS = 380;
+
+/** 中央默认发语音；左滑 X 取消；右滑「字」转文字。 */
+function voiceZoneFromGesture(dx: number): VoiceRecordingZone {
+  if (dx < ZONE_CANCEL_DX) return 'cancel';
+  if (dx > ZONE_TEXT_DX) return 'text';
+  return 'center';
+}
 
 type InputMode = 'text' | 'voice';
 
@@ -122,7 +133,7 @@ export const ChatComposer = memo(function ChatComposer({
   const palette = useCommandPalette(draft, cursorPos);
 
   const [hudOpen, setHudOpen] = useState(false);
-  const [hudCancel, setHudCancel] = useState(false);
+  const [voiceZone, setVoiceZone] = useState<VoiceRecordingZone>('center');
   const [meterSamples, setMeterSamples] = useState<number[]>([]);
   const [snack, setSnack] = useState('');
   const [transcribing, setTranscribing] = useState(false);
@@ -131,6 +142,7 @@ export const ChatComposer = memo(function ChatComposer({
   const readyRef = useRef(false);
   const abortStartRef = useRef(false);
   const cancelZoneRef = useRef(false);
+  const releaseZoneRef = useRef<VoiceRecordingZone>('center');
   const grantInFlightRef = useRef(false);
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -152,7 +164,7 @@ export const ChatComposer = memo(function ChatComposer({
   const actions = useComposerActions({
     chat: cm,
     runBusy,
-    voiceRecording: hudOpen,
+    voiceRecording: hudOpen || transcribing,
     stopVoiceRecording: () => {
       abortStartRef.current = true;
     },
@@ -239,14 +251,16 @@ export const ChatComposer = memo(function ChatComposer({
   const finalizeRecordingInteraction = useCallback(async () => {
     const rec = recordingRef.current;
     const shouldDiscard = cancelZoneRef.current;
+    const releaseZone = releaseZoneRef.current;
 
     recordingRef.current = null;
     readyRef.current = false;
     abortStartRef.current = false;
     grantInFlightRef.current = false;
     cancelZoneRef.current = false;
+    releaseZoneRef.current = 'center';
     setHudOpen(false);
-    setHudCancel(false);
+    setVoiceZone('center');
     setMeterSamples([]);
 
     if (!rec) return;
@@ -269,32 +283,35 @@ export const ChatComposer = memo(function ChatComposer({
 
       const mimeType = inferRecordingMimeType(uri);
 
-      // Try STT transcription → fill draft for editing
-      setTranscribing(true);
-      try {
-        const result = await transcribeVoice(uri, mimeType);
-        const text = result.refined || result.raw;
-        if (text.trim()) {
-          // Append to existing draft or set as new draft
-          const currentDraft = draftRef.current;
-          const nextDraft = currentDraft.trim()
-            ? `${currentDraft.trim()} ${text.trim()}`
-            : text.trim();
-          updateDraft(nextDraft);
-          setMode('text');
-          requestAnimationFrame(() => inputRef.current?.focus());
-        } else {
-          setSnack(cm.voiceNoSpeechDetected);
-        }
-      } catch {
-        // Transcription failed — fallback to sending voice message directly
-        if (onSendVoice) {
-          await onSendVoice({ uri, durationMillis, mimeType });
-        } else {
+      if (releaseZone === 'text') {
+        setTranscribing(true);
+        try {
+          const result = await transcribeVoice(uri, mimeType);
+          const text = result.refined || result.raw;
+          if (text.trim()) {
+            const currentDraft = draftRef.current;
+            const nextDraft = currentDraft.trim()
+              ? `${currentDraft.trim()} ${text.trim()}`
+              : text.trim();
+            updateDraft(nextDraft);
+            setMode('text');
+            requestAnimationFrame(() => inputRef.current?.focus());
+          } else {
+            setSnack(cm.voiceNoSpeechDetected);
+          }
+        } catch {
           setSnack(cm.voiceTranscribeFailed);
+        } finally {
+          setTranscribing(false);
         }
-      } finally {
-        setTranscribing(false);
+        return;
+      }
+
+      if (onSendVoice) {
+        await onSendVoice({ uri, durationMillis, mimeType });
+        setMode('text');
+      } else {
+        setSnack(cm.voiceSendUnavailable);
       }
     } catch {
       setSnack(cm.voiceRecordingFailed);
@@ -302,12 +319,13 @@ export const ChatComposer = memo(function ChatComposer({
   }, [cm, onSendVoice, updateDraft]);
 
   const startGrantFlow = useCallback(() => {
-    if (disabled || streaming || grantInFlightRef.current) return;
+    if (disabled || streaming || transcribing || grantInFlightRef.current) return;
     abortStartRef.current = false;
     readyRef.current = false;
     recordingRef.current = null;
     cancelZoneRef.current = false;
-    setHudCancel(false);
+    releaseZoneRef.current = 'center';
+    setVoiceZone('center');
     setMeterSamples([]);
     grantInFlightRef.current = true;
 
@@ -342,22 +360,26 @@ export const ChatComposer = memo(function ChatComposer({
         setSnack(cm.voiceRecordingFailed);
       }
     })();
-  }, [cm, disabled, streaming]);
+  }, [cm, disabled, streaming, transcribing]);
+
+  const canCaptureVoice = mode === 'voice' && !disabled && !streaming && !transcribing;
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => mode === 'voice' && !disabled && !streaming,
-        onMoveShouldSetPanResponder: () => mode === 'voice' && !disabled && !streaming,
+        onStartShouldSetPanResponder: () => canCaptureVoice,
+        onMoveShouldSetPanResponder: () => canCaptureVoice,
         onPanResponderGrant: () => {
           cancelZoneRef.current = false;
-          setHudCancel(false);
+          releaseZoneRef.current = 'center';
+          setVoiceZone('center');
           startGrantFlow();
         },
         onPanResponderMove: (_, g) => {
-          const cancel = g.dy < -SWIPE_CANCEL_PX;
-          cancelZoneRef.current = cancel;
-          setHudCancel(cancel);
+          const zone = voiceZoneFromGesture(g.dx);
+          cancelZoneRef.current = zone === 'cancel';
+          releaseZoneRef.current = zone;
+          setVoiceZone(zone);
         },
         onPanResponderRelease: () => {
           if (!readyRef.current) {
@@ -372,11 +394,13 @@ export const ChatComposer = memo(function ChatComposer({
             return;
           }
           cancelZoneRef.current = true;
+          releaseZoneRef.current = 'center';
+          setVoiceZone('cancel');
           void finalizeRecordingInteraction();
         },
         onPanResponderTerminationRequest: () => false,
       }),
-    [finalizeRecordingInteraction, mode, disabled, streaming, startGrantFlow],
+    [canCaptureVoice, finalizeRecordingInteraction, startGrantFlow],
   );
 
   const handlePaletteSelect = useCallback(
@@ -441,14 +465,12 @@ export const ChatComposer = memo(function ChatComposer({
   const surface = scheme === 'dark' ? '#1C1C1E' : '#F5F5F7';
   const border = scheme === 'dark' ? '#3A3A3C' : '#E5E5EA';
   const barBg = scheme === 'dark' ? '#000000' : '#FFFFFF';
-  const hintMuted = scheme === 'dark' ? '#8E8E93' : '#6D6D70';
   const accent = '#007AFF';
-  const waveTrack = scheme === 'dark' ? 'rgba(100,160,255,0.35)' : 'rgba(0,122,255,0.25)';
 
   const toggleMode = useCallback(() => {
-    if (disabled || streaming || hudOpen) return;
+    if (disabled || streaming || hudOpen || transcribing) return;
     setMode((prev) => (prev === 'text' ? 'voice' : 'text'));
-  }, [disabled, streaming, hudOpen]);
+  }, [disabled, streaming, hudOpen, transcribing]);
 
   const openAttachmentSheet = useCallback(() => {
     if (disabled) return;
@@ -579,23 +601,17 @@ export const ChatComposer = memo(function ChatComposer({
           steeringBusyId={steeringFollowUpId}
         />
       ) : null}
-      {hudOpen || transcribing ? (
-        <View style={styles.voiceHud} pointerEvents="none">
-          {transcribing ? (
-            <Text style={[styles.hudHint, { color: accent }]}>
-              {cm.voiceTranscribing}
-            </Text>
-          ) : (
-            <>
-              <VoiceMeterBars samples={meterSamples} accentColor={accent} trackColor={waveTrack} />
-              <Text style={[styles.hudHint, { color: hudCancel ? '#EF4444' : hintMuted }]}>
-                {hudCancel ? cm.voiceCancelZoneHint : cm.voiceReleaseSwipeHint}
-              </Text>
-              <View style={[styles.hudPill, { backgroundColor: accent }]} />
-            </>
-          )}
-        </View>
-      ) : null}
+      <VoiceRecordingOverlay
+        visible={hudOpen || transcribing}
+        zone={voiceZone}
+        transcribing={transcribing}
+        meterSamples={meterSamples}
+        centerHint={cm.voiceReleaseCenterHint}
+        textHint={cm.voiceReleaseTextHint}
+        cancelHint={cm.voiceReleaseCancelHint}
+        transcribingLabel={cm.voiceTranscribing}
+        isDark={scheme === 'dark'}
+      />
 
       {palette.open ? (
         <CommandPaletteBar
@@ -717,24 +733,6 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     paddingBottom: 4,
     borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  voiceHud: {
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 10,
-  },
-  hudHint: {
-    fontSize: 14,
-    fontWeight: '500',
-    textAlign: 'center',
-    paddingHorizontal: 16,
-  },
-  hudPill: {
-    width: '88%',
-    maxWidth: 420,
-    height: 12,
-    borderRadius: 6,
-    opacity: 0.85,
   },
   shell: {
     borderWidth: 1,
