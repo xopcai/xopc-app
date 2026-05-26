@@ -302,6 +302,42 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
         streamingRef.current = true;
         updateStreamingMessage(() => {}, true);
       },
+      onUserTranscript: ({ text, attachments }) => {
+        if (!isCurrentSession()) return;
+        touchStreamActivity();
+        setProgress(null);
+        setOptimisticMessages((prev) => {
+          const head = prev[0];
+          if (!head || head.role !== 'user-with-attachments') return prev;
+          const content = [...head.content];
+          const trimmed = text.trim();
+          if (trimmed) {
+            const textIdx = content.findIndex((b) => b.type === 'text');
+            if (textIdx >= 0) {
+              content[textIdx] = { type: 'text', text: trimmed };
+            } else {
+              content.unshift({ type: 'text', text: trimmed });
+            }
+          }
+          if (attachments?.length) {
+            let voiceIdx = 0;
+            for (let i = 0; i < content.length; i++) {
+              const block = content[i];
+              if (block.type !== 'audio') continue;
+              const att = attachments[voiceIdx] ?? attachments[attachments.length - 1];
+              voiceIdx += 1;
+              content[i] = {
+                ...block,
+                workspaceRelativePath: att.workspaceRelativePath ?? block.workspaceRelativePath,
+                mimeType: att.mimeType ?? block.mimeType,
+                name: att.name ?? block.name,
+                durationSeconds: att.durationSeconds ?? block.durationSeconds,
+              };
+            }
+          }
+          return [{ ...head, content }];
+        });
+      },
       onToken: (delta) => {
         if (!isCurrentSession()) return;
         touchStreamActivity();

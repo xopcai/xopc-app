@@ -33,6 +33,22 @@ describe('dispatchAgentSseEvent', () => {
     expect(onResult).toHaveBeenCalled();
   });
 
+  it('dispatches user_transcript to onUserTranscript', () => {
+    const onUserTranscript = vi.fn();
+    dispatchAgentSseEvent(
+      'user_transcript',
+      JSON.stringify({
+        text: '你好',
+        attachments: [{ workspaceRelativePath: 'inbound/s/voice.m4a', mimeType: 'audio/mp4' }],
+      }),
+      { onUserTranscript } as never,
+    );
+    expect(onUserTranscript).toHaveBeenCalledWith({
+      text: '你好',
+      attachments: [{ workspaceRelativePath: 'inbound/s/voice.m4a', mimeType: 'audio/mp4' }],
+    });
+  });
+
   it('persists runId on status when savePendingRunId provided', () => {
     const savePendingRunId = vi.fn();
     dispatchAgentSseEvent(

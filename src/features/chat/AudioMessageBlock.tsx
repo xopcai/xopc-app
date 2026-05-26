@@ -19,9 +19,12 @@ function formatDuration(ms: number): string {
 export const AudioMessageBlock = memo(function AudioMessageBlock({
   audio,
   sessionKey,
+  align = 'start',
 }: {
   audio: AudioContent;
   sessionKey?: string | null;
+  /** User bubbles pass `end` so the bar hugs the right edge like web chat. */
+  align?: 'start' | 'end';
 }) {
   const isDark = useColorScheme() === 'dark';
   const m = useMessages();
@@ -130,7 +133,13 @@ export const AudioMessageBlock = memo(function AudioMessageBlock({
   const accent = '#007AFF';
 
   return (
-    <View style={[styles.card, { borderColor: border, backgroundColor: bg }]}>
+    <View
+      style={[
+        styles.card,
+        align === 'end' ? styles.cardAlignEnd : styles.cardAlignStart,
+        { borderColor: border, backgroundColor: bg },
+      ]}
+    >
       <Pressable
         style={[styles.playButton, { backgroundColor: accent }]}
         onPress={toggle}
@@ -152,6 +161,10 @@ export const AudioMessageBlock = memo(function AudioMessageBlock({
   );
 });
 
+/** Match web `VoiceMessageBar` shell width (min 160px, max 17rem ≈ 272px). */
+const VOICE_BAR_MIN_WIDTH = 220;
+const VOICE_BAR_MAX_WIDTH = 272;
+
 const styles = StyleSheet.create({
   card: {
     marginTop: 8,
@@ -161,6 +174,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    minWidth: VOICE_BAR_MIN_WIDTH,
+    maxWidth: VOICE_BAR_MAX_WIDTH,
+  },
+  cardAlignStart: {
+    alignSelf: 'flex-start',
+  },
+  cardAlignEnd: {
+    alignSelf: 'flex-end',
   },
   playButton: {
     width: 36,
@@ -168,9 +189,11 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   body: {
     flex: 1,
+    minWidth: 0,
     gap: 5,
   },
   title: {

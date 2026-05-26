@@ -357,9 +357,18 @@ export const MessageBubble = memo(function MessageBubble({
               },
             ]}
           >
-            {userAudio.map((block, i) => (
-              <AudioMessageBlock key={`user-audio-${i}`} audio={block} sessionKey={sessionKey} />
-            ))}
+            {userAudio.length > 0 ? (
+              <View style={styles.userVoiceStack}>
+                {userAudio.map((block, i) => (
+                  <AudioMessageBlock
+                    key={`user-audio-${i}`}
+                    audio={block}
+                    sessionKey={sessionKey}
+                    align="end"
+                  />
+                ))}
+              </View>
+            ) : null}
             {userText ? (
               <Text
                 selectable
@@ -438,6 +447,10 @@ export const MessageBubble = memo(function MessageBubble({
 });
 
 const styles = StyleSheet.create({
+  userVoiceStack: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',

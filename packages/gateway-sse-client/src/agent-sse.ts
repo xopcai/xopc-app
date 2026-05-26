@@ -11,8 +11,16 @@ export interface ProgressState {
   timestamp: number;
 }
 
+export type UserTranscriptAttachment = {
+  workspaceRelativePath?: string;
+  mimeType?: string;
+  name?: string;
+  durationSeconds?: number;
+};
+
 export type AgentSseCallbacks = {
   onStreamStart: () => void;
+  onUserTranscript?: (payload: { text: string; attachments?: UserTranscriptAttachment[] }) => void;
   onToken: (delta: string) => void;
   onThinking: (content: string, isDelta: boolean) => void;
   onThinkingEnd: () => void;
@@ -61,6 +69,24 @@ export function dispatchAgentSseEvent(
       }
       cb?.onStreamStart();
       break;
+    case 'user_transcript': {
+      const text = typeof parsed.text === 'string' ? parsed.text : '';
+      const rawAttachments = Array.isArray(parsed.attachments) ? parsed.attachments : undefined;
+      const attachments = rawAttachments
+        ?.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
+        .map((item) => ({
+          workspaceRelativePath:
+            typeof item.workspaceRelativePath === 'string' ? item.workspaceRelativePath : undefined,
+          mimeType: typeof item.mimeType === 'string' ? item.mimeType : undefined,
+          name: typeof item.name === 'string' ? item.name : undefined,
+          durationSeconds:
+            typeof item.durationSeconds === 'number' && Number.isFinite(item.durationSeconds)
+              ? item.durationSeconds
+              : undefined,
+        }));
+      cb?.onUserTranscript?.({ text, attachments });
+      break;
+    }
     case 'token': {
       const chunk =
         typeof parsed.content === 'string'

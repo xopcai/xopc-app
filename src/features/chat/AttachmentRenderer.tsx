@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
   audioWrap: {
     gap: 8,
     marginTop: 4,
-    alignSelf: 'stretch',
+    alignItems: 'flex-end',
   },
   wrap: {
     flexDirection: 'row',
