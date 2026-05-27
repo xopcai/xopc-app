@@ -11,28 +11,46 @@ import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 
 import { chatColors } from './styles';
 
+export type ThinkingBlockLabels = {
+  thoughts: string;
+  thoughtsStreaming: string;
+};
+
 export const ThinkingBlock = memo(function ThinkingBlock({
   text,
   streaming,
   inline,
+  labels,
 }: {
   text: string;
   streaming?: boolean;
   /** When true, renders as a compact row inside AssistantStepsBlock. */
   inline?: boolean;
+  labels?: ThinkingBlockLabels;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isDark = useColorScheme() === 'dark';
   const trimmed = (text || '').trim();
   const hasContent = trimmed.length > 0;
 
-  const label = streaming ? 'Thinking…' : 'Thoughts';
+  const label = streaming
+    ? (labels?.thoughtsStreaming ?? 'Thinking…')
+    : (labels?.thoughts ?? 'Thoughts');
 
   // ── Inline mode: compact row for AssistantStepsBlock timeline ──
   if (inline) {
-    const preview = hasContent ? trimmed.slice(0, 120) : '';
+    const canExpand = hasContent && trimmed.length > 0;
+    const showFullText = expanded && hasContent;
+
     return (
-      <View style={inlineStyles.row}>
+      <Pressable
+        style={inlineStyles.row}
+        onPress={canExpand ? () => setExpanded((v) => !v) : undefined}
+        disabled={!canExpand}
+        accessibilityRole={canExpand ? 'button' : 'text'}
+        accessibilityLabel={label}
+        accessibilityState={{ expanded: canExpand ? expanded : undefined }}
+      >
         <View style={inlineStyles.iconCol}>
           {streaming ? (
             <ActivityIndicator size={12} color={isDark ? '#9CA3AF' : '#6B7280'} />
@@ -45,30 +63,47 @@ export const ThinkingBlock = memo(function ThinkingBlock({
           )}
         </View>
         <View style={inlineStyles.content}>
-          <Text
-            variant="labelSmall"
-            style={[inlineStyles.label, { color: isDark ? '#9CA3AF' : '#6B7280' }]}
+          <View
+            style={[
+              inlineStyles.labelPill,
+              {
+                backgroundColor: isDark ? chatColors.accentSoftDark : chatColors.accentSoft,
+              },
+            ]}
           >
-            {label}
-          </Text>
-          {preview ? (
+            <Text
+              variant="labelSmall"
+              style={[inlineStyles.label, { color: isDark ? '#E5E7EB' : '#374151' }]}
+            >
+              {label}
+            </Text>
+          </View>
+          {showFullText ? (
             <Text
               variant="bodySmall"
-              numberOfLines={3}
-              style={{ color: isDark ? '#9CA3AF' : '#6B7280', fontSize: 11, lineHeight: 16 }}
+              style={[inlineStyles.body, { color: isDark ? '#9CA3AF' : '#6B7280' }]}
+              selectable
             >
-              {preview}
+              {trimmed}
+            </Text>
+          ) : hasContent ? (
+            <Text
+              variant="bodySmall"
+              numberOfLines={4}
+              style={[inlineStyles.body, { color: isDark ? '#9CA3AF' : '#6B7280' }]}
+            >
+              {trimmed}
             </Text>
           ) : streaming ? (
             <Text
               variant="bodySmall"
-              style={{ color: isDark ? '#6B7280' : '#9CA3AF', fontSize: 11 }}
+              style={[inlineStyles.body, { color: isDark ? '#6B7280' : '#9CA3AF' }]}
             >
               …
             </Text>
           ) : null}
         </View>
-      </View>
+      </Pressable>
     );
   }
 
@@ -137,17 +172,29 @@ const inlineStyles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     alignItems: 'flex-start',
+    minWidth: 0,
   },
   iconCol: {
-    paddingTop: 1,
+    paddingTop: 2,
   },
   content: {
     flex: 1,
-    gap: 2,
+    minWidth: 0,
+    gap: 4,
+  },
+  labelPill: {
+    alignSelf: 'flex-start',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   label: {
     fontWeight: '500',
     fontSize: 12,
+  },
+  body: {
+    fontSize: 11,
+    lineHeight: 16,
   },
 });
 

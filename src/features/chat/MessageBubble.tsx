@@ -8,7 +8,7 @@ import { memo, useMemo } from 'react';
 import { StyleSheet, useColorScheme, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
-import { AssistantStepsBlock, hasTextAfterIndex } from './AssistantStepsBlock';
+import { AssistantStepsBlock, hasTextAfterIndex, isAnyBlockActive } from './AssistantStepsBlock';
 import { AttachmentRenderer } from './AttachmentRenderer';
 import { AudioMessageBlock } from './AudioMessageBlock';
 import { MarkdownView } from './MarkdownView';
@@ -239,6 +239,25 @@ export const MessageBubble = memo(function MessageBubble({
   const showAssistantArtifacts =
     isAssistant && (assistantWorkspacePaths.length > 0 || assistantImageAttachments.length > 0);
 
+  const stepsActive = useMemo(() => {
+    if (!isAssistant || !isStreaming) return false;
+    const content = message.content ?? [];
+    const stepBlocks = content.filter(
+      (b): b is ThinkingContent | ToolUseContent => b.type === 'thinking' || b.type === 'tool_use',
+    );
+    return isAnyBlockActive(stepBlocks);
+  }, [isAssistant, isStreaming, message.content]);
+
+  const showProgressDetail =
+    Boolean(progress?.detail?.trim()) &&
+    progress?.detail?.trim() !== progress?.message?.trim();
+
+  const showMetaFallbackThinking =
+    isStreaming &&
+    !progress?.message &&
+    !stepsActive &&
+    !message.content?.some((b) => b.type === 'thinking' && b.streaming);
+
   const attachmentsForBubble = useMemo(() => {
     if (!isAssistant) return message.attachments;
     return filterAssistantAttachmentsDedupedAgainstWorkspacePaths(message.attachments, assistantWorkspacePaths);
@@ -247,7 +266,8 @@ export const MessageBubble = memo(function MessageBubble({
   const showMeta =
     Boolean(message.timestamp) ||
     Boolean(progress?.message) ||
-    (isStreaming && !message.content?.some((b) => b.type === 'thinking' && b.streaming));
+    showProgressDetail ||
+    showMetaFallbackThinking;
 
   const assistantPlainText = useMemo(() => {
     if (!isAssistant) return '';
@@ -331,15 +351,24 @@ export const MessageBubble = memo(function MessageBubble({
               {formatTime(message.timestamp)}
             </Text>
           ) : null}
-          {progress?.message ? (
-            <Text variant="labelSmall" style={styles.metaProgress} numberOfLines={1}>
-              {progress.message}
-            </Text>
-          ) : null}
-          {isStreaming && !progress?.message ? (
-            <Text variant="labelSmall" style={styles.metaProgress}>
-              Thinking…
-            </Text>
+          {progress?.message || showProgressDetail || showMetaFallbackThinking ? (
+            <View style={styles.metaProgressCol}>
+              {progress?.message ? (
+                <Text variant="labelSmall" style={styles.metaProgress} numberOfLines={1}>
+                  {progress.message}
+                </Text>
+              ) : null}
+              {showProgressDetail ? (
+                <Text variant="labelSmall" style={styles.metaProgressDetail} numberOfLines={2}>
+                  {progress?.detail}
+                </Text>
+              ) : null}
+              {showMetaFallbackThinking ? (
+                <Text variant="labelSmall" style={styles.metaProgress}>
+                  {m.chat.thinking}
+                </Text>
+              ) : null}
+            </View>
           ) : null}
         </View>
       ) : null}
@@ -453,10 +482,11 @@ const styles = StyleSheet.create({
   },
   metaRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 6,
     marginBottom: 4,
     paddingHorizontal: 2,
+    flexWrap: 'wrap',
   },
   metaRowUser: {
     justifyContent: 'flex-end',
@@ -469,6 +499,16 @@ const styles = StyleSheet.create({
     color: chatColors.timestamp,
     fontSize: 11,
     fontStyle: 'italic',
+  },
+  metaProgressCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  metaProgressDetail: {
+    color: chatColors.timestamp,
+    fontSize: 10,
+    flexShrink: 1,
   },
   cursor: {
     height: 20,

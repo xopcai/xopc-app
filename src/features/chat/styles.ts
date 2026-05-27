@@ -19,7 +19,15 @@ export const chatColors = {
   roleLabelUser: '#2563EB',
   roleLabelAssistant: '#6B7280',
   accent: '#2563EB',
+  accentSoft: 'rgba(37,99,235,0.08)',
+  accentSoftDark: 'rgba(59,130,246,0.15)',
   cursorBlink: '#3B82F6',
+  stepsBg: '#F9FAFB',
+  stepsBgDark: 'rgba(255,255,255,0.04)',
+  stepsBorder: '#E5E7EB',
+  stepsBorderDark: 'rgba(255,255,255,0.1)',
+  stepsTimeline: '#E5E7EB',
+  stepsTimelineDark: 'rgba(255,255,255,0.12)',
 } as const;
 
 export const chatLayout = StyleSheet.create({

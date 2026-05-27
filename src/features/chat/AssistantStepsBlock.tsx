@@ -6,17 +6,25 @@
  * - Auto-collapses when the final answer text starts flowing
  * - Can be manually toggled by tapping the header
  */
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 
+import {
+  buildStepsRoundCompleteSummary,
+  filterVisibleSteps,
+  viewStepsLabel,
+} from './assistant-steps-summary';
 import type { MessageContent, ThinkingContent, ToolUseContent } from './messages.types';
+import { formatStepRoundDuration } from './step-round-duration';
 import { chatColors } from './styles';
 import { ThinkingBlock } from './ThinkingBlock';
 import { ToolUseBlock } from './ToolUseBlock';
+import { useMessages } from '../../i18n/messages';
+import { usePreferencesStore } from '../../stores/preferences-store';
 
 /** Check if any step block is still active (streaming thinking or running tool). */
-function isAnyBlockActive(blocks: Array<ThinkingContent | ToolUseContent>): boolean {
+export function isAnyBlockActive(blocks: Array<ThinkingContent | ToolUseContent>): boolean {
   return blocks.some(
     (b) =>
       (b.type === 'thinking' && b.streaming) ||
@@ -24,38 +32,41 @@ function isAnyBlockActive(blocks: Array<ThinkingContent | ToolUseContent>): bool
   );
 }
 
-/** Human-readable tool name: snake_case → Title Case. */
-function formatToolName(name: string): string {
-  return name
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
+const StepRoundDurationText = memo(function StepRoundDurationText({
+  active,
+  roundStartRef,
+  frozenMs,
+}: {
+  active: boolean;
+  roundStartRef: MutableRefObject<number | null>;
+  frozenMs: number | null;
+}) {
+  const language = usePreferencesStore((s) => s.language);
+  const [, setTick] = useState(0);
 
-/** Build a compact summary for the completed steps header. */
-function buildCompletedSummary(blocks: Array<ThinkingContent | ToolUseContent>): string {
-  const toolBlocks = blocks.filter((b): b is ToolUseContent => b.type === 'tool_use');
-  const thinkingBlocks = blocks.filter((b): b is ThinkingContent => b.type === 'thinking');
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setTick((n) => n + 1), 500);
+    return () => clearInterval(id);
+  }, [active]);
 
-  // Ultra-compact: "Used 3 tools" or "Thought · Used tool_name +2"
-  const parts: string[] = [];
+  const startedAt = roundStartRef.current;
+  const elapsedMs = active && startedAt != null ? Math.max(0, Date.now() - startedAt) : 0;
+  const text =
+    active && startedAt != null
+      ? formatStepRoundDuration(elapsedMs, language)
+      : frozenMs != null
+        ? formatStepRoundDuration(frozenMs, language)
+        : null;
 
-  if (thinkingBlocks.length > 0) {
-    parts.push('Thought');
-  }
+  if (!text) return null;
 
-  if (toolBlocks.length > 0) {
-    const firstName = formatToolName(toolBlocks[0].name);
-    if (toolBlocks.length === 1) {
-      parts.push(`Used ${firstName}`);
-    } else if (toolBlocks.length <= 3) {
-      parts.push(`Used ${firstName} +${toolBlocks.length - 1}`);
-    } else {
-      parts.push(`Used ${toolBlocks.length} tools`);
-    }
-  }
-
-  return parts.join(' · ') || 'Steps';
-}
+  return (
+    <Text variant="labelSmall" style={styles.durationText}>
+      {text}
+    </Text>
+  );
+});
 
 export const AssistantStepsBlock = memo(function AssistantStepsBlock({
   blocks,
@@ -71,51 +82,109 @@ export const AssistantStepsBlock = memo(function AssistantStepsBlock({
   finalAnswerStarted: boolean;
   sessionKey?: string | null;
 }) {
+  const m = useMessages();
+  const language = usePreferencesStore((s) => s.language);
   const isDark = useColorScheme() === 'dark';
-  const anyActive = isAnyBlockActive(blocks);
 
-  // Auto-expand during streaming; auto-collapse when answer text starts
+  const visibleBlocks = useMemo(() => filterVisibleSteps(blocks), [blocks]);
+  const stepCount = visibleBlocks.length;
+  const anyActive = isAnyBlockActive(visibleBlocks);
+
   const stepsDrawerOpen = isMessageStreaming && !finalAnswerStarted;
 
+  const roundStartRef = useRef<number | null>(null);
   const prevStepsDrawerOpenRef = useRef(false);
+  const [frozenDurationMs, setFrozenDurationMs] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(stepsDrawerOpen);
+
+  if (anyActive && roundStartRef.current === null) {
+    roundStartRef.current = Date.now();
+  }
 
   useEffect(() => {
     if (stepsDrawerOpen) {
       setExpanded(true);
     } else if (prevStepsDrawerOpenRef.current) {
-      // Was open, now should close → collapse
+      if (roundStartRef.current !== null) {
+        setFrozenDurationMs(Date.now() - roundStartRef.current);
+      }
       setExpanded(false);
     }
     prevStepsDrawerOpenRef.current = stepsDrawerOpen;
   }, [stepsDrawerOpen]);
 
-  const stepCount = blocks.length;
+  const stepLabels = useMemo(
+    () => ({
+      thoughts: m.chat.thoughts,
+      thoughtsStreaming: m.chat.thoughtsStreaming,
+      searchedWeb: m.chat.stepSearchedWeb,
+      readFile: m.chat.stepReadFile,
+      runCommand: m.chat.stepRunCommand,
+      listDirectory: m.chat.stepListDirectory,
+      writeFile: m.chat.stepWriteFile,
+      editFile: m.chat.stepEditFile,
+      openUrl: m.chat.stepOpenUrl,
+      fetchUrl: m.chat.stepFetchUrl,
+      unknownTool: m.chat.stepUnknownTool,
+      stepDetails: m.chat.stepDetails,
+      toolInput: m.chat.toolInput,
+      toolOutput: m.chat.toolOutput,
+      noOutput: m.chat.noOutput,
+      toolRunning: m.chat.toolRunning,
+      toolError: m.chat.toolError,
+    }),
+    [m.chat],
+  );
+
+  const completedHeader = useMemo(() => {
+    if (anyActive) return '';
+    return buildStepsRoundCompleteSummary(
+      visibleBlocks,
+      {
+        searchedWeb: m.chat.stepSearchedWeb,
+        readFile: m.chat.stepReadFile,
+        runCommand: m.chat.stepRunCommand,
+        listDirectory: m.chat.stepListDirectory,
+        writeFile: m.chat.stepWriteFile,
+        editFile: m.chat.stepEditFile,
+        openUrl: m.chat.stepOpenUrl,
+        fetchUrl: m.chat.stepFetchUrl,
+        unknownTool: m.chat.stepUnknownTool,
+      },
+      language,
+      viewStepsLabel(stepCount, {
+        viewSteps_one: m.chat.viewSteps_one,
+        viewSteps_other: m.chat.viewSteps_other,
+      }),
+    );
+  }, [anyActive, visibleBlocks, language, stepCount, m.chat]);
+
   if (stepCount === 0) return null;
 
-  const headerLabel = anyActive
-    ? `Running (${stepCount} steps)…`
-    : buildCompletedSummary(blocks);
+  const headerMain = anyActive
+    ? viewStepsLabel(stepCount, {
+        viewSteps_one: m.chat.viewSteps_one,
+        viewSteps_other: m.chat.viewSteps_other,
+      })
+    : completedHeader;
 
   return (
     <View
       style={[
         styles.container,
         {
-          backgroundColor: isDark ? chatColors.assistantBgDark : chatColors.assistantBg,
-          borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB',
+          backgroundColor: isDark ? chatColors.stepsBgDark : chatColors.stepsBg,
+          borderColor: isDark ? chatColors.stepsBorderDark : chatColors.stepsBorder,
         },
       ]}
     >
-      {/* Header — always visible */}
       <Pressable
         style={styles.header}
         onPress={() => setExpanded((v) => !v)}
         accessibilityRole="button"
-        accessibilityLabel={headerLabel}
+        accessibilityLabel={headerMain}
         accessibilityState={{ expanded }}
       >
-        {/* Status icon */}
         {anyActive ? (
           <ActivityIndicator size={14} color={chatColors.accent} />
         ) : (
@@ -126,20 +195,38 @@ export const AssistantStepsBlock = memo(function AssistantStepsBlock({
           />
         )}
 
-        {/* Label */}
-        <Text
-          variant="labelSmall"
-          style={[
-            styles.headerLabel,
-            { color: isDark ? '#D1D5DB' : '#374151' },
-            anyActive && styles.headerLabelActive,
-          ]}
-          numberOfLines={1}
-        >
-          {headerLabel}
-        </Text>
+        <View style={styles.headerCenter}>
+          <View
+            style={[
+              styles.headerPill,
+              {
+                backgroundColor: isDark ? chatColors.accentSoftDark : chatColors.accentSoft,
+              },
+            ]}
+          >
+            <Text
+              variant="labelSmall"
+              style={[styles.headerLabel, { color: isDark ? '#E5E7EB' : '#374151' }]}
+              numberOfLines={2}
+            >
+              {headerMain}
+            </Text>
+          </View>
+          {anyActive ? (
+            <StepRoundDurationText
+              active={anyActive}
+              roundStartRef={roundStartRef}
+              frozenMs={null}
+            />
+          ) : (
+            <StepRoundDurationText
+              active={false}
+              roundStartRef={roundStartRef}
+              frozenMs={frozenDurationMs}
+            />
+          )}
+        </View>
 
-        {/* Chevron */}
         <Icon
           source={expanded ? 'chevron-up' : 'chevron-down'}
           size={16}
@@ -147,29 +234,45 @@ export const AssistantStepsBlock = memo(function AssistantStepsBlock({
         />
       </Pressable>
 
-      {/* Expanded content — timeline of steps */}
       {expanded ? (
-        <View style={[styles.timeline, { borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB' }]}>
-          {blocks.map((block, i) => {
-            if (block.type === 'thinking') {
+        <View
+          style={[
+            styles.timelineOuter,
+            { borderTopColor: isDark ? chatColors.stepsBorderDark : chatColors.stepsBorder },
+          ]}
+        >
+          <View
+            style={[
+              styles.timeline,
+              { borderLeftColor: isDark ? chatColors.stepsTimelineDark : chatColors.stepsTimeline },
+            ]}
+          >
+            {visibleBlocks.map((block, i) => {
+              if (block.type === 'thinking') {
+                return (
+                  <ThinkingBlock
+                    key={`thinking-${i}`}
+                    text={block.text}
+                    streaming={block.streaming}
+                    inline
+                    labels={{
+                      thoughts: stepLabels.thoughts,
+                      thoughtsStreaming: stepLabels.thoughtsStreaming,
+                    }}
+                  />
+                );
+              }
               return (
-                <ThinkingBlock
-                  key={`thinking-${i}`}
-                  text={block.text}
-                  streaming={block.streaming}
+                <ToolUseBlock
+                  key={`tool-${block.id || i}`}
+                  block={block}
                   inline
+                  sessionKey={sessionKey}
+                  labels={stepLabels}
                 />
               );
-            }
-            return (
-              <ToolUseBlock
-                key={`tool-${block.id || i}`}
-                block={block}
-                inline
-                sessionKey={sessionKey}
-              />
-            );
-          })}
+            })}
+          </View>
         </View>
       ) : null}
     </View>
@@ -221,8 +324,9 @@ const styles = StyleSheet.create({
   container: {
     alignSelf: 'stretch',
     width: '100%',
+    minWidth: 0,
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 12,
     marginVertical: 4,
     overflow: 'hidden',
   },
@@ -231,20 +335,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    minHeight: 44,
+  },
+  headerCenter: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  headerPill: {
+    maxWidth: '100%',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
   },
   headerLabel: {
-    flex: 1,
     fontWeight: '500',
     fontSize: 12,
   },
-  headerLabelActive: {
-    fontStyle: 'italic',
+  durationText: {
+    fontSize: 11,
+    color: chatColors.timestamp,
+    fontVariant: ['tabular-nums'],
+  },
+  timelineOuter: {
+    borderTopWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   timeline: {
-    borderTopWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 6,
+    marginLeft: 4,
+    borderLeftWidth: 2,
+    paddingLeft: 12,
+    gap: 12,
   },
 });
