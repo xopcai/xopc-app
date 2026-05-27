@@ -1,16 +1,14 @@
 /**
  * High-performance message list using @shopify/flash-list.
  * Supports inverted layout (newest at bottom), streaming append,
- * and scroll-to-bottom behavior.
+ * and stick-to-bottom scroll follow (only auto-scroll when pinned near bottom).
  *
  * On session switch the entire FlashList is re-mounted (via React key)
  * so the scroll position resets cleanly — no visible "scroll down" flash.
  */
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef } from 'react';
 import {
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,6 +22,7 @@ import { GatewayUnreachableTip } from '../gateway/GatewayUnreachableTip';
 import { MessageBubble } from './MessageBubble';
 import { isLastAssistantMessage } from './composer-send-helpers';
 import type { Message, ProgressState } from './messages.types';
+import { useChatListScrollFollow } from './use-chat-list-scroll-follow';
 
 const LIST_BASE_PADDING_BOTTOM = 8;
 
@@ -77,70 +76,25 @@ export const MessageList = memo(function MessageList({
   const isDark = colorScheme === 'dark';
   const keyboardPadding = useKeyboardListPadding();
   const listRef = useRef<FlashListRef<Message>>(null);
-  const isAtBottomRef = useRef(true);
-  const prevLengthRef = useRef(messages.length);
-  const prevFirstKeyRef = useRef(messages[0] ? messageKey(messages[0], 0) : '');
-  const prevLastKeyRef = useRef(messages.length > 0 ? messageKey(messages[messages.length - 1], messages.length - 1) : '');
-  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
-  /**
-   * Monotonically increasing counter bumped on every sessionKey change.
-   * Used as the React `key` of FlashList so it fully re-mounts,
-   * which avoids the visible "scroll from top to bottom" flash on web.
-   */
-  const prevSessionKeyRef = useRef(sessionKey);
-  const [listKey, setListKey] = useState(0);
-
-  useEffect(() => {
-    if (sessionKey !== prevSessionKeyRef.current) {
-      prevSessionKeyRef.current = sessionKey;
-      prevLengthRef.current = 0;
-      prevFirstKeyRef.current = '';
-      prevLastKeyRef.current = '';
-      isAtBottomRef.current = true;
-      onAtBottomChange?.(true);
-      // Bump key → FlashList unmounts/remounts with fresh scroll position
-      setListKey((k) => k + 1);
-    }
-  }, [sessionKey, onAtBottomChange]);
-
-  // Auto-scroll when new messages arrive at the tail or during streaming.
-  useEffect(() => {
-    if (messages.length === 0) return;
-
-    const firstKey = messageKey(messages[0], 0);
-    const lastIndex = messages.length - 1;
-    const lastKey = messageKey(messages[lastIndex], lastIndex);
-    const initialLoad = prevLengthRef.current === 0;
-    const appendedToTail = prevFirstKeyRef.current === firstKey && prevLastKeyRef.current !== lastKey;
-    const shouldScrollToEnd = initialLoad || isAtBottomRef.current || (streaming && isAtBottomRef.current);
-
-    prevLengthRef.current = messages.length;
-    prevFirstKeyRef.current = firstKey;
-    prevLastKeyRef.current = lastKey;
-
-    if (loadingOlder && !appendedToTail && !initialLoad && !streaming) {
-      return;
-    }
-
-    if (shouldScrollToEnd) {
-      // Use double-rAF to ensure FlashList has laid out the new content before scrolling
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          listRef.current?.scrollToEnd({ animated: false });
-        });
-      });
-    }
-  }, [messages, streaming, loadingOlder]);
-
-  useEffect(() => {
-    if (keyboardPadding <= 0 || messages.length === 0 || !isAtBottomRef.current) return;
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        listRef.current?.scrollToEnd({ animated: true });
-      });
-    });
-  }, [keyboardPadding, messages.length]);
+  const {
+    listKey,
+    showScrollToBottom,
+    scrollToBottom,
+    onScroll,
+    onScrollBeginDrag,
+    onScrollEndDrag,
+    onMomentumScrollEnd,
+  } = useChatListScrollFollow({
+    listRef,
+    messages,
+    streaming,
+    loadingOlder,
+    keyboardPadding,
+    sessionKey,
+    onAtBottomChange,
+    getMessageKey: messageKey,
+  });
 
   const listHeader = useMemo(() => {
     if (!networkUnreachableTip && !loadingOlder) return null;
@@ -205,25 +159,6 @@ export const MessageList = memo(function MessageList({
     (item: Message, index: number) => messageKey(item, index),
     [],
   );
-
-  const updateScrollPosition = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-      const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
-      const nextIsAtBottom = distanceFromBottom < 80;
-      isAtBottomRef.current = nextIsAtBottom;
-      onAtBottomChange?.(nextIsAtBottom);
-      setShowScrollToBottom(!nextIsAtBottom && messages.length > 0);
-    },
-    [messages.length, onAtBottomChange],
-  );
-
-  const scrollToBottom = useCallback(() => {
-    listRef.current?.scrollToEnd({ animated: true });
-    isAtBottomRef.current = true;
-    onAtBottomChange?.(true);
-    setShowScrollToBottom(false);
-  }, [onAtBottomChange]);
 
   if (loading) {
     return (
@@ -293,15 +228,16 @@ export const MessageList = memo(function MessageList({
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         contentContainerStyle={listContentStyle}
-        onScroll={updateScrollPosition}
-        onMomentumScrollEnd={updateScrollPosition}
-        onScrollEndDrag={updateScrollPosition}
+        onScroll={onScroll}
+        onScrollBeginDrag={onScrollBeginDrag}
+        onScrollEndDrag={onScrollEndDrag}
+        onMomentumScrollEnd={onMomentumScrollEnd}
         onStartReached={() => {
           if (!hasOlder || loadingOlder) return;
           onLoadOlder?.();
         }}
         onStartReachedThreshold={0.2}
-        scrollEventThrottle={80}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
