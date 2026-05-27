@@ -200,6 +200,11 @@ export const ChatComposer = memo(function ChatComposer({
     }
   }, [streaming, mode]);
 
+  useEffect(() => {
+    if (!isFocused || draft.length > 0) return;
+    setInputHeight(MIN_COMPOSER_INPUT_HEIGHT);
+  }, [isFocused, draft.length]);
+
   const updateDraft = useCallback(
     (nextDraft: string) => {
       setDraft(nextDraft);
@@ -446,9 +451,14 @@ export const ChatComposer = memo(function ChatComposer({
 
   const onContentSizeChange = useCallback(
     (e: { nativeEvent: { contentSize: { height: number } } }) => {
-      setInputHeight(clampComposerInputHeight(e.nativeEvent.contentSize.height));
+      const measured = e.nativeEvent.contentSize.height;
+      if (!draft.includes('\n') && draft.trim().length === 0) {
+        setInputHeight(MIN_COMPOSER_INPUT_HEIGHT);
+        return;
+      }
+      setInputHeight(clampComposerInputHeight(measured));
     },
-    [],
+    [draft],
   );
 
   const handleInputLayout = useCallback(
@@ -542,6 +552,10 @@ export const ChatComposer = memo(function ChatComposer({
     </View>
   );
 
+  const needsMultiline =
+    isExpanded && (draft.includes('\n') || inputHeight > MIN_COMPOSER_INPUT_HEIGHT);
+  const singleLineExpanded = isExpanded && !needsMultiline;
+
   const composerPlaceholder = runBusy
     ? editingFollowUpId
       ? cm.inputPlaceholderSteeringEdit
@@ -572,16 +586,16 @@ export const ChatComposer = memo(function ChatComposer({
     onCursorChange: setCursorPos,
     cursorPos,
     isDark: scheme === 'dark',
-    multiline: isExpanded,
+    multiline: needsMultiline,
     editable: !disabled,
-    onContentSizeChange,
+    onContentSizeChange: needsMultiline ? onContentSizeChange : undefined,
     blurOnSubmit: false,
     returnKeyType: 'default' as const,
-    textAlignVertical: (isExpanded
-      ? Platform.OS === 'android'
+    textAlignVertical: (singleLineExpanded || !isExpanded
+      ? 'center'
+      : Platform.OS === 'android'
         ? 'top'
-        : 'center'
-      : 'center') as 'top' | 'center',
+        : 'center') as 'top' | 'center',
     autoCapitalize: 'sentences' as const,
     onFocus: () => setIsFocused(true),
     onBlur: () => setIsFocused(false),
@@ -646,9 +660,11 @@ export const ChatComposer = memo(function ChatComposer({
                     isExpanded ? styles.inputExpanded : styles.inputCompact,
                     {
                       color: scheme === 'dark' ? '#F5F5F7' : '#1C1C1E',
-                      ...(isExpanded
-                        ? { minHeight: inputHeight }
-                        : { height: MIN_COMPOSER_INPUT_HEIGHT }),
+                      ...(singleLineExpanded
+                        ? { height: MIN_COMPOSER_INPUT_HEIGHT }
+                        : isExpanded
+                          ? { minHeight: inputHeight }
+                          : { height: MIN_COMPOSER_INPUT_HEIGHT }),
                     },
                   ]}
                   {...textInputProps}
@@ -748,8 +764,8 @@ const styles = StyleSheet.create({
   },
   expandedInput: {
     paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 4,
+    paddingTop: 6,
+    paddingBottom: 0,
   },
   compactInputWrap: {
     flex: 1,
@@ -761,7 +777,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 6,
     paddingBottom: 6,
-    paddingTop: 2,
+    paddingTop: 0,
     gap: 4,
   },
   toolSpacer: {
@@ -791,7 +807,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     paddingHorizontal: 4,
-    paddingVertical: Platform.OS === 'ios' ? 5 : 4,
+    paddingVertical: Platform.select({ ios: 5, android: 4, web: 0, default: 4 }),
     maxHeight: MAX_COMPOSER_INPUT_HEIGHT,
     borderWidth: 0,
     ...(Platform.OS === 'android' ? { includeFontPadding: false as const } : null),
@@ -808,7 +824,6 @@ const styles = StyleSheet.create({
   },
   inputExpanded: {
     alignSelf: 'stretch',
-    minHeight: MIN_COMPOSER_INPUT_HEIGHT,
   },
   holdPad: {
     justifyContent: 'center',
