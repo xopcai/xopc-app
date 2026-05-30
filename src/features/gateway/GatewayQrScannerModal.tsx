@@ -6,7 +6,7 @@ import { Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
 
-import { type ParsedGatewayQr, parseGatewayQrPayload } from './parse-gateway-qr';
+import { hasPairableGatewayQr, type ParsedGatewayQr, parseGatewayQrPayload } from './parse-gateway-qr';
 
 export type GatewayQrScannerModalProps = {
   visible: boolean;
@@ -34,7 +34,7 @@ export function GatewayQrScannerModal({
       if (Date.now() - scanCooldown.current < 1200) return;
       scanCooldown.current = Date.now();
       const parsed = parseGatewayQrPayload(ev.data);
-      if (!parsed.baseUrl && !parsed.token && !parsed.lanUrl && !parsed.pairingSecret) return;
+      if (!hasPairableGatewayQr(parsed)) return;
       onScanned(parsed);
       onRequestClose();
     },

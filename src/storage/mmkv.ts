@@ -7,7 +7,6 @@ export const KEYS = {
   profiles: 'gateway.profiles',
   activeId: 'gateway.activeId',
   pendingRunPrefix: 'xopc:pendingRun:',
-  e2eeSessionPrefix: 'gateway.e2ee.',
   language: 'prefs.language',
   themePreference: 'prefs.themePreference',
   defaultAgentId: 'prefs.defaultAgentId',

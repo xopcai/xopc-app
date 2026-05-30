@@ -95,10 +95,22 @@ export class GatewayHealthMonitor {
   }
 
   private async runHealthCheck(): Promise<boolean> {
+    const st = useGatewayStore.getState();
+    if (!st.baseUrl.trim() && !st.activeBaseUrl.trim()) return false;
+
+    try {
+      await st.refreshActiveBaseUrl();
+    } catch {
+      /* route refresh is best-effort before probing */
+    }
+
     const { baseUrl, activeBaseUrl, token } = useGatewayStore.getState();
-    if (!baseUrl.trim() && !activeBaseUrl.trim()) return false;
+    const routeUrl = activeBaseUrl || baseUrl;
+    if (!routeUrl.trim()) return false;
+
+    const timeoutMs = this.timeoutMs;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const headers: Record<string, string> = {};
       if (token) headers.Authorization = `Bearer ${token}`;

@@ -195,11 +195,6 @@ export default function ChatScreen() {
   const sessionRefreshComplete =
     chat.awaitingSessionRefresh && sessionHistoryQuery.dataUpdatedAt > chat.sessionDataUpdatedAtRef.current;
 
-  // Track dataUpdatedAt for the chat session hook
-  useEffect(() => {
-    chat.sessionDataUpdatedAtRef.current = sessionHistoryQuery.dataUpdatedAt;
-  }, [sessionHistoryQuery.dataUpdatedAt, chat.sessionDataUpdatedAtRef]);
-
   const displayMessages = useMemo<Message[]>(() => {
     if (sessionRefreshComplete) return sessionMessages;
 
@@ -243,9 +238,8 @@ export default function ChatScreen() {
   const composerDisabled =
     !sessionKey ||
     creatingInitialSession ||
-    !gatewayOnline ||
+    gatewayFullyUnreachable ||
     sessionHistoryQuery.isLoading ||
-    chat.awaitingSessionRefresh ||
     Boolean(chat.clarifyPrompt);
 
   // ── Handlers ─────────────────────────────────────────────

@@ -1,6 +1,4 @@
-import { consumeE2eeRelayStream } from '../../api/e2ee-stream';
 import { notifyUnauthorizedIfNeeded } from '../../api/client';
-import { requiresE2eeTransport } from '../../api/e2ee-transport';
 import { useGatewayStore } from '../../stores/gateway-store';
 
 import { dispatchGatewaySseEvent } from './dispatch-gateway-sse-event';
@@ -126,61 +124,11 @@ export class GatewaySseConnection {
     if (this._closed) return;
     this.transport?.close();
 
-    const { activeBaseUrl, baseUrl } = useGatewayStore.getState();
-    if (requiresE2eeTransport(activeBaseUrl || baseUrl)) {
-      this.transport = this.openE2eeRelayStream();
-      return;
-    }
-
     if (typeof EventSource !== 'undefined' && typeof document !== 'undefined') {
       this.transport = this.openEventSource();
       return;
     }
     this.transport = this.openXhr();
-  }
-
-  /** Long-lived broadcast SSE via E2EE relay-stream (required on broker tunnel URLs). */
-  private openE2eeRelayStream(): Transport {
-    const abortController = new AbortController();
-    let sawConnected = false;
-
-    const parser = new GatewaySseLineParser((event, data) => {
-      dispatchGatewaySseEvent(event, data);
-      if (!sawConnected && event === 'connected') {
-        sawConnected = true;
-        this._reconnectCount = 0;
-        this.callbacks.onConnected();
-      }
-    });
-
-    void (async () => {
-      try {
-        const result = await consumeE2eeRelayStream(
-          '/api/events',
-          { method: 'GET', signal: abortController.signal },
-          (plain) => parser.feed(plain),
-        );
-        parser.flush();
-        if (abortController.signal.aborted || this._closed) return;
-        if (result.aborted) return;
-        if (!result.ok) {
-          if (result.status === 401) {
-            this._shouldReconnect = false;
-            this.callbacks.onError('Unauthorized');
-            return;
-          }
-        }
-        this.scheduleReconnect(sawConnected ? 'disconnected' : 'error');
-      } catch {
-        if (!abortController.signal.aborted && !this._closed) {
-          this.scheduleReconnect('error');
-        }
-      }
-    })();
-
-    return {
-      close: () => abortController.abort(),
-    };
   }
 
   private openEventSource(): Transport {

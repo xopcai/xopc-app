@@ -1,5 +1,4 @@
 import { shouldRejectLoopbackGatewayBaseUrl } from '../../stores/gateway-types';
-import { requiresE2eeTransport } from '../../api/e2ee-transport';
 import type { ParsedGatewayQr } from './parse-gateway-qr';
 
 export type PairGatewayInput = {
@@ -13,24 +12,36 @@ export type PairGatewayResult = {
   baseUrl: string;
   lanUrl: string | null;
   connectUrls?: string[];
-  e2eeFingerprint?: string | null;
 };
 
 function normalizeOrigin(raw: string): string {
   return raw.trim().replace(/\/+$/, '');
 }
 
-/** Prefer LAN for exchange when listed (fallback when server omits connectUrls). */
+function hostnameIsFrpTunnel(origin: string): boolean {
+  try {
+    return /\.frp\.xopc\.ai$/i.test(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Origins to try for POST /api/tunnel/exchange-token.
+ * Prefer the tunnel/HTTPS URL first so pairing works when the phone is not on LAN
+ * (the secret is always issued by the gateway behind the FRP tunnel).
+ */
 export function buildPairExchangeOrigins(baseUrl: string, lanUrl?: string | null): string[] {
   const tunnel = normalizeOrigin(baseUrl);
   const lan = lanUrl?.trim() ? normalizeOrigin(lanUrl) : '';
   const out: string[] = [];
-  // Remote tunnel requires E2EE relay; exchange must happen on the same origin as handshake.
-  if (requiresE2eeTransport(tunnel) && tunnel && !shouldRejectLoopbackGatewayBaseUrl(tunnel)) {
-    out.push(tunnel);
+  const tunnelIsFrp = hostnameIsFrpTunnel(tunnel);
+
+  if (tunnel && !shouldRejectLoopbackGatewayBaseUrl(tunnel)) {
+    if (tunnelIsFrp || !lan) out.push(tunnel);
   }
   if (lan && !shouldRejectLoopbackGatewayBaseUrl(lan) && lan !== tunnel) out.push(lan);
-  if (!requiresE2eeTransport(tunnel) && tunnel && !shouldRejectLoopbackGatewayBaseUrl(tunnel) && tunnel !== lan) {
+  if (tunnel && !shouldRejectLoopbackGatewayBaseUrl(tunnel) && !out.includes(tunnel)) {
     out.push(tunnel);
   }
   return out;
@@ -107,7 +118,6 @@ async function pairWithGatewayOnce(input: PairGatewayInput): Promise<PairGateway
         baseUrl?: string | null;
         lanUrl?: string | null;
         connectUrls?: string[] | null;
-        e2ee?: { gatewayPub?: string; fingerprint?: string };
       };
 
       const token = data.token?.trim();
@@ -117,38 +127,12 @@ async function pairWithGatewayOnce(input: PairGatewayInput): Promise<PairGateway
       }
 
       const resolved = resolveStoredUrlsFromExchange(data, input);
-      let e2eeFingerprint: string | null = data.e2ee?.fingerprint?.trim() || null;
-
-      if (
-        requiresE2eeTransport(resolved.baseUrl) &&
-        data.e2ee?.gatewayPub?.trim() &&
-        data.e2ee.fingerprint?.trim()
-      ) {
-        const { performE2eeHandshake } = await import('../../api/e2ee-handshake');
-        const handshakeOrigin = requiresE2eeTransport(resolved.baseUrl)
-          ? normalizeOrigin(resolved.baseUrl)
-          : origin;
-        try {
-          await performE2eeHandshake({
-            origin: handshakeOrigin,
-            token,
-            pairingSecret,
-            gatewayPub: data.e2ee.gatewayPub.trim(),
-            fingerprint: data.e2ee.fingerprint.trim(),
-            baseUrl: resolved.baseUrl,
-          });
-          e2eeFingerprint = data.e2ee.fingerprint.trim();
-        } catch (err) {
-          throw err instanceof Error ? err : new Error(String(err));
-        }
-      }
 
       return {
         token,
         baseUrl: resolved.baseUrl,
         lanUrl: resolved.lanUrl,
         connectUrls: resolved.connectUrls,
-        e2eeFingerprint,
       };
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
@@ -197,17 +181,5 @@ export async function resolveGatewayCredentialsFromQr(
     });
   }
 
-  if (!parsed.baseUrl?.trim() && !parsed.token?.trim()) return null;
-
-  if (parsed.baseUrl?.trim() && shouldRejectLoopbackGatewayBaseUrl(parsed.baseUrl)) {
-    throw new Error(
-      '127.0.0.1 and localhost only work on the gateway computer. Enter a LAN IP or scan a valid pairing QR.',
-    );
-  }
-
-  return {
-    baseUrl: parsed.baseUrl?.trim() ? normalizeOrigin(parsed.baseUrl) : '',
-    lanUrl: parsed.lanUrl?.trim() ? normalizeOrigin(parsed.lanUrl) : null,
-    token: parsed.token?.trim() ?? '',
-  };
+  return null;
 }

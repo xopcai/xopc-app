@@ -280,11 +280,20 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
     setClarifyPrompt(null);
     setClarifySubmitError(null);
     setClarifySubmitting(false);
+    sessionDataUpdatedAtRef.current =
+      queryClient.getQueryState(queryKeys.sessionHistory(targetSessionKey))?.dataUpdatedAt ?? 0;
     setAwaitingSessionRefresh(true);
     void refreshSessionHeadByKey(targetSessionKey).catch(() => {
       invalidateSessionByKey(targetSessionKey);
     });
-  }, [invalidateSessionByKey, refreshSessionHeadByKey, sessionKey]);
+  }, [invalidateSessionByKey, queryClient, refreshSessionHeadByKey, sessionKey]);
+
+  // Safety: never leave the composer blocked if history refresh stalls (common on slow FRP).
+  useEffect(() => {
+    if (!awaitingSessionRefresh) return;
+    const timer = setTimeout(() => setAwaitingSessionRefresh(false), 15_000);
+    return () => clearTimeout(timer);
+  }, [awaitingSessionRefresh]);
 
   // ── Build callbacks ──────────────────────────────────────
   const buildCallbacks = useCallback((callbackSessionKey: string): MessagingCallbacks => {
