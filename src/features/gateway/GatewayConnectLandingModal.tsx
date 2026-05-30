@@ -7,15 +7,14 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   BackHandler,
-  KeyboardAvoidingView,
   Modal,
   Platform,
-  ScrollView,
   StyleSheet,
   useColorScheme,
   View,
 } from 'react-native';
-import { Button, IconButton, Text, TextInput } from 'react-native-paper';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { Button, IconButton, Snackbar, Text, TextInput } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { gatewaySettingsSchema } from '../../config/schema';
@@ -34,6 +33,7 @@ import {
 import type { ParsedGatewayQr } from './parse-gateway-qr';
 import { resolveGatewayCredentialsFromQr } from './pair-gateway';
 import { openDefaultSessionAfterConnect } from './navigate-after-gateway-connect';
+import { GatewayTokenInput } from './GatewayTokenInput';
 import { upsertGatewayFromCredentials } from './upsert-gateway-from-credentials';
 
 export type GatewayConnectLandingModalProps = {
@@ -61,6 +61,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
   const [saving, setSaving] = useState(false);
 
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [tokenNotice, setTokenNotice] = useState<string | null>(null);
   const [camPermission, requestCamPermission] = useCameraPermissions();
 
   useEffect(() => {
@@ -216,10 +217,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
   }, [onRequestClose, unauthorized]);
 
   const landingContent = (
-    <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: colors.bg, paddingTop: insets.top }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <View style={[styles.root, { backgroundColor: colors.bg, paddingTop: insets.top }]}>
       <View style={styles.topBar}>
         <View style={{ width: 48 }} />
         <Text variant="titleMedium" style={{ color: colors.text }}>
@@ -232,9 +230,11 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
         )}
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}
+        bottomOffset={16}
+        extraKeyboardSpace={insets.bottom}
       >
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text variant="titleLarge" style={[styles.headline, { color: colors.text }]}>
@@ -287,14 +287,17 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
             </Text>
           ) : null}
 
-          <TextInput
+          <GatewayTokenInput
             label={s.token}
             value={token}
             onChangeText={setTokenField}
             mode="outlined"
-            autoCapitalize="none"
-            secureTextEntry
             style={styles.field}
+            copyAccessibilityLabel={l.copyToken}
+            showAccessibilityLabel={l.showToken}
+            hideAccessibilityLabel={l.hideToken}
+            onCopied={() => setTokenNotice(l.tokenCopied)}
+            onCopyFailed={() => setTokenNotice(m.chat.messageCopyFailed)}
           />
           <View style={styles.row}>
             <Button mode="outlined" onPress={openScanner} icon="barcode-scan">
@@ -319,8 +322,12 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
             </Button>
           </View>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+
+      <Snackbar visible={Boolean(tokenNotice)} onDismiss={() => setTokenNotice(null)} duration={2200}>
+        {tokenNotice}
+      </Snackbar>
+    </View>
   );
 
   if (Platform.OS === 'web') {

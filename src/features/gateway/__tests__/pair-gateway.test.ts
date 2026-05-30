@@ -7,10 +7,10 @@ import {
 } from '../pair-gateway';
 
 describe('buildPairExchangeOrigins', () => {
-  it('prefers LAN before tunnel URL', () => {
+  it('prefers tunnel before LAN for frp.xopc.ai (E2EE remote)', () => {
     expect(
       buildPairExchangeOrigins('https://abc.frp.xopc.ai', 'http://192.168.1.2:18790'),
-    ).toEqual(['http://192.168.1.2:18790', 'https://abc.frp.xopc.ai']);
+    ).toEqual(['https://abc.frp.xopc.ai', 'http://192.168.1.2:18790']);
   });
 
   afterEach(() => {
@@ -77,9 +77,9 @@ describe('pairWithGateway', () => {
     expect(result.baseUrl).toBe('http://127.0.0.1:28790');
   });
 
-  it('exchanges pairing secret for gateway token (LAN first)', async () => {
+  it('exchanges pairing secret via tunnel first for remote base URL', async () => {
     const fetchMock = vi.fn(async (url: string) => {
-      expect(url).toBe('http://192.168.1.2:18790/api/tunnel/exchange-token');
+      expect(url).toBe('https://abc.frp.xopc.ai/api/tunnel/exchange-token');
       return new Response(
         JSON.stringify({
           token: 'gateway-token',
@@ -101,12 +101,12 @@ describe('pairWithGateway', () => {
     expect(result.token).toBe('gateway-token');
     expect(result.baseUrl).toBe('https://abc.frp.xopc.ai');
     expect(result.lanUrl).toBe('http://192.168.1.2:18790');
-    expect(result.connectUrls).toEqual(['http://192.168.1.2:18790', 'https://abc.frp.xopc.ai']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to tunnel URL when LAN exchange fails', async () => {
+  it('falls back to LAN when tunnel exchange fails', async () => {
     const fetchMock = vi.fn(async (url: string) => {
-      if (url.startsWith('http://192.168.')) {
+      if (url.startsWith('https://abc.')) {
         return new Response(JSON.stringify({ error: 'network' }), { status: 503 });
       }
       return new Response(

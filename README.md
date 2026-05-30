@@ -2,7 +2,7 @@
 
 Standalone Expo (React Native) app for the [xopc](https://github.com/xopcai/xopc) gateway. Run an xopc gateway (HTTP/WebSocket) with your API keys and optional token auth; configure the app to point at that gateway base URL.
 
-**Remote access (FRP):** LAN-first routing and gateway connection UI live on `feat/frp`. Planned **application-layer E2EE** for mobile ↔ gateway traffic is specified in the xopc repo: [docs/mobile-e2ee.md](https://github.com/xopcai/xopc/blob/main/docs/mobile-e2ee.md) (`xopc-e2ee-v1`).
+**Remote access (FRP):** LAN-first routing with broker-terminated TLS on `*.frp.xopc.ai`. Application-layer E2EE (`xopc-e2ee-v1`) encrypts remote API traffic after pairing — see [docs/mobile-e2ee.md](https://github.com/xopcai/xopc/blob/main/docs/mobile-e2ee.md).
 
 ## Layout
 
@@ -20,6 +20,7 @@ Standalone Expo (React Native) app for the [xopc](https://github.com/xopcai/xopc
 |--------|-------------|
 | `pnpm start` | Expo dev server |
 | `pnpm run android` / `pnpm run ios` / `pnpm run web` | Platform targets |
+| `pnpm run android:release` | Android release APK (arm64, minified — smaller install) |
 | `pnpm run lint` | ESLint |
 | `pnpm run typecheck` | TypeScript (app + gateway-sse-client) |
 | `pnpm run test:gateway-sse-client` | Vitest for SSE client |
@@ -32,8 +33,23 @@ For persistent storage, use a **development build**:
 
 ```bash
 pnpm exec expo prebuild
-pnpm exec expo run:ios
+pnpm run ios:no-proxy
 # or: pnpm exec expo run:android
+```
+
+### iOS CocoaPods (slow installs / proxy)
+
+If `expo run:ios` hangs on **Installing CocoaPods…**, system HTTP proxies often slow `pod install` and trigger Node `[UNDICI-EHPA]` warnings. This repo:
+
+- Injects a **Tsinghua CocoaPods Specs mirror** at prebuild (`plugins/with-ios-cocoapods-mirror.js`), similar to Android’s Aliyun Maven mirrors.
+- Provides scripts that clear proxy env vars and prefer Homebrew’s `pod`:
+
+```bash
+pnpm exec expo prebuild          # or prebuild --clean after plugin changes
+pnpm run pods:install            # pod install in ios/ without proxy
+pnpm run ios:no-install          # build/run after pods are already installed
+# or one step:
+pnpm run ios:no-proxy
 ```
 
 ## LAN gateway access
@@ -52,6 +68,24 @@ pnpm exec expo run:android
 ```
 
 If LAN worked in Expo Go but fails in a release/dev-client APK, rebuild the Android app — cleartext is applied at **prebuild** time, not at runtime.
+
+### Android APK size
+
+Release builds use `expo-build-properties` to keep install size down:
+
+- **arm64-v8a only** — modern phones; drops armeabi-v7a / x86 / x86_64 from the APK
+- **R8 minify + resource shrinking** — release variant only
+
+After changing these settings in `app.json`, regenerate native projects and build release:
+
+```bash
+pnpm exec expo prebuild --clean
+pnpm run android:release
+```
+
+For internal distribution via EAS, `preview` profile produces a release APK; `production` produces an **AAB** for Play Store (Play serves per-device slices, often ~45–60MB download).
+
+Package id is `ai.xopc.xopc`. Uninstall older builds under `com.anonymous.xopcapp` — Android treats them as separate apps.
 
 ### iOS (local network + ATS)
 
@@ -74,7 +108,7 @@ Rebuild after changing `app.json` iOS plist entries:
 
 ```bash
 pnpm exec expo prebuild --clean
-pnpm exec expo run:ios
+pnpm run ios:no-proxy
 ```
 
 ## Configure

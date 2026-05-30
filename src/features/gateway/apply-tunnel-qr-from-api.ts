@@ -54,7 +54,7 @@ export async function syncGatewayUrlsFromTunnelQr(): Promise<SyncGatewayUrlsFrom
   const activeRouteChanged = useGatewayStore.getState().activeBaseUrl !== prevActive;
 
   if (lanUrlUpdated || baseUrlUpdated || activeRouteChanged) {
-    syncGatewayAfterConnectivityChange();
+    syncGatewayAfterConnectivityChange({ immediate: activeRouteChanged });
   }
 
   return {

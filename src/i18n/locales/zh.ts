@@ -134,6 +134,10 @@ export const zh: MessageBundle = {
     baseUrlPlaceholder: 'http://192.168.x.x:18790',
     connectFailed: '无法连接网关，请检查地址、令牌与网络。',
     cameraDenied: '扫码需要相机权限，请在系统设置中允许访问相机。',
+    copyToken: '复制令牌',
+    showToken: '显示令牌',
+    hideToken: '隐藏令牌',
+    tokenCopied: '令牌已复制',
   },
 
   // ── 会话操作 ────────────────────────────────────────────

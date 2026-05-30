@@ -134,6 +134,10 @@ export const en = {
     baseUrlPlaceholder: 'http://192.168.x.x:18790',
     connectFailed: 'Could not reach the gateway. Check the URL, token, and network.',
     cameraDenied: 'Camera access is required to scan QR codes.',
+    copyToken: 'Copy token',
+    showToken: 'Show token',
+    hideToken: 'Hide token',
+    tokenCopied: 'Token copied',
   },
 
   // ── Session actions ─────────────────────────────────────

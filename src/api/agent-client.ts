@@ -13,6 +13,7 @@ import {
   formatApiHttpError,
   notifyUnauthorizedIfNeeded,
 } from './client';
+import { consumeE2eeRelayAgentSse, shouldUseE2eeStream } from './e2ee-stream';
 import { readUriAsBase64 } from '../features/chat/attachment-file-io';
 import { capAttachments } from '../features/chat/chat-limits';
 import type { WireAttachment } from '../features/chat/composer.types';
@@ -191,7 +192,22 @@ export class AgentMessageSender {
     const opts = sseDispatchOptions(this._sseChatId, this);
 
     try {
-      if (shouldUseXhrForAgentSse()) {
+      if (await shouldUseE2eeStream()) {
+        const result = await consumeE2eeRelayAgentSse(
+          path,
+          {
+            method: 'POST',
+            body: bodyJson,
+            signal: abortController.signal,
+          },
+          terminal.wrapped,
+          opts,
+        );
+        if (result.aborted) return;
+        if (!result.ok) {
+          throw new Error(formatApiHttpError(result.status, result.status === 404 ? 'Not Found' : 'Error'));
+        }
+      } else if (shouldUseXhrForAgentSse()) {
         const result = await consumeAgentSseXhr(
           useGatewayStore.getState().apiUrl(path),
           {
@@ -375,7 +391,22 @@ export class AgentMessageSender {
     const bodyJson = JSON.stringify({ runId, chatId });
 
     try {
-      if (shouldUseXhrForAgentSse()) {
+      if (await shouldUseE2eeStream()) {
+        const result = await consumeE2eeRelayAgentSse(
+          '/api/agent/resume',
+          {
+            method: 'POST',
+            body: bodyJson,
+            signal: abortController.signal,
+          },
+          terminal.wrapped,
+          opts,
+        );
+        if (result.aborted) return;
+        if (!result.ok) {
+          return;
+        }
+      } else if (shouldUseXhrForAgentSse()) {
         const result = await consumeAgentSseXhr(
           useGatewayStore.getState().apiUrl('/api/agent/resume'),
           {

@@ -1,4 +1,5 @@
 import { shouldRejectLoopbackGatewayBaseUrl } from '../../stores/gateway-types';
+import { requiresE2eeTransport } from '../../api/e2ee-transport';
 import type { ParsedGatewayQr } from './parse-gateway-qr';
 
 export type PairGatewayInput = {
@@ -12,6 +13,7 @@ export type PairGatewayResult = {
   baseUrl: string;
   lanUrl: string | null;
   connectUrls?: string[];
+  e2eeFingerprint?: string | null;
 };
 
 function normalizeOrigin(raw: string): string {
@@ -23,8 +25,14 @@ export function buildPairExchangeOrigins(baseUrl: string, lanUrl?: string | null
   const tunnel = normalizeOrigin(baseUrl);
   const lan = lanUrl?.trim() ? normalizeOrigin(lanUrl) : '';
   const out: string[] = [];
-  if (lan && !shouldRejectLoopbackGatewayBaseUrl(lan)) out.push(lan);
-  if (tunnel && !shouldRejectLoopbackGatewayBaseUrl(tunnel) && tunnel !== lan) out.push(tunnel);
+  // Remote tunnel requires E2EE relay; exchange must happen on the same origin as handshake.
+  if (requiresE2eeTransport(tunnel) && tunnel && !shouldRejectLoopbackGatewayBaseUrl(tunnel)) {
+    out.push(tunnel);
+  }
+  if (lan && !shouldRejectLoopbackGatewayBaseUrl(lan) && lan !== tunnel) out.push(lan);
+  if (!requiresE2eeTransport(tunnel) && tunnel && !shouldRejectLoopbackGatewayBaseUrl(tunnel) && tunnel !== lan) {
+    out.push(tunnel);
+  }
   return out;
 }
 
@@ -63,7 +71,9 @@ function resolveStoredUrlsFromExchange(
   };
 }
 
-export async function pairWithGateway(input: PairGatewayInput): Promise<PairGatewayResult> {
+let inflightPair: { key: string; promise: Promise<PairGatewayResult> } | null = null;
+
+async function pairWithGatewayOnce(input: PairGatewayInput): Promise<PairGatewayResult> {
   const pairingSecret = input.pairingSecret.trim();
   if (!pairingSecret) throw new Error('Pairing secret is required');
 
@@ -97,6 +107,7 @@ export async function pairWithGateway(input: PairGatewayInput): Promise<PairGate
         baseUrl?: string | null;
         lanUrl?: string | null;
         connectUrls?: string[] | null;
+        e2ee?: { gatewayPub?: string; fingerprint?: string };
       };
 
       const token = data.token?.trim();
@@ -106,11 +117,38 @@ export async function pairWithGateway(input: PairGatewayInput): Promise<PairGate
       }
 
       const resolved = resolveStoredUrlsFromExchange(data, input);
+      let e2eeFingerprint: string | null = data.e2ee?.fingerprint?.trim() || null;
+
+      if (
+        requiresE2eeTransport(resolved.baseUrl) &&
+        data.e2ee?.gatewayPub?.trim() &&
+        data.e2ee.fingerprint?.trim()
+      ) {
+        const { performE2eeHandshake } = await import('../../api/e2ee-handshake');
+        const handshakeOrigin = requiresE2eeTransport(resolved.baseUrl)
+          ? normalizeOrigin(resolved.baseUrl)
+          : origin;
+        try {
+          await performE2eeHandshake({
+            origin: handshakeOrigin,
+            token,
+            pairingSecret,
+            gatewayPub: data.e2ee.gatewayPub.trim(),
+            fingerprint: data.e2ee.fingerprint.trim(),
+            baseUrl: resolved.baseUrl,
+          });
+          e2eeFingerprint = data.e2ee.fingerprint.trim();
+        } catch (err) {
+          throw err instanceof Error ? err : new Error(String(err));
+        }
+      }
+
       return {
         token,
         baseUrl: resolved.baseUrl,
         lanUrl: resolved.lanUrl,
         connectUrls: resolved.connectUrls,
+        e2eeFingerprint,
       };
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
@@ -118,6 +156,20 @@ export async function pairWithGateway(input: PairGatewayInput): Promise<PairGate
   }
 
   throw new Error(lastError);
+}
+
+/** Deduplicate parallel pairing attempts for the same QR scan. */
+export async function pairWithGateway(input: PairGatewayInput): Promise<PairGatewayResult> {
+  const key = input.pairingSecret.trim();
+  if (!key) throw new Error('Pairing secret is required');
+  if (inflightPair?.key === key) return inflightPair.promise;
+  const promise = pairWithGatewayOnce(input);
+  inflightPair = { key, promise };
+  try {
+    return await promise;
+  } finally {
+    if (inflightPair?.key === key) inflightPair = null;
+  }
 }
 
 export type ResolvedGatewayCredentials = {

@@ -737,12 +737,13 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
   useEffect(() => {
     return subscribeGatewayEvent('session-updated', (detail) => {
       const key = (detail as { key?: string }).key;
-      if (key && key === sessionKey) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoal(sessionKey) });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoalRuns(sessionKey, 1) });
-      }
+      if (!key || key !== sessionKey) return;
+      // Avoid invalidating goal queries on every transcript tick while agent is streaming.
+      if (streamingRef.current || sendingRef.current || awaitingSessionRefresh) return;
+      void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoal(sessionKey) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoalRuns(sessionKey, 1) });
     });
-  }, [queryClient, sessionKey]);
+  }, [queryClient, sessionKey, awaitingSessionRefresh]);
 
   // ── Cleanup on unmount ───────────────────────────────────
   useEffect(() => {

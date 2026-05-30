@@ -47,11 +47,15 @@
     },
     "plugins": [
       "./plugins/with-android-maven-mirrors",
+      "./plugins/with-ios-cocoapods-mirror",
       [
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": true
+            "usesCleartextTraffic": true,
+            "buildArchs": ["arm64-v8a"],
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
           }
         }
       ],

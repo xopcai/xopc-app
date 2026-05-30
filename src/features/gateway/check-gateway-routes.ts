@@ -78,7 +78,7 @@ export async function probeAndApplyPreferredRoute(): Promise<{
   const preferredUrl = await st.refreshActiveBaseUrl();
   const routeChanged = Boolean(prevActive && preferredUrl && prevActive !== preferredUrl);
   if (routeChanged) {
-    syncGatewayAfterConnectivityChange();
+    syncGatewayAfterConnectivityChange({ immediate: true });
   }
 
   return { reachability, routeChanged };

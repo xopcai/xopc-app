@@ -4,7 +4,8 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { Alert, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Platform, StyleSheet, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Button, HelperText, Snackbar, Text, TextInput } from 'react-native-paper';
 
 import { type GatewayProfileForm, gatewayProfileSchema } from '../../../src/config/schema';
@@ -21,6 +22,7 @@ import {
 } from '../../../src/features/gateway/GatewayQrScannerModal';
 import type { ParsedGatewayQr } from '../../../src/features/gateway/parse-gateway-qr';
 import { resolveGatewayCredentialsFromQr } from '../../../src/features/gateway/pair-gateway';
+import { GatewayTokenInput } from '../../../src/features/gateway/GatewayTokenInput';
 import { useSettingsColors } from '../../../src/features/settings/settings-ui';
 import { useMessages } from '../../../src/i18n/messages';
 import { useGatewayConfigured } from '../../../src/query/sessions';
@@ -62,6 +64,7 @@ export default function GatewayEditScreen() {
   const [testOk, setTestOk] = useState<boolean | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanNotice, setScanNotice] = useState<string | null>(null);
+  const [tokenNotice, setTokenNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [camPermission, requestCamPermission] = useCameraPermissions();
 
@@ -332,10 +335,11 @@ export default function GatewayEditScreen() {
 
   return (
     <>
-      <ScrollView
+      <KeyboardAwareScrollView
         style={{ flex: 1, backgroundColor: colors.pageBg }}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
+        bottomOffset={16}
       >
         <Controller
           control={control}
@@ -388,15 +392,18 @@ export default function GatewayEditScreen() {
           control={control}
           name="token"
           render={({ field: { onChange, onBlur, value } }) => (
-            <TextInput
+            <GatewayTokenInput
               label={s.token}
               value={value}
               onBlur={onBlur}
               onChangeText={onChange}
-              autoCapitalize="none"
-              secureTextEntry
               mode="outlined"
               style={styles.fieldGap}
+              copyAccessibilityLabel={l.copyToken}
+              showAccessibilityLabel={l.showToken}
+              hideAccessibilityLabel={l.hideToken}
+              onCopied={() => setTokenNotice(l.tokenCopied)}
+              onCopyFailed={() => setTokenNotice(m.chat.messageCopyFailed)}
             />
           )}
         />
@@ -440,7 +447,7 @@ export default function GatewayEditScreen() {
             </Button>
           </View>
         ) : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <GatewayQrScannerModal
         visible={scannerOpen}
@@ -451,6 +458,9 @@ export default function GatewayEditScreen() {
 
       <Snackbar visible={Boolean(scanNotice)} onDismiss={() => setScanNotice(null)} duration={3200}>
         {scanNotice}
+      </Snackbar>
+      <Snackbar visible={Boolean(tokenNotice)} onDismiss={() => setTokenNotice(null)} duration={2200}>
+        {tokenNotice}
       </Snackbar>
     </>
   );

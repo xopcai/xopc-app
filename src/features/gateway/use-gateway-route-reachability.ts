@@ -1,5 +1,5 @@
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useGatewayStore } from '../../stores/gateway-store';
 
@@ -8,6 +8,8 @@ import {
   type GatewayRouteReachability,
   type RouteReachabilityInfo,
 } from './check-gateway-routes';
+
+const ROUTE_RECHECK_COOLDOWN_MS = 20_000;
 
 function initialReachability(lanUrl: string | null, enabled: boolean, baseUrl: string): GatewayRouteReachability {
   return {
@@ -33,6 +35,7 @@ export function useGatewayRouteReachability(enabled: boolean): {
     initialReachability(lanUrl, enabled, baseUrl),
   );
   const [checking, setChecking] = useState(false);
+  const lastRecheckAtRef = useRef(0);
 
   const recheck = useCallback(async () => {
     if (!enabled || !baseUrl.trim()) {
@@ -42,6 +45,10 @@ export function useGatewayRouteReachability(enabled: boolean): {
       });
       return;
     }
+
+    const now = Date.now();
+    if (now - lastRecheckAtRef.current < ROUTE_RECHECK_COOLDOWN_MS) return;
+    lastRecheckAtRef.current = now;
 
     setChecking(true);
     setReachability(initialReachability(lanUrl, enabled, baseUrl));
