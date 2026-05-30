@@ -2,7 +2,7 @@
 
 Standalone Expo (React Native) app for the [xopc](https://github.com/xopcai/xopc) gateway. Run an xopc gateway (HTTP/WebSocket) with your API keys and optional token auth; configure the app to point at that gateway base URL.
 
-**Remote access (FRP):** LAN-first routing with broker-terminated TLS on `*.frp.xopc.ai`; remote API calls use HTTPS + gateway Bearer token after QR pairing (`ps`).
+**Remote access (FRP):** LAN-first routing with broker-terminated TLS on `*.frp.xopc.ai`. Application-layer E2EE (`xopc-e2ee-v1`) encrypts remote API traffic after pairing — see [docs/mobile-e2ee.md](https://github.com/xopcai/xopc/blob/main/docs/mobile-e2ee.md).
 
 ## Layout
 

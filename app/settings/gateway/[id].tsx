@@ -136,7 +136,16 @@ export default function GatewayEditScreen() {
           return;
         }
 
-        setScanNotice('Scan a pairing QR with base URL and pairing secret (ps).');
+        if (parsed.baseUrl) {
+          setValue('baseUrl', parsed.baseUrl, { shouldValidate: true });
+          setValue('name', gatewayProfileNameFromUrl(parsed.baseUrl));
+        }
+        if (parsed.token != null) setValue('token', parsed.token);
+        if (parsed.lanUrl) setPendingLanUrl(parsed.lanUrl);
+        else setPendingLanUrl(null);
+        setScanNotice(g.qrApplied);
+        setTestMessage(null);
+        setTestOk(null);
       })();
     },
     [g.qrApplied, setValue],
