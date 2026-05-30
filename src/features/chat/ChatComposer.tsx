@@ -556,7 +556,7 @@ export const ChatComposer = memo(function ChatComposer({
     isExpanded && (draft.includes('\n') || inputHeight > MIN_COMPOSER_INPUT_HEIGHT);
   const singleLineExpanded = isExpanded && !needsMultiline;
 
-  const composerPlaceholder = runBusy
+  const composerPlaceholder = streaming
     ? editingFollowUpId
       ? cm.inputPlaceholderSteeringEdit
       : cm.inputPlaceholderSteering

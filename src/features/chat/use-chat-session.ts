@@ -44,6 +44,7 @@ import {
   startThinkingSegment,
 } from './streaming';
 import {
+  clearPendingAgentRun,
   readPendingAgentRunId,
   subscribePendingAgentRunChanged,
 } from '../gateway/pending-agent-run';
@@ -666,6 +667,9 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       if (background && isTransientNetworkError(message)) {
         throw e;
       }
+      if (/404|not found/i.test(message)) {
+        clearPendingAgentRun(sessionKey);
+      }
       if (!background && streamRecoveryRef.current.handleRecoverableFailure(e)) {
         setStreaming(false);
         streamingRef.current = false;
@@ -706,6 +710,8 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
     autoResumeFailedRef,
     onReconnectingChange: setStreamReconnecting,
     onRecoveryExhausted: () => {
+      setStreaming(false);
+      streamingRef.current = false;
       setResumePromptVisible(true);
       if (!readPendingAgentRunId(sessionKey)) {
         setSnackMsg(m.chat.streamRecoveryFailed);

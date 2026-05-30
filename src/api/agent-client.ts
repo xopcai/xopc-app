@@ -404,7 +404,7 @@ export class AgentMessageSender {
         );
         if (result.aborted) return;
         if (!result.ok) {
-          return;
+          throw new Error(formatApiHttpError(result.status, result.status === 404 ? 'Not Found' : 'Error'));
         }
       } else if (shouldUseXhrForAgentSse()) {
         const result = await consumeAgentSseXhr(
@@ -420,7 +420,8 @@ export class AgentMessageSender {
         );
         notifyUnauthorizedIfNeeded(result.status);
         if (!result.ok) {
-          return;
+          const errBody = parseApiErrorBody(result.responseText);
+          throw new Error(formatApiHttpError(result.status, result.statusText, errBody));
         }
       } else {
         const res = await apiFetch('/api/agent/resume', {
@@ -431,7 +432,8 @@ export class AgentMessageSender {
         });
 
         if (!res.ok) {
-          return;
+          const errBody = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+          throw new Error(formatApiHttpError(res.status, res.statusText, errBody.error?.message));
         }
 
         if (isEventStreamResponse(res)) {
