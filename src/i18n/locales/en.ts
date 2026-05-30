@@ -59,6 +59,7 @@ export const en = {
     unauthorized: 'Unauthorized (401). Check your bearer token.',
     bootstrapFailed: 'Could not create a chat session.',
     bootstrapOffline: 'Cannot reach the gateway. Check your network and gateway URL, then try again.',
+    loadFailed: 'Could not load conversations.',
   },
 
   gateway: {

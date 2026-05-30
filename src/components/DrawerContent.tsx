@@ -363,24 +363,51 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
     );
   }
 
-  if (sessionsQuery.isLoading) {
-    return (
-      <View style={[styles.fallback, { paddingTop: insets.top + 48, backgroundColor: colors.pageBg }]}>
-        <ActivityIndicator color={colors.accent} />
-      </View>
-    );
-  }
+  const historyContent = (() => {
+    if (sessionsQuery.isLoading && sessions.length === 0) {
+      return (
+        <View style={styles.emptyWrap}>
+          <ActivityIndicator color={colors.accent} />
+          <Text style={{ color: colors.textMuted, marginTop: 12 }}>{m.common.loading}</Text>
+        </View>
+      );
+    }
 
-  const listEmpty =
-    filteredSessions.length === 0 ? (
-      <View style={styles.emptyWrap}>
-        <Text style={{ color: colors.textMuted, textAlign: 'center' }}>
-          {sessions.length === 0
-            ? m.sessions.empty
-            : t(m.sessions.noResultsHint, { query: searchQuery.trim() || '…' })}
-        </Text>
+    if (sessionsQuery.isError && sessions.length === 0) {
+      return (
+        <View style={styles.emptyWrap}>
+          <Text style={{ color: colors.textMuted, textAlign: 'center' }}>
+            {m.sessions.loadFailed}
+          </Text>
+          <Pressable
+            style={styles.secondaryLink}
+            onPress={() => void sessionsQuery.refetch()}
+          >
+            <Text style={[styles.secondaryLinkLabel, { color: colors.accent }]}>{m.common.retry}</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    if (filteredSessions.length === 0) {
+      return (
+        <View style={styles.emptyWrap}>
+          <Text style={{ color: colors.textMuted, textAlign: 'center' }}>
+            {sessions.length === 0
+              ? m.sessions.empty
+              : t(m.sessions.noResultsHint, { query: searchQuery.trim() || '…' })}
+          </Text>
+        </View>
+      );
+    }
+
+    return sections.map((section) => (
+      <View key={section.title}>
+        <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>{section.title}</Text>
+        {section.data.map((item) => renderSessionRow(item))}
       </View>
-    ) : null;
+    ));
+  })();
 
   return (
     <View style={[styles.root, { backgroundColor: colors.pageBg, paddingTop: insets.top }]}>
@@ -461,16 +488,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
             )}
           </View>
 
-          {sections.length === 0 ? (
-            listEmpty
-          ) : (
-            sections.map((section) => (
-              <View key={section.title}>
-                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>{section.title}</Text>
-                {section.data.map((item) => renderSessionRow(item))}
-              </View>
-            ))
-          )}
+          {historyContent}
         </View>
       </ScrollView>
 

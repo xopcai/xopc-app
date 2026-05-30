@@ -61,6 +61,7 @@ export const zh: MessageBundle = {
     unauthorized: '未授权 (401)，请检查令牌。',
     bootstrapFailed: '无法创建聊天会话。',
     bootstrapOffline: '无法连接 Gateway。请检查网络与 Gateway 地址后重试。',
+    loadFailed: '无法加载会话列表。',
   },
 
   gateway: {
