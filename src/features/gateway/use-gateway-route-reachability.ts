@@ -22,10 +22,15 @@ function unreachableInfo(reason?: RouteReachabilityInfo['reason']): RouteReachab
   return { status: 'unreachable', reason };
 }
 
+export type GatewayRouteRecheckOptions = {
+  /** Bypass the cooldown (explicit user retry from chat, etc.). */
+  force?: boolean;
+};
+
 export function useGatewayRouteReachability(enabled: boolean): {
   reachability: GatewayRouteReachability;
   checking: boolean;
-  recheck: () => Promise<void>;
+  recheck: (opts?: GatewayRouteRecheckOptions) => Promise<void>;
 } {
   const baseUrl = useGatewayStore((s) => s.baseUrl);
   const lanUrl = useGatewayStore((s) => s.lanUrl);
@@ -37,7 +42,7 @@ export function useGatewayRouteReachability(enabled: boolean): {
   const [checking, setChecking] = useState(false);
   const lastRecheckAtRef = useRef(0);
 
-  const recheck = useCallback(async () => {
+  const recheck = useCallback(async (opts?: GatewayRouteRecheckOptions) => {
     if (!enabled || !baseUrl.trim()) {
       setReachability({
         lan: lanUrl ? unreachableInfo() : { status: 'not_configured' },
@@ -47,7 +52,7 @@ export function useGatewayRouteReachability(enabled: boolean): {
     }
 
     const now = Date.now();
-    if (now - lastRecheckAtRef.current < ROUTE_RECHECK_COOLDOWN_MS) return;
+    if (!opts?.force && now - lastRecheckAtRef.current < ROUTE_RECHECK_COOLDOWN_MS) return;
     lastRecheckAtRef.current = now;
 
     setChecking(true);
