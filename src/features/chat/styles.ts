@@ -43,6 +43,7 @@ export const chatLayout = StyleSheet.create({
     alignSelf: 'flex-start',
     width: '92%',
     maxWidth: '92%',
+    minWidth: 0,
   },
   userBubble: {
     borderRadius: 16,
@@ -50,8 +51,12 @@ export const chatLayout = StyleSheet.create({
     paddingVertical: 10,
   },
   assistantBubble: {
+    alignSelf: 'stretch',
+    width: '100%',
+    minWidth: 0,
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 10,
+    overflow: 'hidden',
   },
 });

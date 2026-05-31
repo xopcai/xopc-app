@@ -7,7 +7,7 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import type { ComponentType } from 'react';
 import { memo, useCallback, useMemo } from 'react';
-import { Linking, Text, useColorScheme } from 'react-native';
+import { Linking, Text, useColorScheme, type ViewStyle } from 'react-native';
 
 const lightStyle = {
   paragraph: {
@@ -166,6 +166,13 @@ type EnrichedProps = {
   onLinkPress: (e: { url: string }) => void;
   selectable: boolean;
   allowTrailingMargin?: boolean;
+  containerStyle?: ViewStyle;
+};
+
+const markdownContainerStyle: ViewStyle = {
+  alignSelf: 'stretch',
+  width: '100%',
+  minWidth: 0,
 };
 
 function isExpoGo(): boolean {
@@ -203,7 +210,13 @@ const PlainMarkdownFallback = memo(function PlainMarkdownFallback({
 
   return (
     <Text
-      style={{ fontSize: 15, lineHeight: 22, marginBottom: 8, color: bodyColor }}
+      style={{
+        fontSize: 15,
+        lineHeight: 22,
+        marginBottom: 8,
+        color: bodyColor,
+        flexShrink: 1,
+      }}
       selectable
     >
       {segments.map(({ part, i, isUrl }) =>
@@ -261,6 +274,7 @@ export const MarkdownView = memo(function MarkdownView({
       onLinkPress={handleLinkPress}
       selectable
       allowTrailingMargin={allowTrailingMargin}
+      containerStyle={markdownContainerStyle}
     />
   );
 });
