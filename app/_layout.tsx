@@ -1,3 +1,5 @@
+import '../src/shims';
+
 import { QueryClientProvider } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
 import { Stack, useRouter } from 'expo-router';

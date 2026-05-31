@@ -106,7 +106,7 @@ export const zh: MessageBundle = {
     remoteAccessOff: '未运行',
     remoteAccessOffHint: '请在电脑上开启远程访问以使用公网隧道地址。',
     gatewayUnreachable: '当前线路无法连接网关。',
-    routesUnreachableBanner: '局域网和 FRP 隧道均无法连接，点此前往网关设置。',
+    routesUnreachableBanner: '局域网和 FRP 隧道均无法连接，点此重试连接。',
     qrApplied: '已从二维码填入，请检查后保存。',
     applyImmediatelyHint: '保存后立即生效，无需重启应用。',
   },

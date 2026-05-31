@@ -131,6 +131,22 @@ export const MessageList = memo(function MessageList({
     [keyboardPadding],
   );
 
+  /** Force FlashList to remeasure the streaming tail as assistant content grows. */
+  const streamingLayoutKey = useMemo(() => {
+    if (!streaming || messages.length === 0) return undefined;
+    const last = messages[messages.length - 1];
+    if (last.role !== 'assistant') return undefined;
+    let size = 0;
+    for (const block of last.content ?? []) {
+      if (block.type === 'text') {
+        size += (block as { text: string }).text?.length ?? 0;
+      } else {
+        size += 1;
+      }
+    }
+    return size;
+  }, [streaming, messages]);
+
   const renderItem = useCallback(
     ({ item, index }: { item: Message; index: number }) => {
       const isLast = index === messages.length - 1;
@@ -225,6 +241,7 @@ export const MessageList = memo(function MessageList({
         ref={listRef}
         style={styles.listFlex}
         data={messages}
+        extraData={streamingLayoutKey}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         contentContainerStyle={listContentStyle}

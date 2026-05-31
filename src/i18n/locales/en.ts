@@ -106,7 +106,7 @@ export const en = {
     remoteAccessOffHint: 'Start remote access on your computer to use the public tunnel URL.',
     gatewayUnreachable: 'Gateway unreachable on the current route.',
     routesUnreachableBanner:
-      'Cannot connect via LAN or FRP tunnel. Tap to open gateway settings.',
+      'Cannot connect via LAN or FRP tunnel. Tap to retry connection.',
     qrApplied: 'Filled from QR code — review and save.',
     applyImmediatelyHint: 'Changes apply immediately after saving — no app restart needed.',
   },

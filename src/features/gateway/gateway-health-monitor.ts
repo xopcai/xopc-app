@@ -1,6 +1,7 @@
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { apiFetch } from '../../api/client';
+import { requiresE2eeTransport } from '../../api/e2ee-transport';
 import { useGatewayStore } from '../../stores/gateway-store';
 
 /**
@@ -108,7 +109,7 @@ export class GatewayHealthMonitor {
     const routeUrl = activeBaseUrl || baseUrl;
     if (!routeUrl.trim()) return false;
 
-    const timeoutMs = this.timeoutMs;
+    const timeoutMs = requiresE2eeTransport(routeUrl) ? 15_000 : this.timeoutMs;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {

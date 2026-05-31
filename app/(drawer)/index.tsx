@@ -11,7 +11,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DrawerActions } from '@react-navigation/native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, useColorScheme, View } from 'react-native';
+import { StyleSheet, useColorScheme, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { Banner, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,7 +30,10 @@ import {
   buildUserResendPayload, findPrecedingUserMessage,
 } from '../../src/features/chat/composer-send-helpers';
 import { useGatewayFullyUnreachable } from '../../src/features/gateway/use-gateway-fully-unreachable';
-import { syncAfterGatewaySettingsSave } from '../../src/features/gateway/gateway-connection-sync';
+import {
+  syncAfterGatewaySettingsSave,
+  syncGatewayAfterConnectivityChange,
+} from '../../src/features/gateway/gateway-connection-sync';
 import { useGatewayHealth } from '../../src/features/gateway/use-gateway-health';
 import { useKeyboardVisible } from '../../src/hooks/use-keyboard-visible';
 import { usePreferencesStore } from '../../src/stores/preferences-store';
@@ -62,7 +65,10 @@ export default function ChatScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { gatewayOnline } = useGatewayHealth();
-  const { fullyUnreachable: gatewayFullyUnreachable } = useGatewayFullyUnreachable();
+  const {
+    fullyUnreachable: gatewayFullyUnreachable,
+    recheck: recheckGatewayRoutes,
+  } = useGatewayFullyUnreachable();
   const gatewayProfiles = useGatewayStore((s) => s.profiles);
   const activeGatewayId = useGatewayStore((s) => s.activeGatewayId);
   const switchGateway = useGatewayStore((s) => s.switchGateway);
@@ -372,6 +378,14 @@ export default function ChatScreen() {
     router.push('/settings/gateway');
   }, [router]);
 
+  const handleGatewayReconnect = useCallback(() => {
+    syncGatewayAfterConnectivityChange({ immediate: true });
+    void recheckGatewayRoutes({ force: true });
+    if (sessionKey) {
+      void sessionHistoryQuery.refetch();
+    }
+  }, [recheckGatewayRoutes, sessionHistoryQuery, sessionKey]);
+
   const handleGatewayAdd = useCallback(() => {
     setGatewaySheetVisible(false);
     router.push('/settings/gateway/new');
@@ -432,18 +446,15 @@ export default function ChatScreen() {
             {bootstrapError}
           </Banner>
         ) : null}
-        {!urlSessionKey && creatingInitialSession ? (
-          <View style={styles.bootstrapRow}>
-            <ActivityIndicator size="small" />
-            <Text variant="bodySmall" style={{ opacity: 0.65 }}>{m.common.loading}</Text>
-          </View>
-        ) : null}
         <ChatStreamNotice
           isDark={isDark}
           reconnecting={chat.streamReconnecting}
           reconnectingLabel={m.chat.streamReconnecting}
           resumeVisible={
-            !chat.streaming && chat.resumePromptVisible && !chat.streamReconnecting
+            !chat.streaming
+            && chat.resumePromptVisible
+            && !chat.streamReconnecting
+            && Boolean(chat.pendingRunId)
           }
           resumeLabel={m.chat.resumeBanner}
           resumeActionLabel={m.chat.resumeButton}
@@ -462,7 +473,10 @@ export default function ChatScreen() {
             messages={displayMessages}
             streaming={chat.streaming}
             progress={chat.progress}
-            loading={sessionHistoryQuery.isLoading || (!sessionKey && creatingInitialSession)}
+            loading={
+              !chat.streamReconnecting
+              && (sessionHistoryQuery.isLoading || (!sessionKey && creatingInitialSession))
+            }
             loadingOlder={sessionHistoryQuery.isFetchingNextPage}
             hasOlder={sessionHistoryQuery.hasNextPage}
             onLoadOlder={() => {
@@ -505,7 +519,7 @@ export default function ChatScreen() {
             onAssistantRegenerate={handleAssistantRegenerate}
             networkUnreachableTip={
               gatewayFullyUnreachable
-                ? { message: m.gateway.routesUnreachableBanner, onPress: handleGatewayManageSettings }
+                ? { message: m.gateway.routesUnreachableBanner, onPress: handleGatewayReconnect }
                 : null
             }
           />
@@ -567,10 +581,6 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   chatBody: { flex: 1, minHeight: 0 },
-  bootstrapRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 10, paddingHorizontal: 16, paddingVertical: 10,
-  },
   listFill: { flex: 1, minHeight: 0 },
   aiDisclaimer: {
     fontSize: 11, textAlign: 'center', paddingBottom: 10, paddingHorizontal: 16,

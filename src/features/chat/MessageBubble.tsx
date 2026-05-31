@@ -98,7 +98,6 @@ function renderAssistantContent(
   content: MessageContent[],
   isStreaming: boolean,
   sessionKey?: string | null,
-  allowTrailingMargin = false,
 ) {
   const nodes: React.ReactNode[] = [];
   let i = 0;
@@ -150,7 +149,7 @@ function renderAssistantContent(
               key={`text-${i}`}
               content={merged}
               streaming={isStreaming}
-              allowTrailingMargin={allowTrailingMargin}
+              allowTrailingMargin
             />,
           );
         }
@@ -429,7 +428,7 @@ export const MessageBubble = memo(function MessageBubble({
               },
             ]}
           >
-            {renderAssistantContent(displayContent, isStreaming, sessionKey, showAssistantArtifacts)}
+            {renderAssistantContent(displayContent, isStreaming, sessionKey)}
 
             {attachmentsForBubble?.length ? (
               <AttachmentRenderer attachments={attachmentsForBubble} sessionKey={sessionKey} />

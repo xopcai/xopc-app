@@ -110,7 +110,10 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
         return;
       }
 
-      setSaveError('Scan a pairing QR with base URL and pairing secret (ps).');
+      if (parsed.baseUrl) setBaseUrlField(parsed.baseUrl);
+      if (parsed.token != null) setTokenField(parsed.token);
+      if (parsed.lanUrl) setPendingLanUrl(parsed.lanUrl);
+      else setPendingLanUrl(null);
     })();
   }, []);
 

@@ -52,8 +52,6 @@ export function extractGatewayLinkCandidate(raw: string): string | null {
   return null;
 }
 
-const inflightDeeplinks = new Map<string, Promise<boolean>>();
-
 /**
  * If `rawUrl` carries a gateway mobile-connect payload, write store, leave Settings (if any), open default session.
  * @returns whether a deep link was consumed
@@ -73,37 +71,20 @@ export async function tryConsumeGatewayDeeplink(
   }
 
   const embedded = extractGatewayLinkCandidate(rawUrl);
-  const link = (embedded ?? rawUrl).trim();
-  const parsed = parseGatewayQrPayload(link);
+  const parsed = parseGatewayQrPayload(embedded ?? rawUrl);
   if (!hasPairableGatewayQr(parsed)) return false;
 
-  const inflightKey = `${parsed.baseUrl ?? ''}|${parsed.pairingSecret ?? ''}`;
-  const existing = inflightDeeplinks.get(inflightKey);
-  if (existing) return existing;
-
-  const work = (async (): Promise<boolean> => {
-    let resolved;
-    try {
-      resolved = await resolveGatewayCredentialsFromQr(parsed);
-    } catch (err) {
-      if (__DEV__) {
-        console.warn('[gateway-deeplink] pairing failed', err);
-      }
-      return false;
-    }
-    if (!resolved?.baseUrl) return false;
-
-    await upsertGatewayFromPairResult(resolved);
-
-    router.replace('/');
-    await openDefaultSessionAfterConnect(router.replace);
-    return true;
-  })();
-
-  inflightDeeplinks.set(inflightKey, work);
+  let resolved;
   try {
-    return await work;
-  } finally {
-    if (inflightDeeplinks.get(inflightKey) === work) inflightDeeplinks.delete(inflightKey);
+    resolved = await resolveGatewayCredentialsFromQr(parsed);
+  } catch {
+    return false;
   }
+  if (!resolved?.baseUrl) return false;
+
+  await upsertGatewayFromPairResult(resolved);
+
+  router.replace('/');
+  await openDefaultSessionAfterConnect(router.replace);
+  return true;
 }

@@ -6,7 +6,10 @@ import {
   type GatewayRouteReachability,
   type RouteReachabilityStatus,
 } from './check-gateway-routes';
-import { useGatewayRouteReachability } from './use-gateway-route-reachability';
+import {
+  type GatewayRouteRecheckOptions,
+  useGatewayRouteReachability,
+} from './use-gateway-route-reachability';
 
 function isRouteDown(status: RouteReachabilityStatus): boolean {
   return status === 'unreachable';
@@ -36,14 +39,15 @@ export function isGatewayFullyUnreachable(
 export function useGatewayFullyUnreachable(): {
   fullyUnreachable: boolean;
   checking: boolean;
+  recheck: (opts?: GatewayRouteRecheckOptions) => Promise<void>;
 } {
   const configured = useGatewayConfigured();
-  const { reachability, checking } = useGatewayRouteReachability(configured);
+  const { reachability, checking, recheck } = useGatewayRouteReachability(configured);
 
   const fullyUnreachable = useMemo(
     () => configured && isGatewayFullyUnreachable(reachability, checking),
     [configured, reachability, checking],
   );
 
-  return { fullyUnreachable, checking };
+  return { fullyUnreachable, checking, recheck };
 }

@@ -54,6 +54,7 @@ import {
 import {
   mergeLatestSessionHistoryPage,
 } from './session-message-parser';
+import { syncGatewayAfterConnectivityChange } from '../gateway/gateway-connection-sync';
 import { useGatewayHealth } from '../gateway/use-gateway-health';
 
 const STREAMING_RENDER_THROTTLE_MS = 100;
@@ -71,6 +72,7 @@ export interface UseChatSessionReturn {
   streaming: boolean;
   streamReconnecting: boolean;
   resumePromptVisible: boolean;
+  pendingRunId: string | null;
   progress: ProgressState | null;
   snackMsg: string;
   setSnackMsg: React.Dispatch<React.SetStateAction<string>>;
@@ -645,7 +647,19 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
   const resume = useCallback(async (opts?: AgentStreamResumeOptions) => {
     const background = opts?.background === true;
     const runId = pendingRunId ?? (sessionKey ? readPendingAgentRunId(sessionKey) : null);
-    if (!sessionKey || !runId) return;
+    if (!sessionKey) return;
+    if (!runId) {
+      setResumePromptVisible(false);
+      setStreamReconnecting(false);
+      streamRecoveryRef.current.cancelRecovery();
+      syncGatewayAfterConnectivityChange({ immediate: true });
+      try {
+        await refreshSessionHeadByKey(sessionKey);
+      } catch {
+        invalidateSessionByKey(sessionKey);
+      }
+      return;
+    }
     if (senderRef.current.isStreamingFor(sessionKey)) {
       senderRef.current.detachLocalStream();
     }
@@ -673,22 +687,25 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
         return;
       }
       const message = e instanceof Error ? e.message : String(e);
-      if (background && isTransientNetworkError(message)) {
-        throw e;
-      }
       if (/404|not found/i.test(message)) {
         clearPendingAgentRun(sessionKey);
-      }
-      if (!background && streamRecoveryRef.current.handleRecoverableFailure(e)) {
+        setResumePromptVisible(false);
         setStreaming(false);
         streamingRef.current = false;
+        setSnackMsg(message);
+        return;
+      }
+      setStreaming(false);
+      streamingRef.current = false;
+      if (streamRecoveryRef.current.handleRecoverableFailure(e)) {
         return;
       }
       autoResumeFailedRef.current = true;
-      setResumePromptVisible(true);
-      setStreaming(false);
-      streamingRef.current = false;
-      if (!background) {
+      const stillHasRun = Boolean(readPendingAgentRunId(sessionKey));
+      setResumePromptVisible(stillHasRun);
+      if (!stillHasRun) {
+        setSnackMsg(m.chat.streamRecoveryFailed);
+      } else if (!background) {
         setSnackMsg(message);
       }
     }
@@ -698,8 +715,10 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
     streaming,
     awaitingSessionRefresh,
     invalidateSessionByKey,
+    refreshSessionHeadByKey,
     clearStreamingMessage,
     buildCallbacks,
+    m.chat.streamRecoveryFailed,
   ]);
 
   // ── Stream resume hook ───────────────────────────────────
@@ -721,8 +740,11 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
     onRecoveryExhausted: () => {
       setStreaming(false);
       streamingRef.current = false;
-      setResumePromptVisible(true);
-      if (!readPendingAgentRunId(sessionKey)) {
+      const runId = readPendingAgentRunId(sessionKey);
+      if (runId) {
+        setResumePromptVisible(true);
+      } else {
+        setResumePromptVisible(false);
         setSnackMsg(m.chat.streamRecoveryFailed);
       }
     },
@@ -817,6 +839,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
     streaming,
     streamReconnecting,
     resumePromptVisible,
+    pendingRunId,
     progress,
     snackMsg,
     setSnackMsg,
