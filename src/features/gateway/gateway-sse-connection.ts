@@ -1,7 +1,8 @@
-import { notifyUnauthorizedIfNeeded } from '../../api/client';
+import { notifyUnauthorizedIfNeeded } from '../../api/notify-unauthorized';
 import { useGatewayStore } from '../../stores/gateway-store';
 
 import { dispatchGatewaySseEvent } from './dispatch-gateway-sse-event';
+import { runProbeRound } from './probe-coordinator';
 
 export type GatewaySseCallbacks = {
   onConnected: () => void;
@@ -76,12 +77,21 @@ type Transport = { close: () => void };
  * Long-lived SSE to `GET /api/events` (parity with web `GatewaySseConnection`).
  * Uses `EventSource` on web when available; XHR incremental parse on React Native.
  */
+/** Re-probe LAN/tunnel and pick the new winner after this many consecutive
+ * reconnect failures on the current route. Tied to wall-clock cap of about
+ * 1+2+4 seconds of backoff before the first re-route attempt. */
+const SSE_REPROBE_AFTER_FAILURES = 3;
+
 export class GatewaySseConnection {
   private transport?: Transport;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private _shouldReconnect = true;
   private _reconnectCount = 0;
   private _closed = false;
+  /** Counts consecutive reconnect attempts that fail before resetting after
+   * a successful 'connected' event. Drives the route-swap heuristic. */
+  private _failureStreak = 0;
+  private _reprobeInFlight = false;
 
   constructor(
     private readonly callbacks: GatewaySseCallbacks,
@@ -142,6 +152,7 @@ export class GatewaySseConnection {
     es.addEventListener('connected', () => {
       sawConnected = true;
       this._reconnectCount = 0;
+      this._failureStreak = 0;
       this.callbacks.onConnected();
     });
 
@@ -176,6 +187,7 @@ export class GatewaySseConnection {
       if (!sawConnected && event === 'connected') {
         sawConnected = true;
         this._reconnectCount = 0;
+        this._failureStreak = 0;
         this.callbacks.onConnected();
       }
     });
@@ -238,9 +250,14 @@ export class GatewaySseConnection {
     }
 
     this._reconnectCount++;
+    this._failureStreak++;
     if (this._reconnectCount > this.maxReconnectAttempts) {
       this.callbacks.onError('Gateway SSE connection failed after max retries');
       return;
+    }
+
+    if (this._failureStreak >= SSE_REPROBE_AFTER_FAILURES) {
+      this.triggerRouteReprobe();
     }
 
     const delayMs = Math.min(30_000, 1000 * 2 ** Math.min(this._reconnectCount, 5));
@@ -250,5 +267,22 @@ export class GatewaySseConnection {
         this.openTransport();
       }
     }, delayMs);
+  }
+
+  /** When the current route keeps failing, kick a fresh race so we can move
+   * to the LAN/tunnel that's actually answering. Single-flight: never run two
+   * reprobes in parallel. We don't await — the next backoff tick consumes the
+   * new activeBaseUrl via buildUrl(). */
+  private triggerRouteReprobe(): void {
+    if (this._reprobeInFlight) return;
+    this._reprobeInFlight = true;
+    this._failureStreak = 0;
+    void runProbeRound('sse-degraded', { force: true })
+      .catch(() => {
+        /* probe errors are non-fatal — caller still retries on its own */
+      })
+      .finally(() => {
+        this._reprobeInFlight = false;
+      });
   }
 }

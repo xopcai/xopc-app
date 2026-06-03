@@ -2,6 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 
 import { agentsResponseSchema } from '../config/schema';
 import { apiFetch, formatApiHttpError } from '../api/client';
+import {
+  readCachedAgents,
+  writeCachedAgents,
+} from '../features/gateway/agents-cache';
+import { useGatewayStore } from '../stores/gateway-store';
 import { queryKeys } from './keys';
 import { usePreferencesStore } from '../stores/preferences-store';
 
@@ -63,8 +68,15 @@ export function useEffectiveDefaultAgentId(): string {
   const agentsQuery = useQuery({
     queryKey: queryKeys.agents,
     queryFn: fetchChatAgents,
+    placeholderData: () => readPlaceholderAgents() ?? undefined,
   });
   return resolveEffectiveDefaultAgentId(agentsQuery.data, localOverride);
+}
+
+/** Last-known agent list for the active profile; used as `placeholderData`
+ * so the chat header agent name renders instantly on cold start. */
+export function readPlaceholderAgents(): ChatAgentsPayload | null {
+  return readCachedAgents(useGatewayStore.getState().activeGatewayId);
 }
 
 export async function fetchChatAgents(): Promise<ChatAgentsPayload> {
@@ -86,8 +98,11 @@ export async function fetchChatAgents(): Promise<ChatAgentsPayload> {
       name: a.name?.trim() || undefined,
       description: a.description?.trim() || undefined,
     }));
-  if (items.length === 0) {
-    return { defaultId: defaultId.trim().toLowerCase(), items: [{ id: 'main' }] };
-  }
-  return { defaultId: defaultId.trim().toLowerCase(), items };
+  const payload: ChatAgentsPayload =
+    items.length === 0
+      ? { defaultId: defaultId.trim().toLowerCase(), items: [{ id: 'main' }] }
+      : { defaultId: defaultId.trim().toLowerCase(), items };
+
+  writeCachedAgents(useGatewayStore.getState().activeGatewayId, payload);
+  return payload;
 }

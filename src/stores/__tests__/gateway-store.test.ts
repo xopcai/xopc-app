@@ -9,6 +9,7 @@ vi.mock('../../storage/mmkv', () => ({
     token: 'gateway.token',
     profiles: 'gateway.profiles',
     activeId: 'gateway.activeId',
+    routeWinnerPrefix: 'gateway.routeWinner:',
     pendingRunPrefix: 'xopc:pendingRun:',
     language: 'prefs.language',
     themePreference: 'prefs.themePreference',
@@ -28,6 +29,12 @@ vi.mock('../../storage/mmkv', () => ({
 
 vi.mock('../../api/connection-strategy', () => ({
   resolvePreferredBaseUrl: vi.fn(async (tunnel: string) => tunnel.replace(/\/+$/, '')),
+  raceGatewayRoutes: vi.fn(async (tunnel: string, lan: string | undefined) => ({
+    winner: lan ? 'lan' : tunnel ? 'tunnel' : 'none',
+    url: lan ? lan.replace(/\/+$/, '') : tunnel ? tunnel.replace(/\/+$/, '') : '',
+    lan: null,
+    tunnel: null,
+  })),
 }));
 
 import { KEYS } from '../../storage/mmkv';

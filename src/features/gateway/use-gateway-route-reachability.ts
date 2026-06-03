@@ -1,25 +1,77 @@
+/**
+ * Reachability hook for the settings UI. Subscribes to the shared probe
+ * coordinator instead of running its own race so all UI surfaces see the
+ * same numbers without sending duplicate /health pings.
+ */
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useGatewayStore } from '../../stores/gateway-store';
 
 import {
-  probeAndApplyPreferredRoute,
   type GatewayRouteReachability,
   type RouteReachabilityInfo,
 } from './check-gateway-routes';
+import {
+  getLastProbeOutcome,
+  runProbeRound,
+  subscribeProbeOutcome,
+  type ProbeOutcome,
+} from './probe-coordinator';
 
-const ROUTE_RECHECK_COOLDOWN_MS = 20_000;
-
-function initialReachability(lanUrl: string | null, enabled: boolean, baseUrl: string): GatewayRouteReachability {
-  return {
-    lan: { status: lanUrl ? 'checking' : 'not_configured' },
-    tunnel: { status: enabled && baseUrl.trim() ? 'checking' : 'unreachable' },
-  };
+function notConfigured(): RouteReachabilityInfo {
+  return { status: 'not_configured' };
 }
 
-function unreachableInfo(reason?: RouteReachabilityInfo['reason']): RouteReachabilityInfo {
-  return { status: 'unreachable', reason };
+function checking(): RouteReachabilityInfo {
+  return { status: 'checking' };
+}
+
+function unreachable(): RouteReachabilityInfo {
+  return { status: 'unreachable' };
+}
+
+function fromOutcome(
+  outcome: ProbeOutcome | null,
+  hasLan: boolean,
+  hasTunnel: boolean,
+): GatewayRouteReachability {
+  if (!outcome) {
+    return {
+      lan: hasLan ? checking() : notConfigured(),
+      tunnel: hasTunnel ? checking() : { status: 'unreachable', reason: 'invalid_url' },
+    };
+  }
+  const lanProbe = outcome.result.lan;
+  const tunnelProbe = outcome.result.tunnel;
+  return {
+    lan: hasLan
+      ? lanProbe
+        ? lanProbe.reachable
+          ? { status: 'reachable', latencyMs: lanProbe.latencyMs }
+          : {
+              status: 'unreachable',
+              reason: lanProbe.reason,
+              httpStatus: lanProbe.httpStatus,
+              detail: lanProbe.errorMessage,
+              latencyMs: lanProbe.latencyMs,
+            }
+        : unreachable()
+      : notConfigured(),
+    tunnel: hasTunnel
+      ? tunnelProbe
+        ? tunnelProbe.reachable
+          ? { status: 'reachable', latencyMs: tunnelProbe.latencyMs }
+          : {
+              status: 'unreachable',
+              reason: tunnelProbe.reason,
+              httpStatus: tunnelProbe.httpStatus,
+              detail: tunnelProbe.errorMessage,
+              latencyMs: tunnelProbe.latencyMs,
+            }
+        : unreachable()
+      : { status: 'unreachable', reason: 'invalid_url' },
+  };
 }
 
 export function useGatewayRouteReachability(enabled: boolean): {
@@ -29,48 +81,38 @@ export function useGatewayRouteReachability(enabled: boolean): {
 } {
   const baseUrl = useGatewayStore((s) => s.baseUrl);
   const lanUrl = useGatewayStore((s) => s.lanUrl);
-  const token = useGatewayStore((s) => s.token);
+  const hasTunnel = enabled && Boolean(baseUrl.trim());
+  const hasLan = Boolean(lanUrl?.trim());
 
-  const [reachability, setReachability] = useState<GatewayRouteReachability>(() =>
-    initialReachability(lanUrl, enabled, baseUrl),
-  );
-  const [checking, setChecking] = useState(false);
-  const lastRecheckAtRef = useRef(0);
-
-  const recheck = useCallback(async () => {
-    if (!enabled || !baseUrl.trim()) {
-      setReachability({
-        lan: lanUrl ? unreachableInfo() : { status: 'not_configured' },
-        tunnel: unreachableInfo(),
-      });
-      return;
-    }
-
-    const now = Date.now();
-    if (now - lastRecheckAtRef.current < ROUTE_RECHECK_COOLDOWN_MS) return;
-    lastRecheckAtRef.current = now;
-
-    setChecking(true);
-    setReachability(initialReachability(lanUrl, enabled, baseUrl));
-
-    try {
-      const { reachability: next } = await probeAndApplyPreferredRoute();
-      setReachability(next);
-    } finally {
-      setChecking(false);
-    }
-  }, [baseUrl, enabled, lanUrl, token]);
+  const [outcome, setOutcome] = useState<ProbeOutcome | null>(() => getLastProbeOutcome());
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void recheck();
-  }, [recheck]);
+    if (!enabled || !baseUrl.trim()) return;
+    const unsub = subscribeProbeOutcome((next) => setOutcome(next));
+    void runProbeRound('initial');
+    return unsub;
+  }, [enabled, baseUrl]);
 
   useFocusEffect(
     useCallback(() => {
       if (!enabled) return;
-      void recheck();
-    }, [enabled, recheck]),
+      void runProbeRound('foreground');
+    }, [enabled]),
   );
 
-  return { reachability, checking, recheck };
+  const recheck = useCallback(async () => {
+    setBusy(true);
+    try {
+      await runProbeRound('manual', { force: true });
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  return {
+    reachability: fromOutcome(outcome, hasLan, hasTunnel),
+    checking: busy,
+    recheck,
+  };
 }

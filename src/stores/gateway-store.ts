@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 
-import { resolvePreferredBaseUrl } from '../api/connection-strategy';
+import { readAnyNetworkLastGoodRoute } from '../features/gateway/last-good-route';
+import { runProbeRound } from '../features/gateway/probe-coordinator';
+import {
+  readRouteOverride,
+  writeRouteOverride,
+  type RouteOverride,
+} from '../features/gateway/route-override';
 import { KEYS, storage } from '../storage/mmkv';
 
 import {
@@ -39,6 +45,9 @@ export type GatewayState = {
   updateProfile: (id: string, patch: Partial<GatewayProfileInput>) => void;
   removeProfile: (id: string) => void;
   switchGateway: (id: string) => void;
+  /** Manual route override for the active profile. */
+  routeOverride: RouteOverride;
+  setRouteOverride: (override: RouteOverride) => Promise<void>;
 };
 
 function normalizeBaseUrl(raw: string): string {
@@ -47,7 +56,7 @@ function normalizeBaseUrl(raw: string): string {
 
 function flatFieldsFromProfile(profile: GatewayProfile | null): Pick<
   GatewayState,
-  'baseUrl' | 'lanUrl' | 'token' | 'activeBaseUrl' | 'unauthorized'
+  'baseUrl' | 'lanUrl' | 'token' | 'activeBaseUrl' | 'unauthorized' | 'routeOverride'
 > {
   if (!profile) {
     return {
@@ -56,6 +65,7 @@ function flatFieldsFromProfile(profile: GatewayProfile | null): Pick<
       token: '',
       activeBaseUrl: '',
       unauthorized: false,
+      routeOverride: 'auto',
     };
   }
   const baseUrl = normalizeBaseUrl(profile.baseUrl);
@@ -64,10 +74,33 @@ function flatFieldsFromProfile(profile: GatewayProfile | null): Pick<
     baseUrl,
     lanUrl,
     token: profile.token.trim(),
-    // Prefer LAN route until health probe confirms otherwise.
-    activeBaseUrl: preferredActiveBaseUrlFromFlat({ baseUrl, lanUrl }),
+    activeBaseUrl: pickInitialActiveBaseUrl(profile.id, baseUrl, lanUrl),
     unauthorized: false,
+    routeOverride: readRouteOverride(profile.id),
   };
+}
+
+/**
+ * Pick the most-likely-reachable URL for the very first request after hydrate
+ * before any probe completes. Order:
+ *   1. Manual override — user pinned this route, honour it.
+ *   2. Last-known winner across any network (skips dead-LAN-on-cellular).
+ *   3. preferredActiveBaseUrlFromFlat (lan ?? base) — last resort.
+ */
+function pickInitialActiveBaseUrl(
+  profileId: string,
+  baseUrl: string,
+  lanUrl: string | null,
+): string {
+  const override = readRouteOverride(profileId);
+  if (override === 'lan' && lanUrl) return lanUrl;
+  if (override === 'tunnel' && baseUrl) return baseUrl;
+  const cached = readAnyNetworkLastGoodRoute(profileId);
+  if (cached) {
+    if (cached.kind === 'lan' && lanUrl && cached.url === lanUrl) return lanUrl;
+    if (cached.kind === 'tunnel' && baseUrl && cached.url === baseUrl) return baseUrl;
+  }
+  return preferredActiveBaseUrlFromFlat({ baseUrl, lanUrl });
 }
 
 function parseProfilesJson(raw: string): GatewayProfile[] | null {
@@ -131,6 +164,19 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
   activeBaseUrl: '',
   token: '',
   unauthorized: false,
+  routeOverride: 'auto',
+
+  setRouteOverride: async (override: RouteOverride) => {
+    const { activeGatewayId, baseUrl, lanUrl } = get();
+    if (!activeGatewayId) return;
+    writeRouteOverride(activeGatewayId, override);
+    // Update activeBaseUrl optimistically; the probe round below confirms.
+    let nextActive = get().activeBaseUrl;
+    if (override === 'lan' && lanUrl) nextActive = lanUrl;
+    else if (override === 'tunnel' && baseUrl) nextActive = baseUrl;
+    set({ routeOverride: override, activeBaseUrl: nextActive });
+    await runProbeRound('manual', { force: true });
+  },
 
   setBaseUrl: (v) => {
     const baseUrl = normalizeBaseUrl(v);
@@ -169,19 +215,27 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
   },
 
   refreshActiveBaseUrl: async () => {
-    const { baseUrl, lanUrl, token } = get();
+    const { baseUrl, lanUrl } = get();
     const tunnel = normalizeBaseUrl(baseUrl);
     const lan = lanUrl ? normalizeBaseUrl(lanUrl) : '';
-
     if (!tunnel && !lan) {
       set({ activeBaseUrl: '' });
       return '';
     }
-
-    const active = await resolvePreferredBaseUrl(baseUrl, lanUrl ?? undefined, { token });
-    const resolved = normalizeBaseUrl(active) || lan || tunnel;
-    set({ activeBaseUrl: resolved });
-    return resolved;
+    const outcome = await runProbeRound('settings-saved', { force: true });
+    const winnerUrl = outcome.result.url;
+    if (
+      winnerUrl &&
+      (outcome.result.winner === 'lan' || outcome.result.winner === 'tunnel')
+    ) {
+      const resolved = normalizeBaseUrl(winnerUrl);
+      set({ activeBaseUrl: resolved });
+      return resolved;
+    }
+    // Both unreachable — keep the previous best guess; don't poison the URL.
+    const fallback = normalizeBaseUrl(get().activeBaseUrl) || lan || tunnel;
+    set({ activeBaseUrl: fallback });
+    return fallback;
   },
 
   hydrateFromStorage: () => {

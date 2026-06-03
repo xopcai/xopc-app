@@ -9,6 +9,7 @@ import {
   SettingsSection,
   useSettingsColors,
 } from '../../src/features/settings/settings-ui';
+import { ConnectionLogCard } from '../../src/features/gateway/ConnectionLogCard';
 import { useMessages } from '../../src/i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '../../src/lib/navigation';
 import {
@@ -134,10 +135,18 @@ export default function SettingsIndexScreen() {
           icon="checkbox-marked-outline"
           iconColor="#34C759"
           label={m.tasksPage.title}
-          isLast
           onPress={() => router.push('/tasks')}
         />
+        <SettingsRow
+          icon="share-variant"
+          iconColor="#2563EB"
+          label={m.mySharesPage.title}
+          isLast
+          onPress={() => router.push('/shares')}
+        />
       </SettingsSection>
+
+      <ConnectionLogCard />
 
       <SettingsSection title={s.sectionAbout}>
         <SettingsRow

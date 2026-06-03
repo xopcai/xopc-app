@@ -1,16 +1,24 @@
 /**
- * Drawer sidebar gateway connection summary — full active URL, route kind, online status.
+ * Drawer pill — bg/border morph + foreground opacity dip masks the icon/
+ * text colour swap so the whole pill feels like one unified animation.
+ * Long-press opens the manual-route override sheet.
  */
-import { memo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { Text } from 'react-native-paper';
+import { memo, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
+import { Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
 import { useResolvedIsDark } from '../../lib/stack-screen-theme';
+import { useGatewayStore } from '../../stores/gateway-store';
 
+import { AnimatedConnectionPill } from './AnimatedConnectionPill';
+import {
+  copyForConnectionState,
+  severityForConnectionState,
+  useConnectionState,
+} from './connection-state';
+import { RouteOverrideMenu } from './RouteOverrideMenu';
 import { useActiveGatewayDisplay } from './use-active-gateway-display';
-import { useGatewayHealth } from './use-gateway-health';
-import { connectionKindLabel, useGatewayConnectionView } from './use-gateway-connection-view';
 
 export const DrawerGatewayConnection = memo(function DrawerGatewayConnection({
   onPress,
@@ -19,16 +27,14 @@ export const DrawerGatewayConnection = memo(function DrawerGatewayConnection({
 }) {
   const isDark = useResolvedIsDark();
   const m = useMessages();
-  const g = m.gateway;
-  const gatewayDisplay = useActiveGatewayDisplay();
-  const connectionView = useGatewayConnectionView();
-  const { gatewayOnline } = useGatewayHealth();
+  const display = useActiveGatewayDisplay();
+  const state = useConnectionState();
+  const severity = severityForConnectionState(state);
+  const copy = copyForConnectionState(state, m.gateway.state);
+  const routeOverride = useGatewayStore((s) => s.routeOverride);
+  const [overrideMenuVisible, setOverrideMenuVisible] = useState(false);
 
-  const text = isDark ? '#F5F5F7' : '#1C1C1E';
-  const muted = isDark ? '#8E8E93' : '#6D6D70';
-  const onlineColor = gatewayOnline ? '#34C759' : '#FF453A';
-
-  if (!gatewayDisplay.configured) {
+  if (!display.configured) {
     return (
       <Pressable
         style={styles.wrap}
@@ -36,41 +42,96 @@ export const DrawerGatewayConnection = memo(function DrawerGatewayConnection({
         disabled={!onPress}
         accessibilityRole={onPress ? 'button' : undefined}
       >
-        <Text style={[styles.address, { color: muted }]} numberOfLines={2}>
-          {m.sessions.gatewayNotConfigured}
-        </Text>
+        <AnimatedConnectionPill severity="idle" isDark={isDark}>
+          {({ color }) => (
+            <>
+              <Icon source="cloud-off-outline" size={14} color={color} />
+              <Text style={[styles.pillText, { color }]} numberOfLines={1}>
+                {copy.short}
+              </Text>
+            </>
+          )}
+        </AnimatedConnectionPill>
       </Pressable>
     );
   }
 
-  const address =
-    connectionView.activeUrl ||
-    connectionView.tunnelUrl ||
-    connectionView.lanUrl ||
-    gatewayDisplay.subtitle;
+  const overridePinned = routeOverride !== 'auto';
+  const icon = iconForState(state.kind);
+  const isProbing = severity === 'pending';
 
-  const routeLabel = connectionKindLabel(connectionView.connectionKind, g);
-  const statusLabel = gatewayOnline ? m.chat.gatewayStatusOnline : m.chat.gatewayStatusOffline;
+  const subtitleParts: string[] = [];
+  if (display.name) subtitleParts.push(display.name);
+  if (
+    (state.kind === 'ok-lan' || state.kind === 'ok-tunnel' || state.kind === 'ok-direct') &&
+    state.latencyMs != null
+  ) {
+    subtitleParts.push(`${Math.max(0, Math.round(state.latencyMs))} ms`);
+  }
+  const subtitle = subtitleParts.join(' · ');
 
   return (
-    <Pressable
-      style={styles.wrap}
-      onPress={onPress}
-      disabled={!onPress}
-      accessibilityRole={onPress ? 'button' : undefined}
-    >
-      <Text style={[styles.address, { color: text }]} selectable numberOfLines={2}>
-        {address}
-      </Text>
-      <View style={styles.metaRow}>
-        <View style={[styles.statusDot, { backgroundColor: onlineColor }]} />
-        <Text style={[styles.meta, { color: muted }]} numberOfLines={1}>
-          {routeLabel} · {statusLabel}
-        </Text>
-      </View>
-    </Pressable>
+    <>
+      <Pressable
+        style={styles.wrap}
+        onPress={onPress}
+        onLongPress={() => setOverrideMenuVisible(true)}
+        delayLongPress={400}
+        disabled={!onPress}
+        accessibilityRole={onPress ? 'button' : undefined}
+        accessibilityHint={m.gateway.routeOverride.title}
+      >
+        <AnimatedConnectionPill severity={severity} isDark={isDark}>
+          {({ color }) => (
+            <>
+              {isProbing ? (
+                <ActivityIndicator size={12} color={color} />
+              ) : (
+                <Icon source={icon} size={14} color={color} />
+              )}
+              <Text style={[styles.pillText, { color }]} numberOfLines={1}>
+                {copy.short}
+              </Text>
+              {overridePinned ? <Icon source="pin" size={12} color={color} /> : null}
+            </>
+          )}
+        </AnimatedConnectionPill>
+        {subtitle ? (
+          <Text style={[styles.subtitle, { color: isDark ? '#8E8E93' : '#6D6D70' }]} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </Pressable>
+      <RouteOverrideMenu
+        visible={overrideMenuVisible}
+        onRequestClose={() => setOverrideMenuVisible(false)}
+      />
+    </>
   );
 });
+
+function iconForState(kind: string): string {
+  switch (kind) {
+    case 'ok-lan':
+      return 'lan-connect';
+    case 'ok-tunnel':
+      return 'cloud-check-outline';
+    case 'ok-direct':
+      return 'check-circle-outline';
+    case 'degraded-tunnel-only':
+      return 'cloud-outline';
+    case 'offline-network':
+      return 'wifi-off';
+    case 'offline-device':
+      return 'desktop-classic';
+    case 'token-invalid':
+      return 'lock-alert';
+    case 'no-route':
+      return 'alert-circle-outline';
+    default:
+      return 'progress-clock';
+  }
+}
 
 const styles = StyleSheet.create({
   wrap: {
@@ -78,23 +139,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 4,
   },
-  address: {
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  meta: {
+  pillText: {
     fontSize: 12,
     lineHeight: 16,
-    flex: 1,
+    fontWeight: '500',
+  },
+  subtitle: {
+    fontSize: 11,
+    lineHeight: 14,
   },
 });

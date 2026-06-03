@@ -4,7 +4,9 @@ import { useGatewayConfigured } from '../../query/sessions';
 import { useGatewayStore } from '../../stores/gateway-store';
 import { resolveEffectiveGatewayBaseUrl } from '../../stores/gateway-types';
 
+import { recordConnectionEvent } from './connection-log';
 import { GatewaySseConnection } from './gateway-sse-connection';
+import { setSseStatus } from './sse-status';
 
 let sharedConnection: GatewaySseConnection | null = null;
 let sharedConnectionKey = '';
@@ -13,10 +15,20 @@ let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 function createGatewaySseConnection(): GatewaySseConnection {
   return new GatewaySseConnection({
-    onConnected: () => {},
-    onReconnecting: () => {},
-    onDisconnected: () => {},
-    onError: () => {},
+    onConnected: () => {
+      setSseStatus('connected');
+      recordConnectionEvent({ kind: 'sse', ok: true, message: 'connected' });
+    },
+    onReconnecting: () => {
+      setSseStatus('reconnecting');
+    },
+    onDisconnected: () => {
+      setSseStatus('reconnecting');
+    },
+    onError: (msg) => {
+      setSseStatus('failed');
+      recordConnectionEvent({ kind: 'sse', ok: false, message: msg });
+    },
   });
 }
 
@@ -32,6 +44,7 @@ function acquireSharedConnection(connectionKey: string): void {
   sharedConnection?.disconnect();
   sharedConnection = createGatewaySseConnection();
   sharedConnectionKey = connectionKey;
+  setSseStatus('connecting');
   sharedConnection.connect();
 }
 
@@ -45,6 +58,7 @@ function releaseSharedConnection(): void {
     sharedConnection?.disconnect();
     sharedConnection = null;
     sharedConnectionKey = '';
+    setSseStatus('idle');
   }, 250);
 }
 

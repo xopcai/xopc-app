@@ -37,13 +37,17 @@ function ConnectionRow({
   const colors = useSettingsColors();
   const g = useMessages().gateway;
   const status = reachability?.status ?? 'not_configured';
-  const statusLabel = reachability
+  const baseStatusLabel = reachability
     ? reachabilityStatusLabel(status, {
         reachable: g.addressReachable,
         unreachable: g.addressUnreachable,
         checking: g.connectionDetecting,
       })
     : '';
+  const statusLabel =
+    baseStatusLabel && status === 'reachable' && typeof reachability?.latencyMs === 'number'
+      ? `${baseStatusLabel} · ${Math.max(0, Math.round(reachability.latencyMs))} ms`
+      : baseStatusLabel;
   const statusColor = reachability
     ? reachabilityStatusColor(status, colors.textMuted)
     : colors.textMuted;

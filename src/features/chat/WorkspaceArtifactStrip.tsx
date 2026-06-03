@@ -4,8 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
+import type { ShareAutoRequest } from '../../api/share';
 import { useMessages } from '../../i18n/messages';
 import { useGatewayStore } from '../../stores/gateway-store';
+import { ShareSheet } from '../share/ShareSheet';
+import { prefetchShare } from '../share/share-prefetch';
 import { mapManageRouteToAppPath } from './file-reference-routes';
 import { FilePreviewModal, type PreviewableFile } from './FilePreviewModal';
 import type { ExtractedFilePath } from './tool-result-file-paths';
@@ -146,6 +149,14 @@ function OffWorkspaceArtifactCard({
   );
 }
 
+function buildShareRequest(rel: string, sessionKey?: string | null): ShareAutoRequest {
+  return {
+    path: rel,
+    audience: 'friend',
+    ...(sessionKey?.trim() ? { sessionKey: sessionKey.trim() } : {}),
+  };
+}
+
 export function WorkspaceArtifactStrip({
   paths,
   sessionKey,
@@ -156,8 +167,10 @@ export function WorkspaceArtifactStrip({
   const isDark = useColorScheme() === 'dark';
   const apiUrl = useGatewayStore((s) => s.apiUrl);
   const token = useGatewayStore((s) => s.token);
+  const m = useMessages();
   const [resolved, setResolved] = useState<ResolvedArtifact[] | null>(null);
   const [active, setActive] = useState<PreviewableFile | null>(null);
+  const [shareTarget, setShareTarget] = useState<ShareAutoRequest | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -191,6 +204,15 @@ export function WorkspaceArtifactStrip({
         .map((p) => ({ ...p, rel: normalizeRel(p.refInfo.workspaceRelativePath!) })),
     [visible],
   );
+
+  // Warm the share cache for every workspace artifact rendered. Cheap: each
+  // call is idempotent and only fires once per (path, sessionKey) within 5
+  // minutes — see share-prefetch.ts.
+  useEffect(() => {
+    for (const p of workspacePaths) {
+      prefetchShare(buildShareRequest(p.rel, sessionKey));
+    }
+  }, [workspacePaths, sessionKey]);
   const imagePaths = useMemo(() => workspacePaths.filter((p) => isImageMimeType(p.mimeType)), [workspacePaths]);
   const otherPaths = useMemo(() => workspacePaths.filter((p) => !isImageMimeType(p.mimeType)), [workspacePaths]);
   const nonWorkspacePaths = useMemo(() => visible.filter((p) => p.refInfo.scope !== 'workspace'), [visible]);
@@ -207,32 +229,55 @@ export function WorkspaceArtifactStrip({
     <>
       <View style={styles.wrap}>
         {imagePaths.map((p) => (
-          <Pressable
-            key={p.absolutePath}
-            style={({ pressed }) => [styles.thumb, { borderColor: border }, pressed && styles.pressed]}
-            onPress={() => setActive(toPreviewable(p))}
-            accessibilityRole="button"
-            accessibilityLabel={`预览 ${p.fileName}`}
-          >
-            <Image
-              source={{ uri: apiUrl(rawPath(p.rel, sessionKey)), headers }}
-              style={styles.thumbImage}
-              resizeMode="cover"
-            />
-          </Pressable>
+          <View key={p.absolutePath} style={[styles.thumb, { borderColor: border }]}>
+            <Pressable
+              style={({ pressed }) => [styles.thumbFill, pressed && styles.pressed]}
+              onPress={() => setActive(toPreviewable(p))}
+              accessibilityRole="button"
+              accessibilityLabel={`预览 ${p.fileName}`}
+            >
+              <Image
+                source={{ uri: apiUrl(rawPath(p.rel, sessionKey)), headers }}
+                style={styles.thumbImage}
+                resizeMode="cover"
+              />
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.thumbShareBadge, pressed && styles.pressed]}
+              onPress={() => setShareTarget(buildShareRequest(p.rel, sessionKey))}
+              accessibilityRole="button"
+              accessibilityLabel={m.chat.shareFile}
+              hitSlop={6}
+            >
+              <Icon source="share-variant" size={14} color="#FFFFFF" />
+            </Pressable>
+          </View>
         ))}
         {otherPaths.map((p) => (
-          <Pressable
+          <View
             key={p.absolutePath}
-            style={({ pressed }) => [styles.chip, { borderColor: border, backgroundColor: chipBg }, pressed && styles.pressed]}
-            onPress={() => setActive(toPreviewable(p))}
-            accessibilityRole="button"
-            accessibilityLabel={`预览 ${p.fileName}`}
+            style={[styles.chip, { borderColor: border, backgroundColor: chipBg }]}
           >
-            <Icon source="file-outline" size={16} color={muted} />
-            <Text style={[styles.chipText, { color: textColor }]} numberOfLines={1}>{p.fileName}</Text>
-            <Icon source="eye-outline" size={14} color={muted} />
-          </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.chipBody, pressed && styles.pressed]}
+              onPress={() => setActive(toPreviewable(p))}
+              accessibilityRole="button"
+              accessibilityLabel={`预览 ${p.fileName}`}
+            >
+              <Icon source="file-outline" size={16} color={muted} />
+              <Text style={[styles.chipText, { color: textColor }]} numberOfLines={1}>{p.fileName}</Text>
+              <Icon source="eye-outline" size={14} color={muted} />
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.chipShareButton, pressed && styles.pressed]}
+              onPress={() => setShareTarget(buildShareRequest(p.rel, sessionKey))}
+              accessibilityRole="button"
+              accessibilityLabel={m.chat.shareFile}
+              hitSlop={6}
+            >
+              <Icon source="share-variant" size={14} color={muted} />
+            </Pressable>
+          </View>
         ))}
         {nonWorkspacePaths.map((p) => (
           <OffWorkspaceArtifactCard
@@ -252,6 +297,11 @@ export function WorkspaceArtifactStrip({
         sessionKey={sessionKey}
         onClose={() => setActive(null)}
       />
+      <ShareSheet
+        visible={Boolean(shareTarget)}
+        request={shareTarget}
+        onClose={() => setShareTarget(null)}
+      />
     </>
   );
 }
@@ -268,21 +318,52 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
     overflow: 'hidden',
+    position: 'relative',
+  },
+  thumbFill: {
+    width: '100%',
+    height: '100%',
   },
   thumbImage: {
     width: '100%',
     height: '100%',
+  },
+  thumbShareBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chip: {
     maxWidth: '100%',
     minHeight: 34,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingLeft: 10,
+    paddingRight: 4,
+    paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  chipBody: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexShrink: 1,
+    paddingVertical: 3,
+  },
+  chipShareButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chipText: {
     flexShrink: 1,
