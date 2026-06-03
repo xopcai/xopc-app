@@ -13,6 +13,18 @@ describe('buildPairExchangeOrigins', () => {
     ).toEqual(['https://abc.frp.xopc.ai', 'http://192.168.1.2:18790']);
   });
 
+  it('prefers any HTTPS baseUrl (e.g. user reverse-proxy domain) before LAN', () => {
+    expect(
+      buildPairExchangeOrigins('https://gateway.example.com', 'http://192.168.1.2:18790'),
+    ).toEqual(['https://gateway.example.com', 'http://192.168.1.2:18790']);
+  });
+
+  it('falls back to LAN-first when baseUrl is plain http (legacy / lan-only deploy)', () => {
+    expect(
+      buildPairExchangeOrigins('http://192.168.1.5:18790', 'http://192.168.1.2:18790'),
+    ).toEqual(['http://192.168.1.2:18790', 'http://192.168.1.5:18790']);
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });

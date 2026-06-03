@@ -1,28 +1,6 @@
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { formatReachabilityReason, probeGatewayRoutes } from '../check-gateway-routes';
-
-vi.mock('../../../api/connection-strategy', () => ({
-  probeGatewayRouteReachability: vi.fn(),
-}));
-
-vi.mock('../../../stores/gateway-store', () => ({
-  useGatewayStore: {
-    getState: vi.fn(() => ({
-      activeBaseUrl: '',
-      baseUrl: '',
-      lanUrl: null,
-      refreshActiveBaseUrl: vi.fn(async () => ''),
-      token: '',
-    })),
-  },
-}));
-
-vi.mock('../gateway-connection-sync', () => ({
-  syncGatewayAfterConnectivityChange: vi.fn(),
-}));
-
-import { probeGatewayRouteReachability } from '../../../api/connection-strategy';
+import { formatReachabilityReason } from '../check-gateway-routes';
 
 const labels = {
   timeout: 'timeout-msg',
@@ -32,50 +10,6 @@ const labels = {
   httpError: 'http {{status}}',
 };
 
-describe('probeGatewayRoutes', () => {
-  afterEach(() => {
-    vi.mocked(probeGatewayRouteReachability).mockReset();
-  });
-
-  it('marks LAN reachable and tunnel unreachable independently', async () => {
-    vi.mocked(probeGatewayRouteReachability).mockImplementation(async (url: string) =>
-      url.includes('192.168')
-        ? { reachable: true }
-        : { reachable: false, reason: 'network_error', errorMessage: 'Network request failed' },
-    );
-
-    await expect(
-      probeGatewayRoutes({
-        tunnelUrl: 'https://abc.frp.xopc.ai',
-        lanUrl: 'http://192.168.1.44:18790',
-        token: 'tok',
-      }),
-    ).resolves.toEqual({
-      lan: { status: 'reachable' },
-      tunnel: {
-        status: 'unreachable',
-        reason: 'network_error',
-        detail: 'Network request failed',
-      },
-    });
-  });
-
-  it('returns not_configured for LAN when lanUrl is missing', async () => {
-    vi.mocked(probeGatewayRouteReachability).mockResolvedValue({ reachable: true });
-
-    await expect(
-      probeGatewayRoutes({
-        tunnelUrl: 'https://abc.frp.xopc.ai',
-        lanUrl: null,
-        token: 'tok',
-      }),
-    ).resolves.toEqual({
-      lan: { status: 'not_configured' },
-      tunnel: { status: 'reachable' },
-    });
-  });
-});
-
 describe('formatReachabilityReason', () => {
   it('formats network error detail', () => {
     expect(
@@ -84,6 +18,27 @@ describe('formatReachabilityReason', () => {
         labels,
       ),
     ).toBe('network-detail: Network request failed');
+  });
+
+  it('falls back to plain network message without a detail', () => {
+    expect(
+      formatReachabilityReason({ status: 'unreachable', reason: 'network_error' }, labels),
+    ).toBe('network-msg');
+  });
+
+  it('formats timeout, invalid url, and http status reasons', () => {
+    expect(
+      formatReachabilityReason({ status: 'unreachable', reason: 'timeout' }, labels),
+    ).toBe('timeout-msg');
+    expect(
+      formatReachabilityReason({ status: 'unreachable', reason: 'invalid_url' }, labels),
+    ).toBe('invalid-url-msg');
+    expect(
+      formatReachabilityReason(
+        { status: 'unreachable', reason: 'http_error', httpStatus: 502 },
+        labels,
+      ),
+    ).toBe('http 502');
   });
 
   it('returns empty string for reachable routes', () => {

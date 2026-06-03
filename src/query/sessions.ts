@@ -1,5 +1,9 @@
 import { useGatewayStore } from '../stores/gateway-store';
 import { apiFetch, formatApiHttpError } from '../api/client';
+import {
+  readCachedSessions,
+  writeCachedSessions,
+} from '../features/gateway/sessions-cache';
 import { sessionListItemSchema, sessionsListResponseSchema } from '../config/schema';
 
 // ── Types ────────────────────────────────────────────────────────
@@ -58,7 +62,9 @@ function encKey(key: string): string {
 // ── List / Detail / Create ───────────────────────────────────────
 
 export async function fetchSessionsList(): Promise<SessionListItem[]> {
-  const res = await apiFetch('/api/sessions?limit=80&channel=webchat&sortBy=updatedAt&sortOrder=desc');
+  const res = await apiFetch(
+    '/api/sessions?limit=80&channel=webchat&sortBy=updatedAt&sortOrder=desc',
+  );
   if (!res.ok) throwApiError(res, await parseErrorBody(res));
   const raw = await res.json();
   const parsed = sessionsListResponseSchema.safeParse(raw);
@@ -68,7 +74,16 @@ export async function fetchSessionsList(): Promise<SessionListItem[]> {
     const one = sessionListItemSchema.safeParse(row);
     if (one.success) items.push(one.data);
   }
+  // Persist for instant first-paint on the next cold start.
+  writeCachedSessions(useGatewayStore.getState().activeGatewayId, items);
   return items;
+}
+
+/** Last-known session list for the active profile; used as react-query
+ * `placeholderData` so the drawer renders instantly while the live request
+ * fans out behind the scenes. */
+export function readPlaceholderSessions(): SessionListItem[] | null {
+  return readCachedSessions(useGatewayStore.getState().activeGatewayId);
 }
 
 export async function fetchSession(key: string): Promise<SessionDetail | null> {

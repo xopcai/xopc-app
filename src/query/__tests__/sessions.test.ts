@@ -5,13 +5,27 @@ import { apiFetch } from '../../api/client';
 
 vi.mock('../../api/client', () => ({
   apiFetch: vi.fn(),
+  notifyUnauthorizedIfNeeded: vi.fn(),
   formatApiHttpError: vi.fn((status: number, statusText: string, message?: string) =>
     message ? `${status} ${statusText}: ${message}` : `${status} ${statusText}`,
   ),
 }));
 
+vi.mock('../../api/dual-fire-fetch', () => ({
+  dualFireFetch: vi.fn(),
+  hasCachedRouteWinner: vi.fn(() => true),
+}));
+
+vi.mock('../../features/gateway/sessions-cache', () => ({
+  readCachedSessions: vi.fn(() => null),
+  writeCachedSessions: vi.fn(),
+  clearCachedSessions: vi.fn(),
+}));
+
 vi.mock('../../stores/gateway-store', () => ({
-  useGatewayStore: vi.fn(),
+  useGatewayStore: Object.assign(vi.fn(), {
+    getState: vi.fn(() => ({ activeGatewayId: null })),
+  }),
 }));
 
 const mockedApiFetch = vi.mocked(apiFetch);

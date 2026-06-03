@@ -13,7 +13,6 @@ import {
   View,
 } from 'react-native';
 import {
-  ActivityIndicator,
   Checkbox,
   Icon,
   IconButton,
@@ -26,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useGatewayConnectLanding } from '../features/gateway/gateway-connect-context';
 import { DrawerGatewayConnection } from '../features/gateway/DrawerGatewayConnection';
+import { SessionListSkeleton } from '../features/gateway/SessionListSkeleton';
 import { DeleteConfirmDialog } from '../features/sessions/DeleteConfirmDialog';
 import { RenameDialog } from '../features/sessions/RenameDialog';
 import {
@@ -34,13 +34,14 @@ import {
 } from '../features/sessions/SessionActionPopover';
 import { useMessages, t } from '../i18n/messages';
 import { useResolvedIsDark } from '../lib/stack-screen-theme';
-import { fetchChatAgents } from '../query/agents';
+import { fetchChatAgents, readPlaceholderAgents } from '../query/agents';
 import { queryKeys } from '../query/keys';
 import { resolveEffectiveDefaultAgentId } from '../query/agents';
 import {
   createSession,
   deleteSession,
   fetchSessionsList,
+  readPlaceholderSessions,
   renameSession,
   useGatewayConfigured,
 } from '../query/sessions';
@@ -113,12 +114,16 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
     queryKey: queryKeys.sessions,
     queryFn: fetchSessionsList,
     enabled: configured,
+    // Render the last persisted list instantly on cold start; live request
+    // refreshes it. react-query smoothly swaps in the live result.
+    placeholderData: () => readPlaceholderSessions() ?? undefined,
   });
 
   const agentsQuery = useQuery({
     queryKey: queryKeys.agents,
     queryFn: fetchChatAgents,
     enabled: configured,
+    placeholderData: () => readPlaceholderAgents() ?? undefined,
   });
 
   const localDefaultAgentId = usePreferencesStore((s) => s.defaultAgentId);
@@ -365,12 +370,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
 
   const historyContent = (() => {
     if (sessionsQuery.isLoading && sessions.length === 0) {
-      return (
-        <View style={styles.emptyWrap}>
-          <ActivityIndicator color={colors.accent} />
-          <Text style={{ color: colors.textMuted, marginTop: 12 }}>{m.common.loading}</Text>
-        </View>
-      );
+      return <SessionListSkeleton isDark={isDark} />;
     }
 
     if (sessionsQuery.isError && sessions.length === 0) {

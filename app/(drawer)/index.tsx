@@ -29,14 +29,22 @@ import { MessageList } from '../../src/features/chat/MessageList';
 import {
   buildUserResendPayload, findPrecedingUserMessage,
 } from '../../src/features/chat/composer-send-helpers';
-import { useGatewayFullyUnreachable } from '../../src/features/gateway/use-gateway-fully-unreachable';
 import { syncAfterGatewaySettingsSave } from '../../src/features/gateway/gateway-connection-sync';
 import { useGatewayHealth } from '../../src/features/gateway/use-gateway-health';
+import { GlobalConnectionStatusBar } from '../../src/features/gateway/GlobalConnectionStatusBar';
+import { useGatewayConnectLanding } from '../../src/features/gateway/gateway-connect-context';
+import { RouteOverrideToastView } from '../../src/features/gateway/RouteOverrideToastView';
+import { useRouteOverrideToast } from '../../src/features/gateway/use-route-override-toast';
+import { useRouteSwitchToast } from '../../src/features/gateway/use-route-switch-toast';
 import { useKeyboardVisible } from '../../src/hooks/use-keyboard-visible';
 import { usePreferencesStore } from '../../src/stores/preferences-store';
 import { useGatewayStore } from '../../src/stores/gateway-store';
 import { useMessages } from '../../src/i18n/messages';
-import { fetchChatAgents, resolveEffectiveDefaultAgentId } from '../../src/query/agents';
+import {
+  fetchChatAgents,
+  readPlaceholderAgents,
+  resolveEffectiveDefaultAgentId,
+} from '../../src/query/agents';
 import { fetchChatModels, resolveEffectiveModelId, setSessionModelRef } from '../../src/query/models';
 import { queryKeys } from '../../src/query/keys';
 import { createSession } from '../../src/query/sessions';
@@ -62,7 +70,8 @@ export default function ChatScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { gatewayOnline } = useGatewayHealth();
-  const { fullyUnreachable: gatewayFullyUnreachable } = useGatewayFullyUnreachable();
+  const routeSwitchToast = useRouteSwitchToast();
+  const routeOverrideToast = useRouteOverrideToast();
   const gatewayProfiles = useGatewayStore((s) => s.profiles);
   const activeGatewayId = useGatewayStore((s) => s.activeGatewayId);
   const switchGateway = useGatewayStore((s) => s.switchGateway);
@@ -76,6 +85,7 @@ export default function ChatScreen() {
     queryKey: queryKeys.agents,
     queryFn: fetchChatAgents,
     enabled: true,
+    placeholderData: () => readPlaceholderAgents() ?? undefined,
   });
 
   const localDefaultAgentId = usePreferencesStore((s) => s.defaultAgentId) ?? '';
@@ -235,10 +245,13 @@ export default function ChatScreen() {
   const isEmptyChat =
     displayMessages.length === 0 && !chat.streaming && !sessionHistoryQuery.isLoading;
 
+  // Keep the composer interactive even when the gateway is unreachable —
+  // sendOrQueueMessage queues offline sends and the global status bar
+  // tells the user what's happening. Disabling it on connectivity blips
+  // makes the app feel dead for transient hiccups.
   const composerDisabled =
     !sessionKey ||
     creatingInitialSession ||
-    gatewayFullyUnreachable ||
     sessionHistoryQuery.isLoading ||
     Boolean(chat.clarifyPrompt);
 
@@ -367,6 +380,11 @@ export default function ChatScreen() {
     [activeGatewayId, agentsQuery.data, localDefaultAgentId, queryClient, router, switchGateway, chat],
   );
 
+  const { openGatewayConnectLanding } = useGatewayConnectLanding();
+  const openReconnectLanding = useCallback(() => {
+    openGatewayConnectLanding?.();
+  }, [openGatewayConnectLanding]);
+
   const handleGatewayManageSettings = useCallback(() => {
     setGatewaySheetVisible(false);
     router.push('/settings/gateway');
@@ -420,6 +438,11 @@ export default function ChatScreen() {
         onAgentPress={openAgentsPicker}
         onModelSelect={handleModelSelect}
         onNewChat={handleNewChat}
+      />
+
+      <GlobalConnectionStatusBar
+        onOpenSettings={handleGatewayManageSettings}
+        onReconnect={openReconnectLanding}
       />
 
       <View style={[styles.chatBody, { backgroundColor: canvasBg }]}>
@@ -503,11 +526,7 @@ export default function ChatScreen() {
             onUserMessageEdit={handleUserMessageEdit}
             onAssistantCopy={handleAssistantCopy}
             onAssistantRegenerate={handleAssistantRegenerate}
-            networkUnreachableTip={
-              gatewayFullyUnreachable
-                ? { message: m.gateway.routesUnreachableBanner, onPress: handleGatewayManageSettings }
-                : null
-            }
+            networkUnreachableTip={null}
           />
         </View>
 
@@ -558,6 +577,20 @@ export default function ChatScreen() {
       <Snackbar visible={Boolean(chat.snackMsg)} onDismiss={() => chat.setSnackMsg('')} duration={2500}>
         {chat.snackMsg}
       </Snackbar>
+
+      <Snackbar
+        key={routeSwitchToast?.key ?? 'none'}
+        visible={Boolean(routeSwitchToast)}
+        onDismiss={() => { /* hook auto-clears */ }}
+        duration={3500}
+      >
+        {routeSwitchToast?.message ?? ''}
+      </Snackbar>
+
+      <RouteOverrideToastView
+        toast={routeOverrideToast}
+        onDismiss={() => { /* hook auto-clears */ }}
+      />
 
       {pickerSheets}
     </View>

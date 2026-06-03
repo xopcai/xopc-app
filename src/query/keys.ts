@@ -9,4 +9,5 @@ export const queryKeys = {
   cronRunsHistory: (limit: number) => ['cron', 'runs', limit] as const,
   webchatGoal: (sessionKey: string) => ['webchat', 'goal', sessionKey] as const,
   webchatGoalRuns: (sessionKey: string, limit: number) => ['webchat', 'goal', 'runs', sessionKey, limit] as const,
+  shares: ['shares'] as const,
 };

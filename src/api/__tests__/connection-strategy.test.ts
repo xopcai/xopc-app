@@ -1,57 +1,71 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   probeGatewayHealth,
   probeGatewayRouteReachability,
   probeGatewayRouteReachable,
+  raceGatewayRoutes,
   resolvePreferredBaseUrl,
 } from '../connection-strategy';
 
+const TEST_TIMING = {
+  TIMEOUT_LAN_MS: 50,
+  TIMEOUT_TUNNEL_MS: 80,
+  LAN_HEAD_START_MS: 30,
+  RACE_HARD_TIMEOUT_MS: 200,
+};
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe('probeGatewayRouteReachability', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+  it('returns reachable with latency when server responds', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 401, body: { cancel: () => {} } })),
+    );
 
-  it('returns reachable when server responds', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 401, body: { cancel: () => {} } })));
-
-    await expect(probeGatewayRouteReachability('192.168.1.44:18790')).resolves.toEqual({
-      reachable: true,
-    });
+    const result = await probeGatewayRouteReachability('192.168.1.44:18790');
+    expect(result.reachable).toBe(true);
+    expect(typeof result.latencyMs).toBe('number');
   });
 
   it('returns timeout reason on abort', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      const error = new Error('Aborted');
-      error.name = 'AbortError';
-      throw error;
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        const error = new Error('Aborted');
+        error.name = 'AbortError';
+        throw error;
+      }),
+    );
 
-    await expect(probeGatewayRouteReachability('http://192.168.1.44:18790')).resolves.toEqual({
-      reachable: false,
-      reason: 'timeout',
-    });
+    const result = await probeGatewayRouteReachability('http://192.168.1.44:18790');
+    expect(result.reachable).toBe(false);
+    expect(result.reason).toBe('timeout');
   });
 
   it('returns network_error with message when fetch throws', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      throw new Error('Network request failed');
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('Network request failed');
+      }),
+    );
 
-    await expect(probeGatewayRouteReachability('http://192.168.1.44:18790')).resolves.toEqual({
-      reachable: false,
-      reason: 'network_error',
-      errorMessage: 'Network request failed',
-    });
+    const result = await probeGatewayRouteReachability('http://192.168.1.44:18790');
+    expect(result.reachable).toBe(false);
+    expect(result.reason).toBe('network_error');
+    expect(result.errorMessage).toBe('Network request failed');
   });
 
   it('adds http scheme for private LAN host without scheme', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, body: { cancel: () => {} } }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(
-      probeGatewayRouteReachability('192.168.1.44:18790', { token: 'secret' }),
-    ).resolves.toEqual({ reachable: true });
+    const result = await probeGatewayRouteReachability('192.168.1.44:18790', { token: 'secret' });
+    expect(result.reachable).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith('http://192.168.1.44:18790/health', {
       signal: expect.any(AbortSignal),
       headers: { Authorization: 'Bearer secret' },
@@ -59,33 +73,28 @@ describe('probeGatewayRouteReachability', () => {
   });
 });
 
-describe('probeGatewayHealth', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+describe('probeGatewayHealth (legacy boolean wrapper)', () => {
+  it('returns true when fetch resolves', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, body: { cancel: () => {} } })));
 
-  it('returns true when health responds ok', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true })));
-
-    await expect(probeGatewayHealth('http://192.168.1.44:18790', { token: 'secret' })).resolves.toBe(
-      true,
-    );
+    await expect(
+      probeGatewayHealth('http://192.168.1.44:18790', { token: 'secret' }),
+    ).resolves.toBe(true);
   });
 
   it('returns false when fetch fails', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      throw new Error('network');
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('network');
+      }),
+    );
 
     await expect(probeGatewayHealth('http://192.168.1.44:18790')).resolves.toBe(false);
   });
 });
 
-describe('probeGatewayRouteReachable', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
+describe('probeGatewayRouteReachable (legacy boolean wrapper)', () => {
   it('returns boolean reachable flag', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, body: { cancel: () => {} } })));
 
@@ -93,46 +102,120 @@ describe('probeGatewayRouteReachable', () => {
   });
 });
 
-describe('resolvePreferredBaseUrl', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
+describe('raceGatewayRoutes', () => {
+  beforeEach(() => {
+    // Default: every route resolves quickly. Individual tests override.
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, body: { cancel: () => {} } })));
   });
 
-  it('returns tunnel URL when lanUrl is missing', async () => {
-    await expect(resolvePreferredBaseUrl('https://gw.frp.example.com/', undefined)).resolves.toBe(
-      'https://gw.frp.example.com',
+  it('returns LAN winner when both routes succeed (LAN preferred)', async () => {
+    const result = await raceGatewayRoutes(
+      'https://gw.example.com',
+      'http://192.168.1.44:18790',
+      { timing: TEST_TIMING },
     );
+    expect(result.winner).toBe('lan');
+    expect(result.url).toBe('http://192.168.1.44:18790');
   });
 
-  it('returns LAN when tunnel URL is empty but LAN is configured', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true })));
+  it('returns tunnel when LAN fetch fails', async () => {
+    let call = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        call++;
+        if (url.includes('192.168')) throw new Error('lan unreachable');
+        return { ok: true, body: { cancel: () => {} } };
+      }),
+    );
+
+    const result = await raceGatewayRoutes(
+      'https://gw.example.com',
+      'http://192.168.1.44:18790',
+      { timing: TEST_TIMING },
+    );
+    expect(result.winner).toBe('tunnel');
+    expect(result.url).toBe('https://gw.example.com');
+    expect(call).toBeGreaterThanOrEqual(2);
+  });
+
+  it("returns 'none' when both routes fail", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('boom');
+      }),
+    );
+
+    const result = await raceGatewayRoutes(
+      'https://gw.example.com',
+      'http://192.168.1.44:18790',
+      { timing: TEST_TIMING },
+    );
+    expect(result.winner).toBe('none');
+    expect(result.url).toBe('');
+  });
+
+  it('returns lan immediately when only LAN configured and reachable', async () => {
+    const result = await raceGatewayRoutes('', 'http://192.168.1.44:18790', {
+      timing: TEST_TIMING,
+    });
+    expect(result.winner).toBe('lan');
+    expect(result.url).toBe('http://192.168.1.44:18790');
+  });
+
+  it('returns tunnel when only tunnel configured and reachable', async () => {
+    const result = await raceGatewayRoutes('https://gw.example.com', undefined, {
+      timing: TEST_TIMING,
+    });
+    expect(result.winner).toBe('tunnel');
+    expect(result.url).toBe('https://gw.example.com');
+  });
+});
+
+describe('resolvePreferredBaseUrl', () => {
+  it('returns tunnel when only tunnel configured and reachable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, body: { cancel: () => {} } })));
+    await expect(
+      resolvePreferredBaseUrl('https://gw.frp.example.com/', undefined, { timing: TEST_TIMING }),
+    ).resolves.toBe('https://gw.frp.example.com');
+  });
+
+  it('returns LAN when tunnel URL is empty but LAN is configured and reachable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, body: { cancel: () => {} } })));
 
     await expect(
-      resolvePreferredBaseUrl('', 'http://192.168.1.44:18790', { token: 'secret' }),
+      resolvePreferredBaseUrl('', 'http://192.168.1.44:18790', {
+        token: 'secret',
+        timing: TEST_TIMING,
+      }),
     ).resolves.toBe('http://192.168.1.44:18790');
   });
 
-  it('prefers LAN when health check succeeds', async () => {
-    const fetchMock = vi.fn(async () => ({ ok: true }));
-    vi.stubGlobal('fetch', fetchMock);
+  it('prefers LAN when both succeed', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, body: { cancel: () => {} } })));
 
     await expect(
       resolvePreferredBaseUrl('https://gw.frp.example.com', 'http://192.168.1.44:18790', {
         token: 'secret',
+        timing: TEST_TIMING,
       }),
     ).resolves.toBe('http://192.168.1.44:18790');
-
-    expect(fetchMock).toHaveBeenCalledWith('http://192.168.1.44:18790/health', {
-      signal: expect.any(AbortSignal),
-      headers: { Authorization: 'Bearer secret' },
-    });
   });
 
-  it('falls back to tunnel when LAN health check fails', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })));
+  it('falls back to tunnel when LAN throws', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('192.168')) throw new Error('lan dead');
+        return { ok: true, body: { cancel: () => {} } };
+      }),
+    );
 
     await expect(
-      resolvePreferredBaseUrl('https://gw.frp.example.com', 'http://192.168.1.44:18790'),
+      resolvePreferredBaseUrl('https://gw.frp.example.com', 'http://192.168.1.44:18790', {
+        timing: TEST_TIMING,
+      }),
     ).resolves.toBe('https://gw.frp.example.com');
   });
 });

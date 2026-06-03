@@ -12,6 +12,7 @@ import { GatewayConnectLandingContext } from '../src/features/gateway/gateway-co
 import { GatewayConnectLandingModal } from '../src/features/gateway/GatewayConnectLandingModal';
 import { useGatewayConnectionWatch } from '../src/features/gateway/use-gateway-connection-watch';
 import { useGatewaySse } from '../src/features/gateway/use-gateway-sse';
+import { refreshNetworkSnapshotWithDeadline } from '../src/features/gateway/network-info';
 import { useMessages } from '../src/i18n/messages';
 import { queryClient } from '../src/query/query-client';
 import { useGatewayConfigured } from '../src/query/sessions';
@@ -39,6 +40,11 @@ export default function RootLayout() {
   const agentsStackOptions = themedStackScreenOptions(isDark);
 
   useEffect(() => {
+    // Eagerly refresh the network snapshot before/while we hydrate so the
+    // very first dual-fire decision (LAN viable? cellular? offline?) is
+    // based on real OS state instead of the 'unknown' default. Bounded so
+    // a slow OS query never blocks app start.
+    void refreshNetworkSnapshotWithDeadline(150);
     hydrateGateway();
     hydratePrefs();
     return subscribeSystemAppearance();

@@ -1,21 +1,47 @@
-import { AppState, type AppStateStatus } from 'react-native';
-
-import { apiFetch } from '../../api/client';
-import { useGatewayStore } from '../../stores/gateway-store';
-
 /**
- * Periodically ping gateway /health; marks offline after consecutive failures.
+ * Online/offline state derived from probe-coordinator outcomes. Owns its
+ * periodic foreground tick (so the coordinator stays a pure on-demand
+ * primitive) and exposes a tiny pub/sub for hooks. Delegates the actual
+ * race + caching to the coordinator — no parallel /health pings.
  */
+import {
+  getLastProbeOutcome,
+  runProbeRound,
+  subscribeProbeOutcome,
+  type ProbeOutcome,
+} from './probe-coordinator';
+import { PROBE_TIMING } from './probe-timing';
+
+type AppStateLike = {
+  addEventListener: (
+    type: 'change',
+    handler: (state: string) => void,
+  ) => { remove: () => void };
+};
+
+let cachedAppState: AppStateLike | null | undefined;
+function loadAppState(): AppStateLike | null {
+  if (cachedAppState !== undefined) return cachedAppState;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- deferred RN import for vitest safety
+    const rn = require('react-native') as { AppState?: AppStateLike };
+    cachedAppState = rn.AppState ?? null;
+  } catch {
+    cachedAppState = null;
+  }
+  return cachedAppState;
+}
+
+const MAX_FAILURES_BEFORE_OFFLINE = 2;
+
 export class GatewayHealthMonitor {
   private intervalId?: ReturnType<typeof setInterval>;
   private appStateSub?: { remove: () => void };
+  private probeUnsub?: () => void;
   private stopTimer?: ReturnType<typeof setTimeout>;
-  private checkInFlight: Promise<boolean> | null = null;
   private consecutiveFailures = 0;
   private online = true;
-  private readonly maxFailures = 3;
-  private readonly intervalMs = 30_000;
-  private readonly timeoutMs = 5_000;
+  private currentlyForeground = true;
   private readonly listeners = new Set<(online: boolean) => void>();
 
   subscribe(onStatusChange: (online: boolean) => void): () => void {
@@ -34,13 +60,32 @@ export class GatewayHealthMonitor {
       clearTimeout(this.stopTimer);
       this.stopTimer = undefined;
     }
-    if (this.intervalId || this.appStateSub) return;
+    if (this.intervalId || this.probeUnsub) return;
 
-    void this.updateStatus();
-    this.intervalId = setInterval(() => void this.updateStatus(), this.intervalMs);
-    this.appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
-      if (state === 'active') void this.updateStatus();
-    });
+    const seed = getLastProbeOutcome();
+    if (seed) this.handleOutcome(seed);
+    else void runProbeRound('initial');
+
+    // Periodic foreground heartbeat. The coordinator dedupes within its own
+    // freshness window, so this stays cheap when other triggers (network
+    // change, focus, SSE failures) recently fired a probe. We skip ticks
+    // entirely when the app is backgrounded — RN may keep the timer alive
+    // for some interval, but the function exits early so we don't burn
+    // battery probing while the user can't see the result.
+    this.intervalId = setInterval(() => {
+      if (!this.currentlyForeground) return;
+      void runProbeRound('periodic');
+    }, PROBE_TIMING.HEALTH_POLL_MS);
+
+    this.probeUnsub = subscribeProbeOutcome((outcome) => this.handleOutcome(outcome));
+
+    const appState = loadAppState();
+    if (appState) {
+      this.appStateSub = appState.addEventListener('change', (state: string) => {
+        this.currentlyForeground = state === 'active';
+        if (state === 'active') void runProbeRound('foreground');
+      });
+    }
   }
 
   private scheduleStop(): void {
@@ -58,69 +103,32 @@ export class GatewayHealthMonitor {
     }
     this.appStateSub?.remove();
     this.appStateSub = undefined;
+    this.probeUnsub?.();
+    this.probeUnsub = undefined;
     this.consecutiveFailures = 0;
-    this.checkInFlight = null;
   }
 
   private emit(online: boolean): void {
     this.online = online;
-    for (const listener of this.listeners) {
-      listener(online);
-    }
+    for (const listener of this.listeners) listener(online);
   }
 
-  private async updateStatus(): Promise<void> {
-    const ok = await this.checkNow();
-    if (ok) {
-      if (!this.online || this.consecutiveFailures >= this.maxFailures) {
-        this.emit(true);
-      }
+  private handleOutcome(outcome: ProbeOutcome): void {
+    if (outcome.online) {
+      if (!this.online) this.emit(true);
       this.consecutiveFailures = 0;
       return;
     }
-
-    this.consecutiveFailures += 1;
-    if (this.consecutiveFailures >= this.maxFailures && this.online) {
+    this.consecutiveFailures++;
+    if (this.consecutiveFailures >= MAX_FAILURES_BEFORE_OFFLINE && this.online) {
       this.emit(false);
     }
   }
 
+  /** Force an immediate probe (UI button). */
   async checkNow(): Promise<boolean> {
-    if (this.checkInFlight) return this.checkInFlight;
-
-    this.checkInFlight = this.runHealthCheck().finally(() => {
-      this.checkInFlight = null;
-    });
-    return this.checkInFlight;
-  }
-
-  private async runHealthCheck(): Promise<boolean> {
-    const st = useGatewayStore.getState();
-    if (!st.baseUrl.trim() && !st.activeBaseUrl.trim()) return false;
-
-    try {
-      await st.refreshActiveBaseUrl();
-    } catch {
-      /* route refresh is best-effort before probing */
-    }
-
-    const { baseUrl, activeBaseUrl, token } = useGatewayStore.getState();
-    const routeUrl = activeBaseUrl || baseUrl;
-    if (!routeUrl.trim()) return false;
-
-    const timeoutMs = this.timeoutMs;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const headers: Record<string, string> = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
-      const res = await apiFetch('/health', { signal: controller.signal, headers });
-      return res.ok;
-    } catch {
-      return false;
-    } finally {
-      clearTimeout(timeout);
-    }
+    const outcome = await runProbeRound('manual', { force: true });
+    return outcome.online;
   }
 }
 

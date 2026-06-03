@@ -1,55 +1,62 @@
 import { useEffect } from 'react';
-import { AppState, type AppStateStatus } from 'react-native';
 
 import { useGatewayStore } from '../../stores/gateway-store';
 
 import { syncGatewayAfterConnectivityChange } from './gateway-connection-sync';
-
-const REFRESH_MS = 90_000;
-const REFRESH_COOLDOWN_MS = 15_000;
-
-let lastRouteRefreshAt = 0;
+import { subscribeNetworkChange } from './network-info';
+import {
+  runProbeRound,
+  subscribeProbeOutcome,
+} from './probe-coordinator';
 
 /**
- * Re-probe LAN vs tunnel when app is foregrounded and periodically while active.
+ * Drive route refresh + sse reconnect off the shared probe coordinator.
+ * Replaces the old foreground/interval/network-change-loops that each
+ * triggered their own /health probe.
  */
 export function useGatewayConnectionWatch(enabled: boolean): void {
   const baseUrl = useGatewayStore((s) => s.baseUrl);
   const lanUrl = useGatewayStore((s) => s.lanUrl);
-  const refreshActiveBaseUrl = useGatewayStore((s) => s.refreshActiveBaseUrl);
 
   useEffect(() => {
     if (!enabled || !baseUrl) return;
 
-    const run = async () => {
-      const now = Date.now();
-      if (now - lastRouteRefreshAt < REFRESH_COOLDOWN_MS) return;
-      lastRouteRefreshAt = now;
+    let prevUrl = useGatewayStore.getState().activeBaseUrl;
 
-      const prev = useGatewayStore.getState().activeBaseUrl;
-      const next = await refreshActiveBaseUrl();
-      if (prev && next && prev !== next) {
-        syncGatewayAfterConnectivityChange({ immediate: true });
+    void runProbeRound('initial');
+
+    const unsubProbe = subscribeProbeOutcome((outcome) => {
+      const winnerUrl = outcome.result.url;
+      if (
+        winnerUrl &&
+        (outcome.result.winner === 'lan' || outcome.result.winner === 'tunnel') &&
+        winnerUrl !== prevUrl
+      ) {
+        useGatewayStore.setState({ activeBaseUrl: winnerUrl });
+        if (prevUrl) syncGatewayAfterConnectivityChange({ immediate: true });
+        prevUrl = winnerUrl;
       }
-    };
+    });
 
-    run();
-
-    const onAppState = (state: AppStateStatus) => {
-      if (state === 'active') run();
-    };
-
-    const sub = AppState.addEventListener('change', onAppState);
-    const intervalId = setInterval(run, REFRESH_MS);
+    let lastSeenNetKey = '';
+    const unsubNetwork = subscribeNetworkChange((snap) => {
+      if (!lastSeenNetKey) {
+        lastSeenNetKey = snap.key;
+        return;
+      }
+      if (snap.key === lastSeenNetKey) return;
+      lastSeenNetKey = snap.key;
+      void runProbeRound('network-change', { force: true });
+    });
 
     return () => {
-      sub.remove();
-      clearInterval(intervalId);
+      unsubProbe();
+      unsubNetwork();
     };
-  }, [enabled, baseUrl, lanUrl, refreshActiveBaseUrl]);
+  }, [enabled, baseUrl, lanUrl]);
 }
 
 /** @internal test helper */
 export function resetGatewayConnectionWatchStateForTests(): void {
-  lastRouteRefreshAt = 0;
+  /* coordinator owns its state now */
 }

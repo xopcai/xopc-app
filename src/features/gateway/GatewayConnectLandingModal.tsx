@@ -35,6 +35,33 @@ import { resolveGatewayCredentialsFromQr } from './pair-gateway';
 import { openDefaultSessionAfterConnect } from './navigate-after-gateway-connect';
 import { GatewayTokenInput } from './GatewayTokenInput';
 import { upsertGatewayFromCredentials } from './upsert-gateway-from-credentials';
+import { isGatewayConnectivityError } from '../../api/gateway-error';
+import type { GatewayConnectivityError } from '../../api/gateway-error';
+import type { MessageBundle } from '../../i18n/messages';
+
+function connectivityErrorMessage(
+  err: GatewayConnectivityError,
+  l: MessageBundle['gatewayConnect'],
+): string {
+  switch (err.kind) {
+    case 'token-invalid':
+      return l.sessionExpired;
+    case 'offline-network':
+      return l.offlineNetwork;
+    case 'offline-device':
+      return l.offlineDevice;
+    case 'no-route':
+      return l.unreachableUrl;
+    case 'reverse-proxy-unreachable':
+      return l.reverseProxyUnreachable ?? l.unreachableUrl;
+    case 'misconfigured':
+      return l.invalidUrl;
+    case 'server-error':
+      return err.message;
+    default:
+      return l.connectFailed;
+  }
+}
 
 export type GatewayConnectLandingModalProps = {
   visible: boolean;
@@ -167,11 +194,22 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
     };
     setSaving(true);
     try {
-      await upsertGatewayFromCredentials({
-        baseUrl: urlCheck.url,
-        token: parsed.data.token,
-        lanUrl: pendingLanUrl,
-      });
+      try {
+        await upsertGatewayFromCredentials(
+          {
+            baseUrl: urlCheck.url,
+            token: parsed.data.token,
+            lanUrl: pendingLanUrl,
+          },
+          { preflight: true },
+        );
+      } catch (err) {
+        if (isGatewayConnectivityError(err)) {
+          setSaveError(connectivityErrorMessage(err, l));
+          return;
+        }
+        throw err;
+      }
 
       const nav = await openDefaultSessionAfterConnect(router.replace);
       if (!nav.ok) {

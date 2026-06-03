@@ -18,9 +18,15 @@ function normalizeOrigin(raw: string): string {
   return raw.trim().replace(/\/+$/, '');
 }
 
-function hostnameIsFrpTunnel(origin: string): boolean {
+/**
+ * HTTPS URLs (FRP tunnel, user-deployed reverse proxy, any public TLS origin)
+ * are reachable from cellular networks and typically come from a stable
+ * public hostname — prefer them over LAN unless we explicitly know the phone
+ * is on the same network.
+ */
+function shouldPreferOriginForPair(origin: string): boolean {
   try {
-    return /\.frp\.xopc\.ai$/i.test(new URL(origin).hostname);
+    return new URL(origin).protocol === 'https:';
   } catch {
     return false;
   }
@@ -28,22 +34,29 @@ function hostnameIsFrpTunnel(origin: string): boolean {
 
 /**
  * Origins to try for POST /api/tunnel/exchange-token.
- * Prefer the tunnel/HTTPS URL first so pairing works when the phone is not on LAN
- * (the secret is always issued by the gateway behind the FRP tunnel).
+ *
+ * Priority:
+ *   1. baseUrl when it is HTTPS (reverse-proxy / FRP / any TLS-terminated URL).
+ *   2. lanUrl (zero-RTT, but only works on the same Wi-Fi).
+ *   3. baseUrl as a final fallback when it is plain http (e.g. LAN-only deploys).
+ *
+ * The mobile app does NOT need to know which "mode" produced the URL —
+ * `connectUrls` from the server (when present) already encodes the desired
+ * order; this is the heuristic for when we have to derive an order from
+ * `baseUrl` + `lanUrl` alone.
  */
 export function buildPairExchangeOrigins(baseUrl: string, lanUrl?: string | null): string[] {
-  const tunnel = normalizeOrigin(baseUrl);
+  const base = normalizeOrigin(baseUrl);
   const lan = lanUrl?.trim() ? normalizeOrigin(lanUrl) : '';
   const out: string[] = [];
-  const tunnelIsFrp = hostnameIsFrpTunnel(tunnel);
 
-  if (tunnel && !shouldRejectLoopbackGatewayBaseUrl(tunnel)) {
-    if (tunnelIsFrp || !lan) out.push(tunnel);
-  }
-  if (lan && !shouldRejectLoopbackGatewayBaseUrl(lan) && lan !== tunnel) out.push(lan);
-  if (tunnel && !shouldRejectLoopbackGatewayBaseUrl(tunnel) && !out.includes(tunnel)) {
-    out.push(tunnel);
-  }
+  const baseUsable = Boolean(base) && !shouldRejectLoopbackGatewayBaseUrl(base);
+  const lanUsable = Boolean(lan) && !shouldRejectLoopbackGatewayBaseUrl(lan);
+  const preferBaseFirst = baseUsable && shouldPreferOriginForPair(base);
+
+  if (preferBaseFirst) out.push(base);
+  if (lanUsable && lan !== base) out.push(lan);
+  if (baseUsable && !out.includes(base)) out.push(base);
   return out;
 }
 

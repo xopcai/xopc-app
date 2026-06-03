@@ -12,7 +12,10 @@ import {
 import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import type { ShareAutoRequest } from '../../api/share';
 import { useMessages } from '../../i18n/messages';
+import { ShareSheet } from '../share/ShareSheet';
+import { prefetchShare } from '../share/share-prefetch';
 import { HtmlPreviewPane } from './HtmlPreviewPane';
 import { isHtmlFile } from './html-preview-source';
 import { MarkdownView } from './MarkdownView';
@@ -165,6 +168,16 @@ async function loadPreview(file: PreviewableFile, sessionKey?: string | null): P
   };
 }
 
+function buildShareRequestForFile(file: PreviewableFile, sessionKey?: string | null): ShareAutoRequest | null {
+  const rel = file.workspaceRelativePath?.trim();
+  if (!rel) return null;
+  return {
+    path: rel.replace(/\\/g, '/').replace(/^\/+/, ''),
+    audience: 'friend',
+    ...(sessionKey?.trim() ? { sessionKey: sessionKey.trim() } : {}),
+  };
+}
+
 export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePreviewModalProps) {
   const insets = useSafeAreaInsets();
   const isDark = useColorScheme() === 'dark';
@@ -172,8 +185,20 @@ export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePre
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<LoadedPreview | null>(null);
+  const [shareTarget, setShareTarget] = useState<ShareAutoRequest | null>(null);
 
   const title = useMemo(() => (file ? file.name || fileName(file.workspaceRelativePath ?? 'Preview') : ''), [file]);
+  const shareRequest = useMemo(
+    () => (file ? buildShareRequestForFile(file, sessionKey) : null),
+    [file, sessionKey],
+  );
+
+  // Warm the share cache the moment the preview opens — by the time the user
+  // taps the share button, the link is likely already created.
+  useEffect(() => {
+    if (!visible || !shareRequest) return;
+    prefetchShare(shareRequest);
+  }, [visible, shareRequest]);
 
   useEffect(() => {
     let cancelled = false;
@@ -222,6 +247,15 @@ export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePre
               iconColor={textColor}
               onPress={copyPath}
               accessibilityLabel={m.chat.fileReferenceCopyPath}
+            />
+          ) : null}
+          {shareRequest ? (
+            <IconButton
+              icon="share-variant"
+              size={20}
+              iconColor={textColor}
+              onPress={() => setShareTarget(shareRequest)}
+              accessibilityLabel={m.chat.shareFile}
             />
           ) : null}
           <IconButton icon="close" size={22} iconColor={textColor} onPress={onClose} accessibilityLabel="关闭预览" />
@@ -280,6 +314,11 @@ export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePre
           )}
         </View>
       </View>
+      <ShareSheet
+        visible={Boolean(shareTarget)}
+        request={shareTarget}
+        onClose={() => setShareTarget(null)}
+      />
     </Modal>
   );
 }
