@@ -41,7 +41,7 @@ export default function AgentsScreen() {
   const createMut = useMutation({
     mutationFn: (agentId: string) => createSession(agentId),
     onSuccess: (key) => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
       router.replace({ pathname: '/', params: { k: key } });
     },
   });

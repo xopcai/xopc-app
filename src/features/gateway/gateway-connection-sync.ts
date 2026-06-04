@@ -24,7 +24,7 @@ function runGatewaySync(options: GatewaySyncOptions): void {
   lastSyncAt = Date.now();
 
   if (invalidateQueries) {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
     void queryClient.invalidateQueries({ queryKey: queryKeys.agents });
   }
   if (reconnectSse) {

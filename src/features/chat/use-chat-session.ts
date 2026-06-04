@@ -205,7 +205,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
   // ── Session invalidation ─────────────────────────────────
   const invalidateSessionByKey = useCallback((targetSessionKey: string) => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.sessionHistory(targetSessionKey) });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
     void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoal(targetSessionKey) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoalRuns(targetSessionKey, 1) });
   }, [queryClient]);
@@ -224,7 +224,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       queryKeys.sessionHistory(targetSessionKey),
       (oldData) => mergeLatestSessionHistoryPage(oldData, latestPage),
     );
-    void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
     void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoal(targetSessionKey) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoalRuns(targetSessionKey, 1) });
   }, [invalidateSessionByKey, queryClient]);

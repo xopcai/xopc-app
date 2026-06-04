@@ -225,7 +225,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
         setSaveError(nav.message || l.connectFailed);
         return;
       }
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents });
     } finally {
       setSaving(false);

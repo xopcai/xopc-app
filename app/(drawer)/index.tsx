@@ -150,7 +150,7 @@ export default function ChatScreen() {
         const key = await createSession(agentId);
         chat.activeSessionKeyRef.current = key;
         setPendingBootstrapKey(key);
-        void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
         router.replace({ pathname: '/', params: { k: key } });
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
@@ -271,7 +271,7 @@ export default function ChatScreen() {
     void createSession(agentId, { forceNew: true }).then((key) => {
       chat.activeSessionKeyRef.current = key;
       setPendingBootstrapKey(key);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
       router.replace({ pathname: '/', params: { k: key } });
     }).catch((e) => {
       chat.setSnackMsg(e instanceof Error ? e.message : String(e));
@@ -288,7 +288,7 @@ export default function ChatScreen() {
       .then((key) => {
         chat.activeSessionKeyRef.current = key;
         setPendingBootstrapKey(key);
-        void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
         router.replace({ pathname: '/', params: { k: key } });
       })
       .catch((e) => {
@@ -368,7 +368,7 @@ export default function ChatScreen() {
         const key = await createSession(agentId, { forceNew: true });
         chat.activeSessionKeyRef.current = key;
         setPendingBootstrapKey(key);
-        void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
         setGatewaySheetVisible(false);
         router.replace({ pathname: '/', params: { k: key } });
       } catch (e) {

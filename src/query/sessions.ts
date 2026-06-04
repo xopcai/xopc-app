@@ -61,10 +61,31 @@ function encKey(key: string): string {
 
 // ── List / Detail / Create ───────────────────────────────────────
 
-export async function fetchSessionsList(): Promise<SessionListItem[]> {
-  const res = await apiFetch(
-    '/api/sessions?limit=80&channel=webchat&sortBy=updatedAt&sortOrder=desc',
-  );
+export type SessionsPage = {
+  items: SessionListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+};
+
+export async function fetchSessionsList(
+  options?: { limit?: number; offset?: number; search?: string },
+): Promise<SessionsPage> {
+  const limit = options?.limit ?? 20;
+  const offset = options?.offset ?? 0;
+  const search = options?.search?.trim() ?? '';
+
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+    channel: 'webchat',
+    sortBy: 'updatedAt',
+    sortOrder: 'desc',
+  });
+  if (search) params.set('search', search);
+
+  const res = await apiFetch(`/api/sessions?${params.toString()}`);
   if (!res.ok) throwApiError(res, await parseErrorBody(res));
   const raw = await res.json();
   const parsed = sessionsListResponseSchema.safeParse(raw);
@@ -74,9 +95,18 @@ export async function fetchSessionsList(): Promise<SessionListItem[]> {
     const one = sessionListItemSchema.safeParse(row);
     if (one.success) items.push(one.data);
   }
-  // Persist for instant first-paint on the next cold start.
-  writeCachedSessions(useGatewayStore.getState().activeGatewayId, items);
-  return items;
+  // Persist only the unfiltered first page so cold-start hydration matches
+  // the next live first request.
+  if (offset === 0 && !search) {
+    writeCachedSessions(useGatewayStore.getState().activeGatewayId, items);
+  }
+  return {
+    items,
+    total: parsed.data.total,
+    limit: parsed.data.limit,
+    offset: parsed.data.offset,
+    hasMore: parsed.data.hasMore,
+  };
 }
 
 /** Last-known session list for the active profile; used as react-query
