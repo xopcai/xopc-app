@@ -1,5 +1,6 @@
 export const queryKeys = {
-  sessions: ['sessions'] as const,
+  sessions: (search?: string) => ['sessions', search?.trim() ?? ''] as const,
+  sessionsAll: ['sessions'] as const,
   session: (key: string) => ['session', key] as const,
   sessionHistory: (key: string) => ['session', key, 'history'] as const,
   sessionHistoryOlderPreview: (key: string, before: string) => ['session', key, 'history', 'olderPreview', before] as const,

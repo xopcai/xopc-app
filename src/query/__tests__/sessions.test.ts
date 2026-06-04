@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createSession } from '../sessions';
+import { createSession, fetchSessionsList } from '../sessions';
 import { apiFetch } from '../../api/client';
 
 vi.mock('../../api/client', () => ({
@@ -61,5 +61,57 @@ describe('createSession', () => {
     const body = JSON.parse(String(init?.body)) as { chat_id?: string };
 
     expect(body.chat_id).toBeUndefined();
+  });
+});
+
+describe('fetchSessionsList', () => {
+  beforeEach(() => {
+    mockedApiFetch.mockReset();
+    mockedApiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [], total: 0, limit: 20, offset: 0, hasMore: false }),
+    } as Response);
+  });
+
+  it('forwards limit, offset, and search into the URL query string', async () => {
+    await fetchSessionsList({ limit: 20, offset: 40, search: '  hello  ' });
+
+    const [url] = mockedApiFetch.mock.calls[0] as [string];
+    expect(url.startsWith('/api/sessions?')).toBe(true);
+    const params = new URLSearchParams(url.split('?')[1]);
+    expect(params.get('limit')).toBe('20');
+    expect(params.get('offset')).toBe('40');
+    expect(params.get('search')).toBe('hello');
+    expect(params.get('channel')).toBe('webchat');
+  });
+
+  it('omits the search param when empty', async () => {
+    await fetchSessionsList({ limit: 20, offset: 0 });
+
+    const [url] = mockedApiFetch.mock.calls[0] as [string];
+    const params = new URLSearchParams(url.split('?')[1]);
+    expect(params.has('search')).toBe(false);
+    expect(params.get('offset')).toBe('0');
+  });
+
+  it('returns the full pagination payload', async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        items: [
+          { key: 'agent:webchat:default:direct:chat_a', messageCount: 2, updatedAt: '2026-01-01T00:00:00Z' },
+        ],
+        total: 42,
+        limit: 20,
+        offset: 0,
+        hasMore: true,
+      }),
+    } as Response);
+
+    const page = await fetchSessionsList({ limit: 20, offset: 0 });
+    expect(page.total).toBe(42);
+    expect(page.hasMore).toBe(true);
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0].key).toBe('agent:webchat:default:direct:chat_a');
   });
 });

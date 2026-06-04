@@ -375,8 +375,10 @@ function ActionButton({
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Icon source={icon} size={20} color={fg} />
-      <Text style={[styles.actionLabel, { color: fg }]}>{label}</Text>
+      <Icon source={icon} size={22} color={fg} />
+      <Text style={[styles.actionLabel, { color: fg }]} numberOfLines={1}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -554,21 +556,24 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
     paddingTop: 8,
   },
   actionButton: {
     flex: 1,
-    minHeight: 48,
+    minWidth: 0,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
     borderRadius: 12,
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 4,
   },
   actionLabel: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
+    textAlign: 'center',
   },
   pressed: {
     opacity: 0.75,

@@ -1,12 +1,15 @@
 /**
  * Drawer sidebar — Kimi-style profile card, tools menu, searchable grouped history.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DrawerActions } from '@react-navigation/native';
 import type { DrawerContentComponentProps } from '@react-navigation/drawer';
 import { useGlobalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -46,7 +49,11 @@ import {
   useGatewayConfigured,
 } from '../query/sessions';
 import { usePreferencesStore } from '../stores/preferences-store';
-import type { SessionListItem } from '../query/sessions';
+import type { SessionListItem, SessionsPage } from '../query/sessions';
+
+const SESSIONS_PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 250;
+const SCROLL_LOAD_MORE_THRESHOLD = 120;
 
 function groupSessions(
   items: SessionListItem[],
@@ -98,6 +105,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
   const activeKey = typeof rawK === 'string' ? rawK : Array.isArray(rawK) ? rawK[0] : '';
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [popoverVisible, setPopoverVisible] = useState(false);
   const [popoverAnchor, setPopoverAnchor] = useState({ x: 0, y: 0, width: 0 });
   const [actionSession, setActionSession] = useState<SessionListItem | null>(null);
@@ -110,13 +118,41 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
   const [snackMsg, setSnackMsg] = useState('');
   const rowRefs = useRef<Map<string, View>>(new Map());
 
-  const sessionsQuery = useQuery({
-    queryKey: queryKeys.sessions,
-    queryFn: fetchSessionsList,
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
+
+  const sessionsQuery = useInfiniteQuery({
+    queryKey: queryKeys.sessions(debouncedSearch),
+    initialPageParam: 0 as number,
+    queryFn: ({ pageParam }) =>
+      fetchSessionsList({
+        limit: SESSIONS_PAGE_SIZE,
+        offset: pageParam,
+        search: debouncedSearch,
+      }),
+    getNextPageParam: (last: SessionsPage) =>
+      last.hasMore ? last.offset + last.limit : undefined,
     enabled: configured,
-    // Render the last persisted list instantly on cold start; live request
-    // refreshes it. react-query smoothly swaps in the live result.
-    placeholderData: () => readPlaceholderSessions() ?? undefined,
+    // Hydrate the no-search first page from MMKV for instant cold-start paint.
+    // react-query immediately revalidates because initialDataUpdatedAt is 0.
+    initialData: () => {
+      if (debouncedSearch) return undefined;
+      const cached = readPlaceholderSessions();
+      if (!cached) return undefined;
+      const page: SessionsPage = {
+        items: cached,
+        total: cached.length,
+        limit: SESSIONS_PAGE_SIZE,
+        offset: 0,
+        hasMore: cached.length >= SESSIONS_PAGE_SIZE,
+      };
+      return { pages: [page], pageParams: [0] };
+    },
+    initialDataUpdatedAt: 0,
   });
 
   const agentsQuery = useQuery({
@@ -128,29 +164,35 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
 
   const localDefaultAgentId = usePreferencesStore((s) => s.defaultAgentId);
 
-  const sessions = sessionsQuery.data ?? [];
+  const sessions = useMemo(
+    () => sessionsQuery.data?.pages.flatMap((p) => p.items) ?? [],
+    [sessionsQuery.data?.pages],
+  );
   const defaultAgentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
   const defaultAgentName =
     agentsQuery.data?.items.find((a) => a.id === defaultAgentId)?.name?.trim() || defaultAgentId;
 
-  const filteredSessions = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return sessions;
-    return sessions.filter(
-      (s) =>
-        (s.name ?? '').toLowerCase().includes(q) ||
-        s.key.toLowerCase().includes(q),
-    );
-  }, [sessions, searchQuery]);
-
   const sections = useMemo(
     () =>
-      groupSessions(filteredSessions, {
+      groupSessions(sessions, {
         sectionThisWeek: dm.sectionThisWeek,
         sectionThisYear: dm.sectionThisYear,
         sectionEarlier: dm.sectionEarlier,
       }),
-    [filteredSessions, dm.sectionThisWeek, dm.sectionThisYear, dm.sectionEarlier],
+    [sessions, dm.sectionThisWeek, dm.sectionThisYear, dm.sectionEarlier],
+  );
+
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!sessionsQuery.hasNextPage || sessionsQuery.isFetchingNextPage) return;
+      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+      const distanceFromBottom =
+        contentSize.height - (contentOffset.y + layoutMeasurement.height);
+      if (distanceFromBottom <= SCROLL_LOAD_MORE_THRESHOLD) {
+        void sessionsQuery.fetchNextPage();
+      }
+    },
+    [sessionsQuery],
   );
 
   const openGatewaySettings = useCallback(() => {
@@ -165,7 +207,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
         { forceNew: true },
       ),
     onSuccess: (key) => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
       router.replace({ pathname: '/', params: { k: key } });
       navigation.dispatch(DrawerActions.closeDrawer());
     },
@@ -228,7 +270,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
     setRenameLoading(true);
     try {
       await renameSession(actionSession.key, name);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
       if (actionSession.key === activeKey) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.sessionHistory(actionSession.key) });
       }
@@ -246,7 +288,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
     setDeleteLoading(true);
     try {
       await deleteSession(actionSession.key);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
       setDeleteVisible(false);
       setSnackMsg(m.sessionActions.sessionDeleted);
       if (actionSession.key === activeKey) {
@@ -265,7 +307,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
     setDeleteLoading(true);
     try {
       await Promise.all([...selectedKeys].map((key) => deleteSession(key)));
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
       if (activeKey && selectedKeys.has(activeKey)) {
         router.replace({ pathname: '/' });
       }
@@ -389,34 +431,39 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
       );
     }
 
-    if (filteredSessions.length === 0) {
+    if (sessions.length === 0) {
       return (
         <View style={styles.emptyWrap}>
           <Text style={{ color: colors.textMuted, textAlign: 'center' }}>
-            {sessions.length === 0
-              ? m.sessions.empty
-              : t(m.sessions.noResultsHint, { query: searchQuery.trim() || '…' })}
+            {debouncedSearch
+              ? t(m.sessions.noResultsHint, { query: debouncedSearch })
+              : m.sessions.empty}
           </Text>
         </View>
       );
     }
 
-    return sections.map((section) => (
-      <View key={section.title}>
-        <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>{section.title}</Text>
-        {section.data.map((item) => renderSessionRow(item))}
-      </View>
-    ));
+    return (
+      <>
+        {sections.map((section) => (
+          <View key={section.title}>
+            <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>{section.title}</Text>
+            {section.data.map((item) => renderSessionRow(item))}
+          </View>
+        ))}
+        {sessionsQuery.isFetchingNextPage ? (
+          <View style={styles.footerLoader}>
+            <ActivityIndicator size="small" color={colors.textMuted} />
+          </View>
+        ) : null}
+      </>
+    );
   })();
 
   return (
     <View style={[styles.root, { backgroundColor: colors.pageBg, paddingTop: insets.top }]}>
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
-      >
-        {/* Profile + actions */}
+      {/* Fixed header — profile card */}
+      <View style={styles.headerArea}>
         <View style={[styles.card, { backgroundColor: colors.card, marginTop: 8 }]}>
           <View style={styles.profileRow}>
             <View style={styles.profileLeft}>
@@ -454,9 +501,11 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
             <Text style={styles.newChatCtaLabel}>{dm.newChat}</Text>
           </Pressable>
         </View>
+      </View>
 
-        {/* History */}
-        <View style={[styles.card, styles.historyCard, { backgroundColor: colors.card }]}>
+      {/* History card — title/search fixed, sessions scroll inside */}
+      <View style={styles.historyArea}>
+        <View style={[styles.card, styles.historyCard, { backgroundColor: colors.card, flex: 1 }]}>
           <View style={styles.historyTitleRow}>
             <Text style={[styles.historyTitle, { color: colors.text }]}>{dm.historyTitle}</Text>
             {multiSelectMode ? (
@@ -488,9 +537,18 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
             )}
           </View>
 
-          {historyContent}
+          <ScrollView
+            style={styles.sessionsScroll}
+            contentContainerStyle={styles.sessionsScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            onScroll={handleScroll}
+            scrollEventThrottle={200}
+          >
+            {historyContent}
+          </ScrollView>
         </View>
-      </ScrollView>
+      </View>
 
       <SessionActionPopover
         visible={popoverVisible}
@@ -534,9 +592,14 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
-  listContent: {
+  headerArea: {
     paddingHorizontal: 12,
-    paddingBottom: 24,
+  },
+  historyArea: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    minHeight: 0,
   },
   card: {
     borderRadius: 16,
@@ -545,6 +608,13 @@ const styles = StyleSheet.create({
   },
   historyCard: {
     paddingBottom: 10,
+    marginBottom: 0,
+  },
+  sessionsScroll: {
+    flex: 1,
+  },
+  sessionsScrollContent: {
+    paddingBottom: 12,
   },
   profileRow: {
     flexDirection: 'row',
@@ -645,6 +715,10 @@ const styles = StyleSheet.create({
   },
   emptyWrap: {
     paddingVertical: 24,
+    alignItems: 'center',
+  },
+  footerLoader: {
+    paddingVertical: 12,
     alignItems: 'center',
   },
   fallback: {
