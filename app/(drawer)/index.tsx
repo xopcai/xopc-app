@@ -545,6 +545,7 @@ export default function ChatScreen() {
             <ChatEmptyShortcutsBar disabled={composerDisabled} onPressGoal={handleGoalShortcutPress} />
           ) : null}
           <ChatComposer
+            sessionKey={sessionKey}
             disabled={composerDisabled}
             streaming={chat.streaming}
             onSend={chat.send}
