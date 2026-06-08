@@ -42,27 +42,30 @@ export function useComposerAttachments(messages: ComposerAttachmentMessages) {
   }, []);
 
   const addFromSource = useCallback(
-    async (source: AttachmentPickSource) => {
+    async (source: AttachmentPickSource): Promise<boolean> => {
       if (attachmentsRef.current.length >= MAX_CHAT_ATTACHMENTS) {
         setSnack(messages.maxAttachmentsReached.replace('{{max}}', String(MAX_CHAT_ATTACHMENTS)));
-        return;
+        return false;
       }
       try {
         const next = await pickAttachmentFromSource(source);
-        if (!next) return;
+        if (!next) return false;
+        let added = false;
         setAttachments((prev) => {
           if (prev.length >= MAX_CHAT_ATTACHMENTS) {
             setSnack(messages.maxAttachmentsReached.replace('{{max}}', String(MAX_CHAT_ATTACHMENTS)));
             return prev;
           }
+          added = true;
           return [...prev, next];
         });
+        return added;
       } catch (e) {
         if (e instanceof AttachmentFileError) {
-          if (e.code === 'cancelled') return;
+          if (e.code === 'cancelled') return false;
           if (e.code === 'permission_denied') {
             setSnack(messages.attachmentPermissionDenied);
-            return;
+            return false;
           }
           if (e.code === 'too_large') {
             setSnack(
@@ -70,11 +73,12 @@ export function useComposerAttachments(messages: ComposerAttachmentMessages) {
                 .replace('{{name}}', e.fileName ?? 'file')
                 .replace('{{maxSize}}', formatAttachmentSize(MAX_WEBCHAT_ATTACHMENT_FILE_BYTES)),
             );
-            return;
+            return false;
           }
         }
         const fileName = e instanceof AttachmentFileError ? e.fileName : undefined;
         setSnack(messages.attachmentLoadFailed.replace('{{name}}', fileName ?? 'file'));
+        return false;
       }
     },
     [messages],

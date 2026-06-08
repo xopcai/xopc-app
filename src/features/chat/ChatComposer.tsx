@@ -3,7 +3,6 @@
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Keyboard,
   type LayoutChangeEvent,
   PanResponder,
   Platform,
@@ -35,6 +34,11 @@ import {
   MIN_COMPOSER_INPUT_HEIGHT,
 } from './composer-layout';
 import { useCommandPalette } from './useCommandPalette';
+import {
+  clearComposerDraftSnapshot,
+  readComposerDraftSnapshot,
+  writeComposerDraftSnapshot,
+} from './composer-draft-storage';
 import { useComposerAttachments } from './use-composer-attachments';
 import {
   VoiceRecordingOverlay,
@@ -64,6 +68,7 @@ function voiceZoneFromGesture(dx: number): VoiceRecordingZone {
 type InputMode = 'text' | 'voice';
 
 export const ChatComposer = memo(function ChatComposer({
+  sessionKey,
   disabled,
   streaming,
   onSend,
@@ -85,6 +90,7 @@ export const ChatComposer = memo(function ChatComposer({
   steeringFollowUpId = null,
   onQueueFull,
 }: {
+  sessionKey: string;
   disabled: boolean;
   streaming: boolean;
   onSend: (text: string, attachments?: WireAttachment[]) => Promise<boolean>;
@@ -147,6 +153,8 @@ export const ChatComposer = memo(function ChatComposer({
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const lastLoadedEditFollowUpIdRef = useRef<string | null>(null);
+  const restoredDraftSessionKeyRef = useRef<string | null>(null);
+  const skipDraftPersistSessionKeyRef = useRef<string | null>(null);
 
   const runBusy = streaming || disabled;
   const hasDraft = canSendComposerDraft(draft, att.attachments.length);
@@ -160,6 +168,40 @@ export const ChatComposer = memo(function ChatComposer({
     setCursorPos(0);
     setInputHeight(MIN_COMPOSER_INPUT_HEIGHT);
   }, []);
+
+  useEffect(() => {
+    const normalizedSessionKey = sessionKey.trim();
+    restoredDraftSessionKeyRef.current = normalizedSessionKey;
+    skipDraftPersistSessionKeyRef.current = normalizedSessionKey;
+
+    if (!normalizedSessionKey) {
+      resetEditor();
+      return;
+    }
+
+    const snapshot = readComposerDraftSnapshot(normalizedSessionKey);
+    if (!snapshot) {
+      resetEditor();
+      return;
+    }
+
+    setDraft(snapshot.text);
+    setCursorPos(snapshot.cursorPos);
+    setInputHeight(estimateComposerInputHeight(snapshot.text));
+    setMode('text');
+  }, [resetEditor, sessionKey]);
+
+  useEffect(() => {
+    const normalizedSessionKey = sessionKey.trim();
+    if (!normalizedSessionKey) return;
+    if (restoredDraftSessionKeyRef.current !== normalizedSessionKey) return;
+    if (skipDraftPersistSessionKeyRef.current === normalizedSessionKey) {
+      skipDraftPersistSessionKeyRef.current = null;
+      return;
+    }
+
+    writeComposerDraftSnapshot(normalizedSessionKey, { text: draft, cursorPos });
+  }, [cursorPos, draft, sessionKey]);
 
   const actions = useComposerActions({
     chat: cm,
@@ -433,7 +475,10 @@ export const ChatComposer = memo(function ChatComposer({
 
     void onSend(previousDraft.trim(), wire.length ? wire : undefined)
       .then((accepted) => {
-        if (accepted) return;
+        if (accepted) {
+          clearComposerDraftSnapshot(sessionKey);
+          return;
+        }
         updateDraft(previousDraft);
         att.restoreAttachments(previousAttachments);
         requestAnimationFrame(() => inputRef.current?.focus());
@@ -443,7 +488,7 @@ export const ChatComposer = memo(function ChatComposer({
         att.restoreAttachments(previousAttachments);
         requestAnimationFrame(() => inputRef.current?.focus());
       });
-  }, [actions, att, canQueueWhileBusy, canSendIdle, draft, onSend, resetEditor, runBusy, updateDraft]);
+  }, [actions, att, canQueueWhileBusy, canSendIdle, draft, onSend, resetEditor, runBusy, sessionKey, updateDraft]);
 
   const handleAbort = useCallback(() => {
     onAbort();
@@ -482,11 +527,25 @@ export const ChatComposer = memo(function ChatComposer({
     setMode((prev) => (prev === 'text' ? 'voice' : 'text'));
   }, [disabled, streaming, hudOpen, transcribing]);
 
+  const openVoiceMode = useCallback(() => {
+    if (disabled || streaming || hudOpen || transcribing) return;
+    setMode('voice');
+  }, [disabled, streaming, hudOpen, transcribing]);
+
   const openAttachmentSheet = useCallback(() => {
     if (disabled) return;
-    Keyboard.dismiss();
     att.openSheet();
   }, [att, disabled]);
+
+  const handleAttachmentPick = useCallback(
+    async (source: Parameters<typeof att.addFromSource>[0]) => {
+      const added = await att.addFromSource(source);
+      if (!added) return;
+      setMode('text');
+      requestAnimationFrame(() => inputRef.current?.focus());
+    },
+    [att],
+  );
 
   const sheetItems = useMemo(
     () => [
@@ -495,6 +554,50 @@ export const ChatComposer = memo(function ChatComposer({
       { source: 'document' as const, icon: 'folder-outline', label: cm.localFiles },
     ],
     [cm.takePhoto, cm.photos, cm.localFiles],
+  );
+
+  const captureItems = useMemo(
+    () => [
+      { key: 'camera', icon: 'camera-outline', label: cm.takePhoto, onPress: () => void handleAttachmentPick('camera') },
+      { key: 'photos', icon: 'image-outline', label: cm.photos, onPress: () => void handleAttachmentPick('photos') },
+      { key: 'document', icon: 'folder-outline', label: cm.localFiles, onPress: () => void handleAttachmentPick('document') },
+      { key: 'voice', icon: 'microphone-outline', label: cm.holdToSpeak, onPress: openVoiceMode },
+    ],
+    [cm.holdToSpeak, cm.localFiles, cm.photos, cm.takePhoto, handleAttachmentPick, openVoiceMode],
+  );
+
+  const renderCaptureRail = () => (
+    <View style={styles.captureRail}>
+      {captureItems.map((item) => {
+        const itemDisabled =
+          disabled ||
+          streaming ||
+          (item.key !== 'voice' && att.attachments.length >= att.maxAttachments) ||
+          (item.key === 'voice' && (hudOpen || transcribing));
+        return (
+          <Pressable
+            key={item.key}
+            style={({ pressed }) => [
+              styles.captureChip,
+              {
+                borderColor: border,
+                backgroundColor: scheme === 'dark' ? '#111113' : '#FFFFFF',
+                opacity: itemDisabled ? 0.45 : pressed ? 0.78 : 1,
+              },
+            ]}
+            onPress={item.onPress}
+            disabled={itemDisabled}
+            accessibilityRole="button"
+            accessibilityLabel={item.label}
+          >
+            <Icon source={item.icon} size={17} color={itemDisabled ? '#8E8E93' : accent} />
+            <Text style={[styles.captureLabel, { color: scheme === 'dark' ? '#E5E5EA' : '#1C1C1E' }]} numberOfLines={1}>
+              {item.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 
   const renderVoiceToggle = () => (
@@ -586,9 +689,9 @@ export const ChatComposer = memo(function ChatComposer({
     onCursorChange: setCursorPos,
     cursorPos,
     isDark: scheme === 'dark',
-    multiline: needsMultiline,
+    multiline: true,
     editable: !disabled,
-    onContentSizeChange: needsMultiline ? onContentSizeChange : undefined,
+    onContentSizeChange,
     blurOnSubmit: false,
     returnKeyType: 'default' as const,
     textAlignVertical: (singleLineExpanded || !isExpanded
@@ -643,6 +746,8 @@ export const ChatComposer = memo(function ChatComposer({
           removeLabel={cm.removeAttachment}
         />
       ) : null}
+
+      {renderCaptureRail()}
 
       <View style={[styles.shell, { backgroundColor: surface, borderColor: border }]}>
         {mode === 'text' ? (
@@ -730,7 +835,7 @@ export const ChatComposer = memo(function ChatComposer({
         visible={att.sheetOpen}
         items={sheetItems}
         onClose={att.closeSheet}
-        onPick={(source) => void att.addFromSource(source)}
+        onPick={(source) => void handleAttachmentPick(source)}
       />
 
       <Snackbar visible={Boolean(snack)} onDismiss={() => setSnack('')} duration={3200}>
@@ -754,6 +859,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 22,
     overflow: 'hidden',
+  },
+  captureRail: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingBottom: 8,
+  },
+  captureChip: {
+    flex: 1,
+    minWidth: 0,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+  },
+  captureLabel: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   compactRow: {
     flexDirection: 'row',

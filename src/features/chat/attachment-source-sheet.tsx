@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Keyboard, Modal, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -39,7 +39,6 @@ export const AttachmentSourceSheet = memo(function AttachmentSourceSheet({
               key={item.source}
               style={({ pressed }) => [styles.cell, pressed && styles.pressed]}
               onPress={() => {
-                Keyboard.dismiss();
                 onClose();
                 onPick(item.source);
               }}
