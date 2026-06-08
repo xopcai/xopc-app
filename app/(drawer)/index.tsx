@@ -22,7 +22,6 @@ import { ClarifyPrompt } from '../../src/features/chat/ClarifyPrompt';
 import { AgentPickerSheet } from '../../src/features/chat/AgentPickerSheet';
 import { ChatHeader } from '../../src/features/chat/ChatHeader';
 import { GatewayPickerSheet } from '../../src/features/chat/GatewayPickerSheet';
-import { ChatEmptyShortcutsBar } from '../../src/features/chat/ChatEmptyShortcutsBar';
 import { EMPTY_CHAT_GOAL_PREFILL } from '../../src/features/chat/chat-empty-shortcuts';
 import { GoalMissionCard } from '../../src/features/chat/GoalMissionCard';
 import { MessageList } from '../../src/features/chat/MessageList';
@@ -541,13 +540,11 @@ export default function ChatScreen() {
             onSubmit={(answer) => void chat.submitClarifyAnswer(answer)}
             onSkip={() => void chat.skipClarifyAnswer()}
           />
-          {isEmptyChat ? (
-            <ChatEmptyShortcutsBar disabled={composerDisabled} onPressGoal={handleGoalShortcutPress} />
-          ) : null}
           <ChatComposer
             sessionKey={sessionKey}
             disabled={composerDisabled}
             streaming={chat.streaming}
+            onPressGoalShortcut={isEmptyChat ? handleGoalShortcutPress : undefined}
             onSend={chat.send}
             keyboardVisible={keyboardVisible}
             onSendVoice={(payload) => void chat.sendVoice(payload)}

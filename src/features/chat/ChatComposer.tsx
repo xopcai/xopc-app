@@ -40,6 +40,7 @@ import {
   writeComposerDraftSnapshot,
 } from './composer-draft-storage';
 import { useComposerAttachments } from './use-composer-attachments';
+import { EMPTY_CHAT_GOAL_SHORTCUT } from './chat-empty-shortcuts';
 import {
   VoiceRecordingOverlay,
   type VoiceRecordingZone,
@@ -89,6 +90,7 @@ export const ChatComposer = memo(function ChatComposer({
   onPendingFollowUpSteer,
   steeringFollowUpId = null,
   onQueueFull,
+  onPressGoalShortcut,
 }: {
   sessionKey: string;
   disabled: boolean;
@@ -115,6 +117,7 @@ export const ChatComposer = memo(function ChatComposer({
   onPendingFollowUpSteer?: (id: string) => void;
   steeringFollowUpId?: string | null;
   onQueueFull?: () => void;
+  onPressGoalShortcut?: () => void;
 }) {
   const m = useMessages();
   const cm = m.chat;
@@ -527,11 +530,6 @@ export const ChatComposer = memo(function ChatComposer({
     setMode((prev) => (prev === 'text' ? 'voice' : 'text'));
   }, [disabled, streaming, hudOpen, transcribing]);
 
-  const openVoiceMode = useCallback(() => {
-    if (disabled || streaming || hudOpen || transcribing) return;
-    setMode('voice');
-  }, [disabled, streaming, hudOpen, transcribing]);
-
   const openAttachmentSheet = useCallback(() => {
     if (disabled) return;
     att.openSheet();
@@ -561,44 +559,61 @@ export const ChatComposer = memo(function ChatComposer({
       { key: 'camera', icon: 'camera-outline', label: cm.takePhoto, onPress: () => void handleAttachmentPick('camera') },
       { key: 'photos', icon: 'image-outline', label: cm.photos, onPress: () => void handleAttachmentPick('photos') },
       { key: 'document', icon: 'folder-outline', label: cm.localFiles, onPress: () => void handleAttachmentPick('document') },
-      { key: 'voice', icon: 'microphone-outline', label: cm.holdToSpeak, onPress: openVoiceMode },
     ],
-    [cm.holdToSpeak, cm.localFiles, cm.photos, cm.takePhoto, handleAttachmentPick, openVoiceMode],
+    [cm.localFiles, cm.photos, cm.takePhoto, handleAttachmentPick],
   );
 
-  const renderCaptureRail = () => (
-    <View style={styles.captureRail}>
-      {captureItems.map((item) => {
-        const itemDisabled =
-          disabled ||
-          streaming ||
-          (item.key !== 'voice' && att.attachments.length >= att.maxAttachments) ||
-          (item.key === 'voice' && (hudOpen || transcribing));
-        return (
-          <Pressable
-            key={item.key}
-            style={({ pressed }) => [
-              styles.captureChip,
-              {
-                borderColor: border,
-                backgroundColor: scheme === 'dark' ? '#111113' : '#FFFFFF',
-                opacity: itemDisabled ? 0.45 : pressed ? 0.78 : 1,
-              },
-            ]}
-            onPress={item.onPress}
-            disabled={itemDisabled}
-            accessibilityRole="button"
-            accessibilityLabel={item.label}
-          >
-            <Icon source={item.icon} size={17} color={itemDisabled ? '#8E8E93' : accent} />
-            <Text style={[styles.captureLabel, { color: scheme === 'dark' ? '#E5E5EA' : '#1C1C1E' }]} numberOfLines={1}>
-              {item.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+  const renderCaptureChip = (
+    key: string,
+    icon: string,
+    label: string,
+    onPress: () => void,
+    itemDisabled: boolean,
+  ) => (
+    <Pressable
+      key={key}
+      style={({ pressed }) => [
+        styles.captureChip,
+        {
+          borderColor: border,
+          backgroundColor: scheme === 'dark' ? '#111113' : '#FFFFFF',
+          opacity: itemDisabled ? 0.45 : pressed ? 0.78 : 1,
+        },
+      ]}
+      onPress={onPress}
+      disabled={itemDisabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Icon source={icon} size={17} color={itemDisabled ? '#8E8E93' : accent} />
+      <Text style={[styles.captureLabel, { color: scheme === 'dark' ? '#E5E5EA' : '#1C1C1E' }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
   );
+
+  const renderCaptureRail = () => {
+    const goalLabel = m.chat.emptyShortcuts.goal;
+    const goalDisabled = disabled || streaming;
+
+    return (
+      <View style={styles.captureRail}>
+        {onPressGoalShortcut
+          ? renderCaptureChip(
+              'goal',
+              EMPTY_CHAT_GOAL_SHORTCUT.icon,
+              goalLabel,
+              onPressGoalShortcut,
+              goalDisabled,
+            )
+          : null}
+        {captureItems.map((item) => {
+          const itemDisabled = disabled || streaming || att.attachments.length >= att.maxAttachments;
+          return renderCaptureChip(item.key, item.icon, item.label, item.onPress, itemDisabled);
+        })}
+      </View>
+    );
+  };
 
   const renderVoiceToggle = () => (
     <Pressable
