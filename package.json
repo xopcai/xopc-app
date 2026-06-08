@@ -1,6 +1,6 @@
 {
   "name": "xopc",
-  "version": "1.0.0",
+  "version": "0.0.2",
   "private": true,
   "description": "Expo mobile client for the xopc gateway",
   "main": "expo-router/entry",
