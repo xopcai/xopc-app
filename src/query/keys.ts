@@ -11,4 +11,6 @@ export const queryKeys = {
   webchatGoal: (sessionKey: string) => ['webchat', 'goal', sessionKey] as const,
   webchatGoalRuns: (sessionKey: string, limit: number) => ['webchat', 'goal', 'runs', sessionKey, limit] as const,
   shares: ['shares'] as const,
+  notes: ['notes'] as const,
+  note: (id: string) => ['note', id] as const,
 };

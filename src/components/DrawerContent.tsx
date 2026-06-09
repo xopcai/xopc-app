@@ -500,6 +500,17 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
             <Icon source="plus" size={20} color="#FFFFFF" />
             <Text style={styles.newChatCtaLabel}>{dm.newChat}</Text>
           </Pressable>
+
+          <Pressable
+            style={styles.drawerNavRow}
+            onPress={() => {
+              navigation.dispatch(DrawerActions.closeDrawer());
+              router.push('/notes');
+            }}
+          >
+            <Icon source="note-text-outline" size={20} color={colors.textMuted} />
+            <Text style={[styles.drawerNavLabel, { color: colors.text }]}>{m.notesPage.title}</Text>
+          </Pressable>
         </View>
       </View>
 
@@ -667,6 +678,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  drawerNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    marginTop: 4,
+  },
+  drawerNavLabel: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   historyTitleRow: {
     gap: 10,

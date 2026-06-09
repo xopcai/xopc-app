@@ -554,6 +554,33 @@ export const zh: MessageBundle = {
     openDocs: 'Cron 文档',
   },
 
+  notesPage: {
+    title: '笔记',
+    quickCapturePlaceholder: '写下你的想法…',
+    filterAll: '全部',
+    filterInbox: '收件箱',
+    filterProcessed: '已处理',
+    filterArchived: '已归档',
+    kindAll: '所有类型',
+    kindThought: '想法',
+    kindTodo: '待办',
+    kindVoice: '语音',
+    kindMedia: '媒体',
+    empty: '暂无笔记',
+    emptyHint: '在上方输入你的第一个想法。',
+    pin: '置顶',
+    unpin: '取消置顶',
+    archive: '归档',
+    delete: '删除',
+    deleted: '笔记已删除。',
+    updated: '笔记已更新。',
+    actionFailed: '操作失败。',
+    savedOffline: '已离线保存，连接后自动同步。',
+    micDenied: '麦克风权限被拒绝。',
+    edit: '编辑',
+    done: '完成',
+  },
+
   // ── 命令面板 ──────────────────────────────────────────────
   commandPalette: {
     noResults: '无匹配的命令',

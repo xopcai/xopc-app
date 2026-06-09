@@ -135,6 +135,13 @@ export default function RootLayout() {
                     presentation: 'modal',
                   }}
                 />
+                <Stack.Screen
+                  name="notes"
+                  options={{
+                    headerShown: false,
+                    presentation: 'modal',
+                  }}
+                />
               </Stack>
               <GatewayConnectLandingModal
                 visible={connectLandingVisible}

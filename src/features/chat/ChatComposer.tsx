@@ -720,7 +720,7 @@ export const ChatComposer = memo(function ChatComposer({
   };
 
   return (
-    <View style={[styles.wrap, { backgroundColor: barBg, borderTopColor: border }]}>
+    <View style={[styles.wrap, { borderTopColor: 'transparent' }]}>
       {pendingFollowUps.length > 0 ? (
         <ChatPendingFollowUpStack
           items={pendingFollowUps}
@@ -868,7 +868,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingTop: 6,
     paddingBottom: 4,
-    borderTopWidth: StyleSheet.hairlineWidth,
   },
   shell: {
     borderWidth: 1,
@@ -912,7 +911,7 @@ const styles = StyleSheet.create({
   compactInputWrap: {
     flex: 1,
     justifyContent: 'center',
-    minHeight: MIN_COMPOSER_INPUT_HEIGHT,
+    height: MIN_COMPOSER_INPUT_HEIGHT,
   },
   toolRow: {
     flexDirection: 'row',
@@ -960,9 +959,9 @@ const styles = StyleSheet.create({
   },
   inputCompact: {
     flex: 1,
-    height: MIN_COMPOSER_INPUT_HEIGHT,
     lineHeight: 20,
     paddingVertical: 0,
+    textAlignVertical: 'center',
   },
   inputExpanded: {
     alignSelf: 'stretch',

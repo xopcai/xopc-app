@@ -554,6 +554,33 @@ export const en = {
     openDocs: 'Gateway cron docs',
   },
 
+  notesPage: {
+    title: 'Notes',
+    quickCapturePlaceholder: 'Write down your thought…',
+    filterAll: 'All',
+    filterInbox: 'Inbox',
+    filterProcessed: 'Processed',
+    filterArchived: 'Archived',
+    kindAll: 'All types',
+    kindThought: 'Thought',
+    kindTodo: 'Todo',
+    kindVoice: 'Voice',
+    kindMedia: 'Media',
+    empty: 'No notes yet',
+    emptyHint: 'Capture your first thought above.',
+    pin: 'Pin',
+    unpin: 'Unpin',
+    archive: 'Archive',
+    delete: 'Delete',
+    deleted: 'Note deleted.',
+    updated: 'Note updated.',
+    actionFailed: 'Action failed.',
+    savedOffline: 'Saved offline — will sync when connected.',
+    micDenied: 'Microphone permission denied.',
+    edit: 'Edit',
+    done: 'Done',
+  },
+
   // ── Command Palette ──────────────────────────────────────
   commandPalette: {
     noResults: 'No matching commands',

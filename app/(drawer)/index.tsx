@@ -531,7 +531,7 @@ export default function ChatScreen() {
 
         <KeyboardStickyView
           offset={{ closed: 0, opened: 0 }}
-          style={{ backgroundColor: canvasBg }}
+          style={{ backgroundColor: canvasBg, paddingBottom: Math.max(insets.bottom, 12) }}
         >
           <ClarifyPrompt
             prompt={chat.clarifyPrompt}
@@ -564,11 +564,6 @@ export default function ChatScreen() {
             steeringFollowUpId={chat.followUp.steeringFollowUpId}
             onQueueFull={() => chat.setSnackMsg(t(m.chat.followUpQueueMaxReached, { max: MAX_PENDING_FOLLOW_UPS }))}
           />
-          {!keyboardVisible ? (
-            <Text style={[styles.aiDisclaimer, { color: pillMuted, paddingBottom: Math.max(10, insets.bottom) }]}>
-              {m.chat.aiDisclaimer}
-            </Text>
-          ) : null}
         </KeyboardStickyView>
       </View>
 
