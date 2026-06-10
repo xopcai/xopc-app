@@ -115,9 +115,11 @@ export function NoteDetailScreen() {
           <Text style={{ color: mutedColor }}>Loading…</Text>
         </View>
       ) : note && id ? (
-        <ScrollView style={styles.scrollArea} contentContainerStyle={styles.contentPad} keyboardDismissMode="interactive">
-          <Text style={[styles.syncText, { color: mutedColor }]}>{syncText}</Text>
-          <NoteBlockEditor blocks={blocks} isDark={isDark} onChange={persistBlocks} />
+        <>
+          <ScrollView style={styles.scrollArea} contentContainerStyle={styles.contentPad} keyboardDismissMode="interactive">
+            <Text style={[styles.syncText, { color: mutedColor }]}>{syncText}</Text>
+            <NoteBlockEditor blocks={blocks} isDark={isDark} onChange={persistBlocks} />
+          </ScrollView>
           <View style={styles.aiPanelWrap}>
             <NoteAiPanel
               noteId={id}
@@ -127,7 +129,7 @@ export function NoteDetailScreen() {
               onMessage={setSnackMsg}
             />
           </View>
-        </ScrollView>
+        </>
       ) : (
         <View style={styles.center}>
           <Text style={{ color: mutedColor }}>{pm.actionFailed}</Text>
@@ -145,7 +147,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   scrollArea: { flex: 1 },
-  contentPad: { padding: 16, paddingBottom: 80 },
+  contentPad: { padding: 16, paddingBottom: 24 },
   syncText: { fontSize: 12, marginBottom: 10 },
-  aiPanelWrap: { marginTop: 18 },
+  aiPanelWrap: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 },
 });
