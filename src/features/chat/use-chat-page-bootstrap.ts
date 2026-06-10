@@ -9,6 +9,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { openChat } from '../../lib/navigation';
+
 import { useGatewayStore } from '../../stores/gateway-store';
 import { createSession } from '../../query/sessions';
 import { resolveEffectiveDefaultAgentId } from '../../query/agents';
@@ -72,7 +74,7 @@ export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResu
         activeSessionKeyRef.current = key;
         setPendingBootstrapKey(key);
         void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
-        router.replace({ pathname: '/', params: { k: key } });
+        openChat(router, key, { replace: true });
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         setBootstrapError(message.trim() || m.sessions.bootstrapFailed);

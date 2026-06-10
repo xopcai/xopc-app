@@ -109,7 +109,7 @@ export function HomeScreen() {
   }, [createChatMutation]);
 
   const handleNewNote = useCallback(() => {
-    router.push('/notes');
+    router.push('/(tabs)/notes');
   }, [router]);
 
   const handleRecentItemPress = useCallback(

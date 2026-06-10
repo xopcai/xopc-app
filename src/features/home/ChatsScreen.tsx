@@ -1,8 +1,5 @@
 /**
  * ChatsScreen — session list for the Chats tab.
- *
- * Extracted from DrawerContent session-list logic, adapted for a
- * full-screen tab context with search, sections, and action popover.
  */
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
@@ -357,13 +354,21 @@ export function ChatsScreen() {
       {/* Header */}
       <View style={styles.headerRow}>
         <Text style={[styles.headerTitle, { color: cardText }]}>{m.homePage.tabChats}</Text>
-        <IconButton
-          icon="plus"
-          size={22}
-          iconColor={accent}
-          onPress={handleNewChat}
-          disabled={createMut.isPending}
-        />
+        <View style={styles.headerActions}>
+          <IconButton
+            icon="plus"
+            size={22}
+            iconColor={accent}
+            onPress={handleNewChat}
+            disabled={createMut.isPending}
+          />
+          <IconButton
+            icon="cog-outline"
+            size={22}
+            iconColor={mutedText}
+            onPress={() => router.push('/settings')}
+          />
+        </View>
       </View>
 
       {/* Search / multi-select bar */}
@@ -452,6 +457,10 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     letterSpacing: -0.5,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   searchRow: {
     paddingHorizontal: 16,

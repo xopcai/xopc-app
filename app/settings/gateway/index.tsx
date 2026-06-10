@@ -9,6 +9,7 @@ import { GatewayTunnelStatusCard } from '../../../src/features/gateway/GatewayTu
 import { syncGatewayUrlsFromTunnelQr } from '../../../src/features/gateway/apply-tunnel-qr-from-api';
 import { formatGatewayHost } from '../../../src/features/gateway/gateway-connection-view';
 import { syncAfterGatewaySettingsSave } from '../../../src/features/gateway/gateway-connection-sync';
+import { openDefaultSessionAfterConnect } from '../../../src/features/gateway/navigate-after-gateway-connect';
 import {
   connectionKindLabel,
   useGatewayConnectionView,
@@ -68,7 +69,7 @@ export default function GatewayListScreen() {
       try {
         switchGateway(id);
         await syncAfterGatewaySettingsSave();
-        router.replace('/');
+        await openDefaultSessionAfterConnect(router.replace);
       } finally {
         setSwitchingId(null);
       }

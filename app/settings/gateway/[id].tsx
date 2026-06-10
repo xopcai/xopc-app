@@ -11,6 +11,7 @@ import { Button, HelperText, Snackbar, Text, TextInput } from 'react-native-pape
 import { type GatewayProfileForm, gatewayProfileSchema } from '../../../src/config/schema';
 import { syncGatewayUrlsFromTunnelQr } from '../../../src/features/gateway/apply-tunnel-qr-from-api';
 import { syncAfterGatewaySettingsSave } from '../../../src/features/gateway/gateway-connection-sync';
+import { openDefaultSessionAfterConnect } from '../../../src/features/gateway/navigate-after-gateway-connect';
 import {
   gatewayUrlValidationMessage,
   zodGatewayBaseUrlErrorMessage,
@@ -283,7 +284,7 @@ export default function GatewayEditScreen() {
       await syncAfterGatewaySettingsSave();
 
       if (isNew || baseUrlChanged) {
-        router.replace('/');
+        await openDefaultSessionAfterConnect(router.replace);
       } else {
         router.back();
       }
@@ -303,7 +304,7 @@ export default function GatewayEditScreen() {
           const wasActive = existingProfile.id === activeGatewayId;
           removeProfile(existingProfile.id);
           if (wasActive && useGatewayStore.getState().profiles.length === 0) {
-            router.replace('/');
+            router.replace('/(tabs)');
           } else {
             router.replace('/settings/gateway');
           }

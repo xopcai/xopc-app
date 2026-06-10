@@ -15,7 +15,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { ActivityIndicator, Appbar, Chip, Icon, Snackbar, Text } from 'react-native-paper';
+import { ActivityIndicator, Appbar, Chip, Icon, IconButton, Snackbar, Text } from 'react-native-paper';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -201,6 +201,12 @@ export function NotesTabScreen() {
       <View style={[styles.screen, { backgroundColor: colors.surface.base, paddingTop: insets.top + 16 }]}>
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: colors.text.primary }]}>{pm.title}</Text>
+          <IconButton
+            icon="cog-outline"
+            size={22}
+            iconColor={colors.text.tertiary}
+            onPress={() => router.push('/settings')}
+          />
         </View>
         <View style={styles.center}>
           <Text style={{ opacity: 0.6 }}>{m.sessions.gatewayNotConfigured}</Text>
@@ -214,6 +220,12 @@ export function NotesTabScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: colors.text.primary }]}>{pm.title}</Text>
+        <IconButton
+          icon="cog-outline"
+          size={22}
+          iconColor={colors.text.tertiary}
+          onPress={() => router.push('/settings')}
+        />
       </View>
 
       {/* Filters */}
@@ -354,6 +366,9 @@ export function NotesTabScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 8,
   },

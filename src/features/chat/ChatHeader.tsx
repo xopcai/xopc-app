@@ -17,7 +17,7 @@ export const ChatHeader = memo(function ChatHeader({
   headerBorder,
   pillText,
   pillMuted,
-  onMenuPress,
+  onBackPress,
   onAgentPress,
   onModelSelect,
   onNewChat,
@@ -31,7 +31,7 @@ export const ChatHeader = memo(function ChatHeader({
   headerBorder: string;
   pillText: string;
   pillMuted: string;
-  onMenuPress: () => void;
+  onBackPress: () => void;
   onAgentPress: () => void;
   onModelSelect: (modelId: string) => void;
   onNewChat: () => void;
@@ -57,7 +57,7 @@ export const ChatHeader = memo(function ChatHeader({
         ]}
       >
         <View style={styles.headerSide}>
-          <IconButton icon="menu" size={22} onPress={onMenuPress} />
+          <IconButton icon="arrow-left" size={22} onPress={onBackPress} />
         </View>
 
         <View style={styles.headerCenter}>

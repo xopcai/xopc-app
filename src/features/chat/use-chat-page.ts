@@ -4,13 +4,14 @@
  * Combines: bootstrap, session history, chat streaming, message parsing,
  * agent/model queries, and all user-interaction handlers.
  *
- * The page component (`app/(drawer)/index.tsx`) remains a thin render shell.
+ * The page component (`app/chat/[k].tsx`) remains a thin render shell.
  */
 import * as Clipboard from 'expo-clipboard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { DrawerActions } from '@react-navigation/native';
-import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import { dismissOrHome, openChat, useDismissOnHardwareBack } from '../../lib/navigation';
 
 import { useGatewayStore } from '../../stores/gateway-store';
 import { usePreferencesStore } from '../../stores/preferences-store';
@@ -41,8 +42,8 @@ export function useChatPage() {
   const { k: rawKey, msg: rawMsg } = useLocalSearchParams<{ k?: string; msg?: string }>();
   const urlSessionKey = typeof rawKey === 'string' ? rawKey : Array.isArray(rawKey) ? rawKey[0] : '';
   const urlPrefillMessage = typeof rawMsg === 'string' ? rawMsg : Array.isArray(rawMsg) ? rawMsg[0] : '';
-  const navigation = useNavigation();
   const router = useRouter();
+  useDismissOnHardwareBack(router);
   const queryClient = useQueryClient();
   const { gatewayOnline } = useGatewayHealth();
   const routeSwitchToast = useRouteSwitchToast();
@@ -161,11 +162,6 @@ export function useChatPage() {
     chatSession.clearAllState();
   }, [sessionRefreshComplete, chatSession]);
 
-  // ── Header hide native ───────────────────────────────────
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerShown: false });
-  }, [navigation]);
-
   // ── Theme colors ─────────────────────────────────────────
   const colors = getColors(isDark);
 
@@ -184,9 +180,9 @@ export function useChatPage() {
     Boolean(chatSession.clarifyPrompt);
 
   // ── Handlers ─────────────────────────────────────────────
-  const openDrawer = useCallback(() => {
-    navigation.dispatch(DrawerActions.openDrawer());
-  }, [navigation]);
+  const handleBack = useCallback(() => {
+    dismissOrHome(router);
+  }, [router]);
 
   const handleModelSelect = useCallback(
     (modelId: string) => {
@@ -203,7 +199,7 @@ export function useChatPage() {
           chatSession.activeSessionKeyRef.current = key;
           bootstrap.setPendingBootstrapKey(key);
           void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
-          router.replace({ pathname: '/', params: { k: key } });
+          openChat(router, key, { replace: true });
         })
         .catch((e) => {
           chatSession.setSnackMsg(e instanceof Error ? e.message : String(e));
@@ -223,7 +219,7 @@ export function useChatPage() {
         chatSession.activeSessionKeyRef.current = key;
         bootstrap.setPendingBootstrapKey(key);
         void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
-        router.replace({ pathname: '/', params: { k: key } });
+        openChat(router, key, { replace: true });
       })
       .catch((e) => {
         chatSession.activeSessionKeyRef.current = sessionKey;
@@ -324,7 +320,7 @@ export function useChatPage() {
         bootstrap.setPendingBootstrapKey(key);
         void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
         setGatewaySheetVisible(false);
-        router.replace({ pathname: '/', params: { k: key } });
+        openChat(router, key, { replace: true });
       } catch (e) {
         chatSession.setSnackMsg(e instanceof Error ? e.message : String(e));
       } finally {
@@ -396,7 +392,7 @@ export function useChatPage() {
     switchingGatewayId,
 
     // Handlers
-    openDrawer,
+    handleBack,
     openAgentsPicker,
     openReconnectLanding,
     handleModelSelect,

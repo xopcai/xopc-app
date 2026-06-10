@@ -1,5 +1,6 @@
 import type { Router } from 'expo-router';
 
+import { chatRoute } from '../../lib/navigation';
 import { createSession } from '../../query/sessions';
 
 /**
@@ -10,7 +11,7 @@ export async function openDefaultSessionAfterConnect(
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   try {
     const key = await createSession(undefined);
-    replace({ pathname: '/', params: { k: key } });
+    replace(chatRoute(key));
     return { ok: true };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };

@@ -14,7 +14,7 @@ import {
 } from '../src/features/settings/settings-ui';
 import { pickEffectiveDefaultId, useSetDefaultAgent } from '../src/features/settings/use-set-default-agent';
 import { useMessages } from '../src/i18n/messages';
-import { useDismissOnHardwareBack } from '../src/lib/navigation';
+import { openChat, useDismissOnHardwareBack } from '../src/lib/navigation';
 import { fetchChatAgents } from '../src/query/agents';
 import { queryKeys } from '../src/query/keys';
 import { createSession, useGatewayConfigured } from '../src/query/sessions';
@@ -42,7 +42,7 @@ export default function AgentsScreen() {
     mutationFn: (agentId: string) => createSession(agentId),
     onSuccess: (key) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
-      router.replace({ pathname: '/', params: { k: key } });
+      openChat(router, key, { replace: true });
     },
   });
 

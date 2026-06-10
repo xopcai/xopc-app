@@ -95,7 +95,6 @@ export async function tryConsumeGatewayDeeplink(
 
     await upsertGatewayFromPairResult(resolved);
 
-    router.replace('/');
     await openDefaultSessionAfterConnect(router.replace);
     return true;
   })();

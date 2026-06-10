@@ -1,5 +1,5 @@
 /**
- * Shared session-list helpers — used by DrawerContent and ChatsScreen.
+ * Shared session-list helpers — used by ChatsScreen.
  */
 import type { SessionListItem } from '../query/sessions';
 

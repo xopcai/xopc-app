@@ -65,7 +65,7 @@ export default function ChatDetailScreen() {
     gatewaySheetVisible,
     setGatewaySheetVisible,
     switchingGatewayId,
-    openDrawer,
+    handleBack,
     openAgentsPicker,
     openReconnectLanding,
     handleModelSelect,
@@ -97,7 +97,7 @@ export default function ChatDetailScreen() {
         headerBorder={colors.border.default}
         pillText={colors.text.primary}
         pillMuted={colors.text.tertiary}
-        onMenuPress={openDrawer}
+        onBackPress={handleBack}
         onAgentPress={openAgentsPicker}
         onModelSelect={handleModelSelect}
         onNewChat={handleNewChat}

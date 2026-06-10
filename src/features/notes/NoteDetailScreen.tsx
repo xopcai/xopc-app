@@ -6,9 +6,10 @@ import { KeyboardAvoidingView, Platform, ScrollView, Share, StyleSheet, View } f
 import { Appbar, Snackbar, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
-import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
+import { dismissOrHome, openChat, useDismissOnHardwareBack } from '../../lib/navigation';
 import { fetchNote, type Note } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
+import { createSession } from '../../query/sessions';
 import { useTheme } from '../../theme';
 
 import { NoteAiPanel } from './ai/NoteAiPanel';
@@ -100,8 +101,14 @@ export function NoteDetailScreen() {
 
   const handleSendToChat = useCallback((text: string) => {
     const prefill = `${pm.editorSendToChatPrefix}${text}`;
-    router.push({ pathname: '/', params: { msg: prefill } });
-  }, [pm.editorSendToChatPrefix, router]);
+    void createSession(undefined, { forceNew: true })
+      .then((key) => {
+        openChat(router, key, { msg: prefill });
+      })
+      .catch(() => {
+        setSnackMsg(pm.actionFailed);
+      });
+  }, [pm.actionFailed, pm.editorSendToChatPrefix, router]);
 
   const handleShare = useCallback(async () => {
     const markdown = blocksToMarkdown(blocks);
