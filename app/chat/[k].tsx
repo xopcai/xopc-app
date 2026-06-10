@@ -1,6 +1,11 @@
 /**
- * Chat screen — thin render shell.
- * All state + logic lives in `use-chat-page.ts`.
+ * Chat detail screen — renders the existing chat UI.
+ *
+ * Route: /chat/[k] where k is the session key.
+ * Query param `msg` can prefill a first message.
+ *
+ * Delegates to `useChatPage()` which reads route params via
+ * `useLocalSearchParams`.
  */
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
@@ -24,7 +29,7 @@ import { MAX_PENDING_FOLLOW_UPS } from '../../src/features/chat/pending-follow-u
 import { t } from '../../src/i18n/messages';
 import { useQueryClient } from '@tanstack/react-query';
 
-export default function ChatScreen() {
+export default function ChatDetailScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const page = useChatPage();

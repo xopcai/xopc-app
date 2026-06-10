@@ -85,7 +85,7 @@ export default function RootLayout() {
   const onConnectLandingClose = useCallback(() => {
     if (useGatewayStore.getState().unauthorized) return;
     setUserDismissedConnect(true);
-    router.replace('/');
+    router.replace('/(tabs)');
   }, [router]);
 
   const gatewayConnectCtx = useMemo(
@@ -101,10 +101,11 @@ export default function RootLayout() {
             <GatewayConnectLandingContext.Provider value={gatewayConnectCtx}>
               <Stack screenOptions={{ headerShown: false }}>
               {/**
-               * Keep the main app group first so cold start / restored state default to chat,
-               * not the first modal screen declared below.
+               * (tabs) is the default landing group — Home / Chats / Notes.
+               * chat/[k] pushes a full-screen chat detail on top of tabs.
                */}
-                <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="chat" options={{ headerShown: false }} />
                 <Stack.Screen
                   name="settings"
                   options={{

@@ -1,14 +1,14 @@
 /**
- * Drawer layout — wraps the chat screen with a custom sidebar.
+ * Chat detail screen — pushed on top of the tab navigator.
  *
- * expo-router file-system route: app/(drawer)/_layout.tsx
- * The only screen inside this group is `index` (the chat page).
+ * Wraps the existing ChatScreen inside a drawer for session switching.
+ * Route: /chat/[k]  (k = session key, optional msg = prefill message)
  */
 import { Drawer } from 'expo-router/drawer';
 
 import { DrawerContent } from '../../src/components/DrawerContent';
 
-export default function DrawerLayout() {
+export default function ChatDetailLayout() {
   return (
     <Drawer
       drawerContent={(props) => <DrawerContent {...props} />}
@@ -20,7 +20,7 @@ export default function DrawerLayout() {
         swipeEdgeWidth: 40,
       }}
     >
-      <Drawer.Screen name="index" options={{ headerShown: false }} />
+      <Drawer.Screen name="[k]" options={{ headerShown: false }} />
     </Drawer>
   );
 }

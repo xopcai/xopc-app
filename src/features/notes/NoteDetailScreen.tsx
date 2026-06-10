@@ -1,8 +1,8 @@
 import * as Clipboard from 'expo-clipboard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Platform, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { Appbar, Snackbar, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
@@ -12,8 +12,10 @@ import { queryKeys } from '../../query/keys';
 import { useTheme } from '../../theme';
 
 import { NoteAiPanel } from './ai/NoteAiPanel';
-import { NoteBlockEditor } from './editor/NoteBlockEditor';
-import { blocksToMarkdown, blocksToPlainText, noteToBlocks, type NoteAiPatch, type NoteBlock } from './note-blocks';
+import { NoteBlockEditor, type NoteBlockEditorHandle } from './editor/NoteBlockEditor';
+import { EditorActionBar } from './editor/EditorActionBar';
+import { SlashCommandMenu } from './editor/SlashCommandMenu';
+import { blocksToMarkdown, blocksToPlainText, noteToBlocks, type NoteAiPatch, type NoteBlock, type NoteBlockType } from './note-blocks';
 import {
   flushPendingNoteOperations,
   readLocalNote,
@@ -41,6 +43,8 @@ export function NoteDetailScreen() {
   const [localNote, setLocalNote] = useState<LocalNoteSnapshot | null>(null);
   const [blocks, setBlocks] = useState<NoteBlock[]>([]);
   const [snackMsg, setSnackMsg] = useState('');
+  const [slashMenuVisible, setSlashMenuVisible] = useState(false);
+  const [editorHandle, setEditorHandle] = useState<NoteBlockEditorHandle | null>(null);
 
   const noteQuery = useQuery({
     queryKey: id ? queryKeys.note(id) : ['note', ''],
@@ -109,11 +113,35 @@ export function NoteDetailScreen() {
     try {
       await Share.share({ message: markdown });
     } catch {
-      // User cancelled or share failed — copy to clipboard as fallback
       await Clipboard.setStringAsync(markdown);
       setSnackMsg(pm.shareNotesCopied);
     }
   }, [blocks, pm.shareNotesCopied]);
+
+  // ── Slash command menu ───────────────────────────────────
+
+  const handleOpenSlashMenu = useCallback(() => {
+    setSlashMenuVisible(true);
+  }, []);
+
+  const handleSlashSelect = useCallback((type: NoteBlockType) => {
+    setSlashMenuVisible(false);
+    editorHandle?.convertActiveBlock(type);
+  }, [editorHandle]);
+
+  const handleSlashDismiss = useCallback(() => {
+    setSlashMenuVisible(false);
+  }, []);
+
+  // ── Action bar handlers ──────────────────────────────────
+
+  const handleActionBarConvert = useCallback((type: NoteBlockType) => {
+    editorHandle?.convertActiveBlock(type);
+  }, [editorHandle]);
+
+  const handleActionBarInsert = useCallback(() => {
+    editorHandle?.insertAfterActive();
+  }, [editorHandle]);
 
   const title = note
     ? new Date(note.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -131,31 +159,54 @@ export function NoteDetailScreen() {
         <Appbar.Action icon="cloud-sync-outline" onPress={() => void handleFlush()} />
       </Appbar.Header>
 
-      {noteQuery.isLoading && !note ? (
-        <View style={styles.center}>
-          <Text style={{ color: colors.text.tertiary }}>Loading…</Text>
-        </View>
-      ) : note && id ? (
-        <>
-          <ScrollView style={styles.scrollArea} contentContainerStyle={styles.contentPad} keyboardDismissMode="interactive">
-            <Text style={[styles.syncText, { color: colors.text.tertiary }]}>{syncText}</Text>
-            <NoteBlockEditor blocks={blocks} onChange={persistBlocks} onSendToChat={handleSendToChat} />
-          </ScrollView>
-          <View style={styles.aiPanelWrap}>
-            <NoteAiPanel
-              noteId={id}
-              blocks={blocks}
-              isDark={colors.surface.base === '#000000'}
-              onApplyBlocks={handleApplyAiBlocks}
-              onMessage={setSnackMsg}
-            />
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        {noteQuery.isLoading && !note ? (
+          <View style={styles.center}>
+            <Text style={{ color: colors.text.tertiary }}>Loading…</Text>
           </View>
-        </>
-      ) : (
-        <View style={styles.center}>
-          <Text style={{ color: colors.text.tertiary }}>{pm.actionFailed}</Text>
-        </View>
-      )}
+        ) : note && id ? (
+          <>
+            <ScrollView style={styles.scrollArea} contentContainerStyle={styles.contentPad} keyboardDismissMode="interactive">
+              <Text style={[styles.syncText, { color: colors.text.tertiary }]}>{syncText}</Text>
+              <NoteBlockEditor
+                blocks={blocks}
+                onChange={persistBlocks}
+                onSendToChat={handleSendToChat}
+                onRequestSlashMenu={handleOpenSlashMenu}
+                onHandleChange={setEditorHandle}
+              />
+            </ScrollView>
+            <EditorActionBar
+              activeBlockType={editorHandle?.activeBlockType ?? null}
+              onConvertBlock={handleActionBarConvert}
+              onInsertBlock={handleActionBarInsert}
+              onOpenSlashMenu={handleOpenSlashMenu}
+            />
+            <View style={styles.aiPanelWrap}>
+              <NoteAiPanel
+                noteId={id}
+                blocks={blocks}
+                isDark={colors.surface.base === '#000000'}
+                onApplyBlocks={handleApplyAiBlocks}
+                onMessage={setSnackMsg}
+              />
+            </View>
+            <SlashCommandMenu
+              visible={slashMenuVisible}
+              onSelect={handleSlashSelect}
+              onDismiss={handleSlashDismiss}
+            />
+          </>
+        ) : (
+          <View style={styles.center}>
+            <Text style={{ color: colors.text.tertiary }}>{pm.actionFailed}</Text>
+          </View>
+        )}
+      </KeyboardAvoidingView>
 
       <Snackbar visible={Boolean(snackMsg)} onDismiss={() => setSnackMsg('')} duration={2500}>
         {snackMsg}
@@ -166,6 +217,7 @@ export function NoteDetailScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  keyboardAvoid: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   scrollArea: { flex: 1 },
   contentPad: { padding: 16, paddingBottom: 24 },

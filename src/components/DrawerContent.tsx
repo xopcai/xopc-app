@@ -55,41 +55,7 @@ const SESSIONS_PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 250;
 const SCROLL_LOAD_MORE_THRESHOLD = 120;
 
-function groupSessions(
-  items: SessionListItem[],
-  labels: { sectionThisWeek: string; sectionThisYear: string; sectionEarlier: string },
-): { title: string; data: SessionListItem[] }[] {
-  const now = Date.now();
-  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
-  const yearStart = new Date(new Date().getFullYear(), 0, 1).getTime();
-
-  const thisWeek: SessionListItem[] = [];
-  const thisYear: SessionListItem[] = [];
-  const earlier: SessionListItem[] = [];
-
-  for (const s of items) {
-    const time = new Date(s.updatedAt).getTime();
-    if (Number.isNaN(time)) {
-      earlier.push(s);
-      continue;
-    }
-    if (time >= weekAgo) thisWeek.push(s);
-    else if (time >= yearStart) thisYear.push(s);
-    else earlier.push(s);
-  }
-
-  const out: { title: string; data: SessionListItem[] }[] = [];
-  if (thisWeek.length) out.push({ title: labels.sectionThisWeek, data: thisWeek });
-  if (thisYear.length) out.push({ title: labels.sectionThisYear, data: thisYear });
-  if (earlier.length) out.push({ title: labels.sectionEarlier, data: earlier });
-  return out;
-}
-
-function sessionDisplayName(item: SessionListItem): string {
-  if (item.name?.trim()) return item.name.trim();
-  const key = item.key;
-  return key.length > 24 ? `…${key.slice(-24)}` : key;
-}
+import { groupSessions, sessionDisplayName } from '../lib/session-helpers';
 
 export function DrawerContent({ navigation }: DrawerContentComponentProps) {
   const { openGatewayConnectLanding } = useGatewayConnectLanding();
@@ -208,7 +174,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
       ),
     onSuccess: (key) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
-      router.replace({ pathname: '/', params: { k: key } });
+      router.push({ pathname: '/chat/[k]', params: { k: key } });
       navigation.dispatch(DrawerActions.closeDrawer());
     },
   });
@@ -228,7 +194,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
         });
         return;
       }
-      router.replace({ pathname: '/', params: { k: session.key } });
+      router.push({ pathname: '/chat/[k]', params: { k: session.key } });
       navigation.dispatch(DrawerActions.closeDrawer());
     },
     [multiSelectMode, navigation, router],
@@ -292,7 +258,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
       setDeleteVisible(false);
       setSnackMsg(m.sessionActions.sessionDeleted);
       if (actionSession.key === activeKey) {
-        router.replace({ pathname: '/' });
+        router.replace('/(tabs)');
       }
       setActionSession(null);
     } catch {
@@ -309,7 +275,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
       await Promise.all([...selectedKeys].map((key) => deleteSession(key)));
       void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
       if (activeKey && selectedKeys.has(activeKey)) {
-        router.replace({ pathname: '/' });
+        router.replace('/(tabs)');
       }
       setMultiSelectMode(false);
       setSelectedKeys(new Set());
