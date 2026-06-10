@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 
 import { usePreferencesStore } from '../stores/preferences-store';
+import { getColors } from '../theme';
 
 export type ThemedStackScreenOptions = {
   headerStyle: { backgroundColor: string };
@@ -16,14 +17,13 @@ export function useResolvedIsDark(): boolean {
 }
 
 export function themedStackScreenOptions(isDark: boolean): ThemedStackScreenOptions {
-  const bg = isDark ? '#000000' : '#F5F7FA';
-  const fg = isDark ? '#F5F5F7' : '#1C1C1E';
+  const c = getColors(isDark);
   return {
-    headerStyle: { backgroundColor: bg },
-    headerTintColor: fg,
-    headerTitleStyle: { color: fg },
+    headerStyle: { backgroundColor: c.surface.base },
+    headerTintColor: c.text.primary,
+    headerTitleStyle: { color: c.text.primary },
     headerShadowVisible: false,
-    contentStyle: { backgroundColor: bg },
+    contentStyle: { backgroundColor: c.surface.base },
   };
 }
 

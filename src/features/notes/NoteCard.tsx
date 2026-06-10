@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
 import type { NoteIndexEntry, NoteKind } from '../../query/notes';
+import { useTheme } from '../../theme';
 
 const KIND_ICONS: Record<NoteKind, string> = {
   thought: 'lightbulb-outline',
@@ -15,18 +16,12 @@ const KIND_ICONS: Record<NoteKind, string> = {
 
 export type NoteCardProps = {
   note: NoteIndexEntry;
-  isDark: boolean;
   onPress: (note: NoteIndexEntry) => void;
   onLongPress: (note: NoteIndexEntry) => void;
 };
 
-export function NoteCard({ note, isDark, onPress, onLongPress }: NoteCardProps) {
-  const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
-  const cardBorder = isDark ? '#38383A' : '#E5E5EA';
-  const textPrimary = isDark ? '#E5E7EB' : '#1F2937';
-  const textSecondary = isDark ? '#9CA3AF' : '#6B7280';
-  const tagBg = isDark ? '#374151' : '#F3F4F6';
-  const pinColor = isDark ? '#60A5FA' : '#2563EB';
+export function NoteCard({ note, onPress, onLongPress }: NoteCardProps) {
+  const { colors } = useTheme();
 
   const iconName = KIND_ICONS[note.kind] || 'lightbulb-outline';
   const time = new Date(note.createdAt).toLocaleString(undefined, {
@@ -43,15 +38,20 @@ export function NoteCard({ note, isDark, onPress, onLongPress }: NoteCardProps) 
     <Pressable
       style={({ pressed }) => [
         styles.card,
-        { backgroundColor: pressed ? (isDark ? '#2C2C2E' : '#F5F5F5') : cardBg, borderColor: cardBorder },
+        {
+          backgroundColor: pressed ? colors.surface.hover : colors.surface.panel,
+          borderColor: colors.border.subtle,
+        },
       ]}
       onPress={handlePress}
       onLongPress={handleLongPress}
     >
       <View style={styles.topRow}>
-        <Icon source={iconName} size={20} color={textSecondary} />
+        <View style={[styles.kindBadge, { backgroundColor: colors.accent.selectionBg }]}>
+          <Icon source={iconName} size={16} color={colors.accent.primary} />
+        </View>
         <Text
-          style={[styles.snippet, { color: textPrimary }]}
+          style={[styles.snippet, { color: colors.text.primary }]}
           numberOfLines={3}
         >
           {note.snippet || '(no text)'}
@@ -60,16 +60,16 @@ export function NoteCard({ note, isDark, onPress, onLongPress }: NoteCardProps) 
 
       <View style={styles.metaRow}>
         {note.pinned && (
-          <View style={[styles.tag, { backgroundColor: `${pinColor}18` }]}>
-            <Icon source="pin" size={12} color={pinColor} />
+          <View style={[styles.tag, { backgroundColor: colors.accent.selectionBg }]}>
+            <Icon source="pin" size={11} color={colors.accent.primary} />
           </View>
         )}
         {note.tags?.map((tag) => (
-          <View key={tag} style={[styles.tag, { backgroundColor: tagBg }]}>
-            <Text style={[styles.tagText, { color: textSecondary }]}>{tag}</Text>
+          <View key={tag} style={[styles.tag, { backgroundColor: colors.surface.input }]}>
+            <Text style={[styles.tagText, { color: colors.text.secondary }]}>{tag}</Text>
           </View>
         ))}
-        <Text style={[styles.time, { color: textSecondary }]}>{time}</Text>
+        <Text style={[styles.time, { color: colors.text.tertiary }]}>{time}</Text>
       </View>
     </Pressable>
   );
@@ -87,6 +87,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 10,
   },
+  kindBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
   snippet: {
     flex: 1,
     fontSize: 14,
@@ -97,6 +105,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 6,
+    paddingLeft: 38,
   },
   tag: {
     paddingHorizontal: 6,

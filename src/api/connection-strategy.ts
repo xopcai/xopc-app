@@ -118,23 +118,6 @@ export async function probeGatewayRouteReachability(
   }
 }
 
-/** @deprecated Boolean wrapper kept for one release. Use probeGatewayRouteReachability. */
-export async function probeGatewayHealth(
-  baseUrl: string,
-  options?: ResolvePreferredBaseUrlOptions,
-): Promise<boolean> {
-  const probe = await probeGatewayRouteReachability(baseUrl, options);
-  return probe.reachable;
-}
-
-/** @deprecated Use probeGatewayRouteReachability for status + failure reason. */
-export async function probeGatewayRouteReachable(
-  baseUrl: string,
-  options?: ResolvePreferredBaseUrlOptions,
-): Promise<boolean> {
-  return (await probeGatewayRouteReachability(baseUrl, options)).reachable;
-}
-
 function effectiveTiming(override?: Partial<ProbeTiming>): ProbeTiming {
   if (!override) return PROBE_TIMING;
   return { ...PROBE_TIMING, ...override };

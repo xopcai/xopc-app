@@ -100,6 +100,26 @@ export function blocksToPlainText(blocks: NoteBlock[]): string {
     .join('\n\n');
 }
 
+/** Serialize blocks to Markdown for sharing/export. */
+export function blocksToMarkdown(blocks: NoteBlock[]): string {
+  return blocks
+    .map((block) => {
+      if (block.type === 'divider') return '\n---\n';
+      if (block.type === 'heading') {
+        const prefix = '#'.repeat(block.level ?? 2);
+        return `${prefix} ${block.text}`;
+      }
+      if (block.type === 'todo') return `- [${block.checked ? 'x' : ' '}] ${block.text}`;
+      if (block.type === 'bulletList') return `- ${block.text}`;
+      if (block.type === 'numberedList') return `1. ${block.text}`;
+      if (block.type === 'quote') return `> ${block.text}`;
+      if (block.type === 'code') return `\`\`\`\n${block.text}\n\`\`\``;
+      return block.text;
+    })
+    .filter((line) => line.trim().length > 0)
+    .join('\n\n');
+}
+
 export function applyNotePatch(blocks: NoteBlock[], patch: NoteAiPatch): NoteBlock[] {
   return patch.operations.reduce((currentBlocks, operation) => {
     if (operation.type === 'replaceBlocks') return operation.blocks;

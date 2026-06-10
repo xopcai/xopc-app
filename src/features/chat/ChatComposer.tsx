@@ -10,13 +10,13 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useColorScheme,
   View,
 } from 'react-native';
 import { Icon, Snackbar } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
 import { transcribeVoice } from '../../api/agent-client';
+import { useTheme } from '../../theme';
 import { ChatPendingFollowUpStack } from './ChatPendingFollowUpStack';
 import { canSendComposerDraft } from './composer-send-helpers';
 import type { WireAttachment } from './composer.types';
@@ -121,7 +121,7 @@ export const ChatComposer = memo(function ChatComposer({
 }) {
   const m = useMessages();
   const cm = m.chat;
-  const scheme = useColorScheme();
+  const { colors, isDark } = useTheme();
 
   const [mode, setMode] = useState<InputMode>('text');
   const [draft, setDraft] = useState('');
@@ -520,10 +520,9 @@ export const ChatComposer = memo(function ChatComposer({
     [draft],
   );
 
-  const surface = scheme === 'dark' ? '#1C1C1E' : '#F5F5F7';
-  const border = scheme === 'dark' ? '#3A3A3C' : '#E5E5EA';
-  const barBg = scheme === 'dark' ? '#000000' : '#FFFFFF';
-  const accent = '#007AFF';
+  const surface = colors.surface.input;
+  const border = colors.border.default;
+  const accent = colors.accent.primary;
 
   const toggleMode = useCallback(() => {
     if (disabled || streaming || hudOpen || transcribing) return;
@@ -576,7 +575,7 @@ export const ChatComposer = memo(function ChatComposer({
         styles.captureChip,
         {
           borderColor: border,
-          backgroundColor: scheme === 'dark' ? '#111113' : '#FFFFFF',
+          backgroundColor: colors.surface.panel,
           opacity: itemDisabled ? 0.45 : pressed ? 0.78 : 1,
         },
       ]}
@@ -585,8 +584,8 @@ export const ChatComposer = memo(function ChatComposer({
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Icon source={icon} size={17} color={itemDisabled ? '#8E8E93' : accent} />
-      <Text style={[styles.captureLabel, { color: scheme === 'dark' ? '#E5E5EA' : '#1C1C1E' }]} numberOfLines={1}>
+      <Icon source={icon} size={17} color={itemDisabled ? colors.text.tertiary : accent} />
+      <Text style={[styles.captureLabel, { color: colors.text.primary }]} numberOfLines={1}>
         {label}
       </Text>
     </Pressable>
@@ -625,7 +624,7 @@ export const ChatComposer = memo(function ChatComposer({
       <Icon
         source={mode === 'text' ? 'microphone-outline' : 'keyboard-outline'}
         size={22}
-        color={disabled || streaming ? '#8E8E93' : accent}
+        color={disabled || streaming ? colors.text.tertiary : accent}
       />
     </Pressable>
   );
@@ -640,14 +639,14 @@ export const ChatComposer = memo(function ChatComposer({
       <Icon
         source="plus-circle-outline"
         size={24}
-        color={disabled ? '#8E8E93' : accent}
+        color={disabled ? colors.text.tertiary : accent}
       />
     </Pressable>
   );
 
   const renderAbortButton = () => (
     <Pressable style={styles.sendCircle} onPress={handleAbort} hitSlop={8} accessibilityLabel={cm.stop}>
-      <Icon source="stop" size={20} color="#FFFFFF" />
+      <Icon source="stop" size={20} color={colors.text.inverse} />
     </Pressable>
   );
 
@@ -658,7 +657,7 @@ export const ChatComposer = memo(function ChatComposer({
       hitSlop={8}
       accessibilityLabel={cm.send}
     >
-      <Icon source="arrow-up" size={20} color="#FFFFFF" />
+      <Icon source="arrow-up" size={20} color={colors.text.inverse} />
     </Pressable>
   );
 
@@ -685,25 +684,25 @@ export const ChatComposer = memo(function ChatComposer({
     if (!isExpanded) return null;
     return (
       <Pressable
-        style={[styles.sendCircle, { backgroundColor: canSendIdle ? '#1C1C1E' : scheme === 'dark' ? '#48484A' : '#C7C7CC' }]}
+        style={[styles.sendCircle, { backgroundColor: canSendIdle ? colors.text.primary : colors.surface.active }]}
         onPress={handleSend}
         disabled={!canSendIdle}
         hitSlop={8}
         accessibilityLabel={cm.send}
       >
-        <Icon source="arrow-up" size={22} color="#FFFFFF" />
+        <Icon source="arrow-up" size={22} color={colors.text.inverse} />
       </Pressable>
     );
   };
 
   const textInputProps = {
     placeholder: composerPlaceholder,
-    placeholderTextColor: '#8E8E93',
+    placeholderTextColor: colors.text.tertiary,
     value: draft,
     onChangeText: updateDraft,
     onCursorChange: setCursorPos,
     cursorPos,
-    isDark: scheme === 'dark',
+    isDark,
     multiline: true,
     editable: !disabled,
     onContentSizeChange,
@@ -742,7 +741,7 @@ export const ChatComposer = memo(function ChatComposer({
         textHint={cm.voiceReleaseTextHint}
         cancelHint={cm.voiceReleaseCancelHint}
         transcribingLabel={cm.voiceTranscribing}
-        isDark={scheme === 'dark'}
+        isDark={isDark}
       />
 
       {palette.open ? (
@@ -779,7 +778,7 @@ export const ChatComposer = memo(function ChatComposer({
                     styles.input,
                     isExpanded ? styles.inputExpanded : styles.inputCompact,
                     {
-                      color: scheme === 'dark' ? '#F5F5F7' : '#1C1C1E',
+                      color: colors.text.primary,
                       ...(singleLineExpanded
                         ? { height: MIN_COMPOSER_INPUT_HEIGHT }
                         : isExpanded
@@ -813,7 +812,7 @@ export const ChatComposer = memo(function ChatComposer({
               style={[styles.holdPad, styles.holdPadExpanded, hudOpen && { opacity: 0.92 }]}
               {...panResponder.panHandlers}
             >
-              <Text style={[styles.holdLabel, { color: scheme === 'dark' ? '#E5E5EA' : '#3A3A3C' }]}>
+              <Text style={[styles.holdLabel, { color: colors.text.secondary }]}>
                 {cm.holdToSpeak}
               </Text>
             </View>
@@ -837,7 +836,7 @@ export const ChatComposer = memo(function ChatComposer({
               style={[styles.holdPad, styles.holdPadCompact, hudOpen && { opacity: 0.92 }]}
               {...panResponder.panHandlers}
             >
-              <Text style={[styles.holdLabel, { color: scheme === 'dark' ? '#E5E5EA' : '#3A3A3C' }]}>
+              <Text style={[styles.holdLabel, { color: colors.text.secondary }]}>
                 {cm.holdToSpeak}
               </Text>
             </View>

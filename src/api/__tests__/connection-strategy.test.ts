@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  probeGatewayHealth,
   probeGatewayRouteReachability,
-  probeGatewayRouteReachable,
   raceGatewayRoutes,
   resolvePreferredBaseUrl,
 } from '../connection-strategy';
@@ -70,35 +68,6 @@ describe('probeGatewayRouteReachability', () => {
       signal: expect.any(AbortSignal),
       headers: { Authorization: 'Bearer secret' },
     });
-  });
-});
-
-describe('probeGatewayHealth (legacy boolean wrapper)', () => {
-  it('returns true when fetch resolves', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, body: { cancel: () => {} } })));
-
-    await expect(
-      probeGatewayHealth('http://192.168.1.44:18790', { token: 'secret' }),
-    ).resolves.toBe(true);
-  });
-
-  it('returns false when fetch fails', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        throw new Error('network');
-      }),
-    );
-
-    await expect(probeGatewayHealth('http://192.168.1.44:18790')).resolves.toBe(false);
-  });
-});
-
-describe('probeGatewayRouteReachable (legacy boolean wrapper)', () => {
-  it('returns boolean reachable flag', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, body: { cancel: () => {} } })));
-
-    await expect(probeGatewayRouteReachable('192.168.1.44:18790')).resolves.toBe(true);
   });
 });
 

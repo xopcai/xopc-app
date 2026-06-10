@@ -16,7 +16,30 @@ import {
   requestMicPermission,
   type ExpoRecording,
 } from '../../chat/voiceRecording';
-import { applyNotePatch, type NoteAiPatch, type NoteBlock } from '../note-blocks';
+import { useMessages } from '../../../i18n/messages';
+import { useTheme } from '../../../theme';
+import { applyNotePatch, type NoteAiPatch, type NoteBlock, type NotePatchOperation } from '../note-blocks';
+
+/** Human-readable description of an AI patch operation for the diff preview. */
+function describeOperation(op: NotePatchOperation): string {
+  switch (op.type) {
+    case 'replaceBlocks':
+      return `Replace all blocks (${op.blocks.length} blocks)`;
+    case 'insertBlocksAfter':
+      return `Insert ${op.blocks.length} block${op.blocks.length > 1 ? 's' : ''}`;
+    case 'updateBlock':
+      return `Update block`;
+    case 'updateMetadata': {
+      const parts: string[] = [];
+      if (op.title) parts.push(`title → "${op.title}"`);
+      if (op.tags) parts.push(`tags → [${op.tags.join(', ')}]`);
+      if (op.status) parts.push(`status → ${op.status}`);
+      return parts.join(', ') || 'Update metadata';
+    }
+    default:
+      return 'Change';
+  }
+}
 
 export interface NoteAiPanelProps {
   noteId: string;
@@ -25,13 +48,6 @@ export interface NoteAiPanelProps {
   onApplyBlocks: (blocks: NoteBlock[], patch: NoteAiPatch) => void;
   onMessage: (message: string) => void;
 }
-
-const QUICK_PROMPTS = [
-  '整理成结构化笔记',
-  '提取待办事项',
-  '生成标题和标签',
-  '压缩成摘要',
-];
 
 const MIN_VOICE_MS = 380;
 
@@ -45,15 +61,27 @@ export const NoteAiPanel = memo(function NoteAiPanel({
   const [instruction, setInstruction] = useState('');
   const [loading, setLoading] = useState(false);
   const [pendingPatch, setPendingPatch] = useState<NoteAiPatch | null>(null);
+  const [acceptedOps, setAcceptedOps] = useState<Set<number>>(new Set());
+  const [rejectedOps, setRejectedOps] = useState<Set<number>>(new Set());
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const recordingRef = useRef<ExpoRecording | null>(null);
+  const m = useMessages();
+  const pm = m.notesPage;
+  const { colors } = useTheme();
 
-  const textColor = isDark ? '#E5E7EB' : '#1C1C1E';
-  const mutedColor = '#8E8E93';
-  const surface = isDark ? '#1C1C1E' : '#FFFFFF';
-  const border = isDark ? '#3A3A3C' : '#E5E5EA';
-  const accent = '#007AFF';
+  const quickPrompts = [
+    pm.aiPromptOrganize,
+    pm.aiPromptExtractTodos,
+    pm.aiPromptTitleTags,
+    pm.aiPromptSummarize,
+  ];
+
+  const textColor = colors.text.primary;
+  const mutedColor = colors.text.tertiary;
+  const surface = colors.surface.panel;
+  const border = colors.border.default;
+  const accent = colors.accent.primary;
 
   const submitInstruction = useCallback(async (value?: string) => {
     const finalInstruction = (value ?? instruction).trim();
@@ -62,19 +90,64 @@ export const NoteAiPanel = memo(function NoteAiPanel({
     try {
       const result = await requestNoteAiEdit(noteId, { instruction: finalInstruction, blocks });
       setPendingPatch(result.patch);
+      setAcceptedOps(new Set());
+      setRejectedOps(new Set());
       setInstruction('');
     } catch (err) {
-      onMessage(err instanceof Error ? err.message : 'AI 整理失败');
+      onMessage(err instanceof Error ? err.message : pm.aiEditFailed);
     } finally {
       setLoading(false);
     }
-  }, [blocks, instruction, loading, noteId, onMessage]);
+  }, [blocks, instruction, loading, noteId, onMessage, pm.aiEditFailed]);
 
   const applyPatch = useCallback(() => {
     if (!pendingPatch) return;
-    onApplyBlocks(applyNotePatch(blocks, pendingPatch), pendingPatch);
+    // Apply only accepted operations (or all if none explicitly selected)
+    const ops = pendingPatch.operations;
+    const hasSelections = acceptedOps.size > 0 || rejectedOps.size > 0;
+    const selectedOps = hasSelections
+      ? ops.filter((_, index) => acceptedOps.has(index) || (!rejectedOps.has(index) && !acceptedOps.size))
+      : ops;
+
+    if (selectedOps.length === 0) {
+      setPendingPatch(null);
+      return;
+    }
+
+    const filteredPatch: NoteAiPatch = { ...pendingPatch, operations: selectedOps };
+    onApplyBlocks(applyNotePatch(blocks, filteredPatch), filteredPatch);
     setPendingPatch(null);
-  }, [blocks, onApplyBlocks, pendingPatch]);
+    setAcceptedOps(new Set());
+    setRejectedOps(new Set());
+  }, [acceptedOps, blocks, onApplyBlocks, pendingPatch, rejectedOps]);
+
+  const toggleOpAccept = useCallback((index: number) => {
+    setAcceptedOps((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+    setRejectedOps((prev) => {
+      const next = new Set(prev);
+      next.delete(index);
+      return next;
+    });
+  }, []);
+
+  const toggleOpReject = useCallback((index: number) => {
+    setRejectedOps((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+    setAcceptedOps((prev) => {
+      const next = new Set(prev);
+      next.delete(index);
+      return next;
+    });
+  }, []);
 
   useEffect(() => () => {
     const recordingToDiscard = recordingRef.current;
@@ -87,7 +160,7 @@ export const NoteAiPanel = memo(function NoteAiPanel({
   const appendTranscribedText = useCallback((text: string) => {
     const transcribedText = text.trim();
     if (!transcribedText) {
-      onMessage('没有识别到语音内容');
+      onMessage(pm.aiNoVoiceContent);
       return;
     }
 
@@ -95,18 +168,18 @@ export const NoteAiPanel = memo(function NoteAiPanel({
       const currentText = currentInstruction.trim();
       return currentText ? `${currentText} ${transcribedText}` : transcribedText;
     });
-  }, [onMessage]);
+  }, [onMessage, pm.aiNoVoiceContent]);
 
   const startVoiceInput = useCallback(async () => {
     if (recording || transcribing || loading) return;
     if (Platform.OS === 'web') {
-      onMessage('当前环境暂不支持语音输入');
+      onMessage(pm.aiVoiceNotSupported);
       return;
     }
 
     const granted = await requestMicPermission();
     if (!granted) {
-      onMessage('需要麦克风权限才能语音输入');
+      onMessage(pm.aiMicRequired);
       return;
     }
 
@@ -115,9 +188,9 @@ export const NoteAiPanel = memo(function NoteAiPanel({
       recordingRef.current = nextRecording;
       setRecording(true);
     } catch {
-      onMessage('语音录制失败');
+      onMessage(pm.aiRecordingFailed);
     }
-  }, [loading, onMessage, recording, transcribing]);
+  }, [loading, onMessage, pm, recording, transcribing]);
 
   const finishVoiceInput = useCallback(async () => {
     const currentRecording = recordingRef.current;
@@ -130,22 +203,22 @@ export const NoteAiPanel = memo(function NoteAiPanel({
     try {
       const { uri, durationMillis } = await finishRecording(currentRecording);
       if (durationMillis < MIN_VOICE_MS) {
-        onMessage('说话时间太短了');
+        onMessage(pm.aiVoiceTooShort);
         return;
       }
       if (!uri) {
-        onMessage('语音录制失败');
+        onMessage(pm.aiRecordingFailed);
         return;
       }
 
       const result = await transcribeVoice(uri, inferRecordingMimeType(uri));
       appendTranscribedText(result.refined || result.raw);
     } catch {
-      onMessage('语音转文字失败');
+      onMessage(pm.aiVoiceFailed);
     } finally {
       setTranscribing(false);
     }
-  }, [appendTranscribedText, onMessage, transcribing]);
+  }, [appendTranscribedText, onMessage, pm, transcribing]);
 
   const toggleVoiceInput = useCallback(() => {
     if (recording) {
@@ -165,7 +238,7 @@ export const NoteAiPanel = memo(function NoteAiPanel({
         contentContainerStyle={styles.quickRow}
         keyboardShouldPersistTaps="handled"
       >
-        {QUICK_PROMPTS.map((prompt) => (
+        {quickPrompts.map((prompt) => (
           <Pressable key={prompt} style={[styles.quickChip, { borderColor: border }]} onPress={() => void submitInstruction(prompt)}>
             <Text style={{ color: textColor, fontSize: 12 }}>{prompt}</Text>
           </Pressable>
@@ -173,15 +246,44 @@ export const NoteAiPanel = memo(function NoteAiPanel({
       </ScrollView>
 
       {pendingPatch ? (
-        <View style={[styles.suggestion, { borderColor: border }]}> 
-          <Text style={[styles.suggestionTitle, { color: textColor }]}>AI 建议</Text>
-          <Text style={{ color: mutedColor, lineHeight: 19 }}>{pendingPatch.summary}</Text>
+        <View style={[styles.suggestion, { borderColor: border }]}>
+          <Text style={[styles.suggestionTitle, { color: textColor }]}>{pm.aiSuggestionTitle}</Text>
+          <Text style={{ color: mutedColor, lineHeight: 19, fontSize: 13 }}>{pendingPatch.summary}</Text>
+
+          {/* Per-operation diff preview */}
+          {pendingPatch.operations.map((op, index) => {
+            const isAccepted = acceptedOps.has(index);
+            const isRejected = rejectedOps.has(index);
+            const opLabel = describeOperation(op);
+            return (
+              <View
+                key={index}
+                style={[
+                  styles.diffRow,
+                  { borderColor: border },
+                  isAccepted && { backgroundColor: `${colors.semantic.success}12` },
+                  isRejected && { backgroundColor: `${colors.semantic.error}12`, opacity: 0.6 },
+                ]}
+              >
+                <Text style={[styles.diffLabel, { color: textColor }]} numberOfLines={2}>{opLabel}</Text>
+                <View style={styles.diffActions}>
+                  <Pressable style={styles.diffBtn} onPress={() => toggleOpAccept(index)}>
+                    <Icon source={isAccepted ? 'check-circle' : 'check-circle-outline'} size={20} color={colors.semantic.success} />
+                  </Pressable>
+                  <Pressable style={styles.diffBtn} onPress={() => toggleOpReject(index)}>
+                    <Icon source={isRejected ? 'close-circle' : 'close-circle-outline'} size={20} color={colors.semantic.error} />
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })}
+
           <View style={styles.actionRow}>
             <Pressable style={[styles.secondaryButton, { borderColor: border }]} onPress={() => setPendingPatch(null)}>
-              <Text style={{ color: mutedColor }}>放弃</Text>
+              <Text style={{ color: mutedColor }}>{pm.aiDiscard}</Text>
             </Pressable>
             <Pressable style={[styles.primaryButton, { backgroundColor: accent }]} onPress={applyPatch}>
-              <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>应用</Text>
+              <Text style={{ color: colors.text.inverse, fontWeight: '700' }}>{pm.aiApply}</Text>
             </Pressable>
           </View>
         </View>
@@ -199,7 +301,7 @@ export const NoteAiPanel = memo(function NoteAiPanel({
           onPress={toggleVoiceInput}
           disabled={voiceDisabled}
           accessibilityRole="button"
-          accessibilityLabel={recording ? '结束语音输入' : '开始语音输入'}
+          accessibilityLabel={recording ? pm.aiVoiceStop : pm.aiVoiceStart}
         >
           {transcribing ? (
             <ActivityIndicator size={16} color={accent} />
@@ -211,7 +313,7 @@ export const NoteAiPanel = memo(function NoteAiPanel({
           style={[styles.input, { color: textColor }]}
           value={instruction}
           onChangeText={setInstruction}
-          placeholder="告诉 AI 如何整理这篇笔记…"
+          placeholder={pm.aiInputPlaceholder}
           placeholderTextColor={mutedColor}
           multiline
           textAlignVertical="center"
@@ -265,4 +367,15 @@ const styles = StyleSheet.create({
   },
   voiceButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   sendButton: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  diffRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 8,
+    gap: 8,
+  },
+  diffLabel: { flex: 1, fontSize: 13, lineHeight: 18 },
+  diffActions: { flexDirection: 'row', gap: 4 },
+  diffBtn: { padding: 2 },
 });

@@ -105,30 +105,29 @@ export async function fetchChatModels(agentId?: string): Promise<ChatModelsPaylo
 }
 
 export async function setSessionModelRef(sessionKey: string, modelRef: string): Promise<boolean> {
-  const body = JSON.stringify({ modelRef: modelRef.trim() });
   const key = encodeURIComponent(sessionKey);
-  const attempts: Array<() => Promise<Response>> = [
-    () =>
-      apiFetch(`/api/sessions/${key}/model`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      }),
-    () =>
-      apiFetch(`/api/sessions/${key}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      }),
-  ];
+  const res = await apiFetch(`/api/sessions/${key}/agent-config`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: modelRef.trim() }),
+  });
+  if (res.ok) return true;
+  const errBody = (await res.json().catch(() => ({}))) as { error?: string };
+  throw new Error(errBody.error ?? formatApiHttpError(res.status, res.statusText));
+}
 
-  for (const attempt of attempts) {
-    const res = await attempt();
-    if (res.ok) return true;
-    if (res.status !== 404 && res.status !== 405 && res.status !== 501) {
-      const errBody = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-      throw new Error(formatApiHttpError(res.status, res.statusText, errBody.error?.message));
-    }
-  }
-  return false;
+/** Fetch the session's agent-config (model override, thinking level, etc.). */
+export async function fetchSessionAgentConfig(
+  sessionKey: string,
+): Promise<{ model: string; thinkingLevel: string }> {
+  const key = encodeURIComponent(sessionKey);
+  const res = await apiFetch(`/api/sessions/${key}/agent-config`);
+  if (!res.ok) return { model: '', thinkingLevel: '' };
+  const data = (await res.json().catch(() => ({}))) as {
+    payload?: { model?: string; thinkingLevel?: string };
+  };
+  return {
+    model: typeof data.payload?.model === 'string' ? data.payload.model : '',
+    thinkingLevel: data.payload?.thinkingLevel ?? '',
+  };
 }

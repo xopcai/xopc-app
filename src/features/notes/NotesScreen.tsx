@@ -9,7 +9,6 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
-  useColorScheme,
   View,
 } from 'react-native';
 import { ActivityIndicator, Appbar, Chip, Icon, Snackbar, Text } from 'react-native-paper';
@@ -38,9 +37,12 @@ import {
 } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
 import { useGatewayConfigured } from '../../query/sessions';
+import { useTheme } from '../../theme';
 
 import { NoteCard } from './NoteCard';
+import { SwipeableNoteCard, type SwipeAction } from './SwipeableNoteCard';
 import { flushPendingNotes, queueNote } from './notes-sync';
+import { captureIntentBadgeKey, parseCaptureIntent } from './capture-parser';
 
 type StatusFilter = 'all' | NoteStatus;
 type KindFilter = 'all' | NoteKind;
@@ -49,8 +51,7 @@ export function NotesScreen() {
   const router = useRouter();
   useDismissOnHardwareBack(router);
   const queryClient = useQueryClient();
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
+  const { colors, isDark } = useTheme();
   const configured = useGatewayConfigured();
   const m = useMessages();
   const pm = m.notesPage;
@@ -143,8 +144,8 @@ export function NotesScreen() {
     router.push(`/notes/${note.id}`);
   }, [router]);
 
-  const handleAction = useCallback(
-    async (note: NoteIndexEntry, action: 'pin' | 'unpin' | 'archive' | 'delete') => {
+  const handleSwipeAction = useCallback(
+    async (note: NoteIndexEntry, action: SwipeAction) => {
       try {
         if (action === 'pin') await updateNote(note.id, { pinned: true });
         else if (action === 'unpin') await updateNote(note.id, { pinned: false });
@@ -159,6 +160,13 @@ export function NotesScreen() {
     [queryClient, pm],
   );
 
+  const handleAction = useCallback(
+    async (note: NoteIndexEntry, action: 'pin' | 'unpin' | 'archive' | 'delete') => {
+      void handleSwipeAction(note, action);
+    },
+    [handleSwipeAction],
+  );
+
   const [actionNote, setActionNote] = useState<NoteIndexEntry | null>(null);
   const handleLongPress = useCallback((note: NoteIndexEntry) => setActionNote(note), []);
   const dismissAction = useCallback(() => setActionNote(null), []);
@@ -169,14 +177,6 @@ export function NotesScreen() {
   }, [queryClient]);
 
   const notes = notesQuery.data?.items ?? [];
-
-  const pageBg = isDark ? '#000000' : '#F5F5F7';
-  const barBg = isDark ? '#000000' : '#FFFFFF';
-  const surface = isDark ? '#1C1C1E' : '#F5F5F7';
-  const border = isDark ? '#3A3A3C' : '#E5E5EA';
-  const textColor = isDark ? '#E5E7EB' : '#1C1C1E';
-  const mutedColor = '#8E8E93';
-  const accent = '#007AFF';
 
   const statusFilters: { key: StatusFilter; label: string }[] = useMemo(() => [
     { key: 'all', label: pm.filterAll },
@@ -195,14 +195,16 @@ export function NotesScreen() {
 
   const renderNote = useCallback(
     ({ item }: { item: NoteIndexEntry }) => (
-      <NoteCard note={item} isDark={isDark} onPress={handleNotePress} onLongPress={handleLongPress} />
+      <SwipeableNoteCard note={item} isDark={isDark} onAction={handleSwipeAction}>
+        <NoteCard note={item} onPress={handleNotePress} onLongPress={handleLongPress} />
+      </SwipeableNoteCard>
     ),
-    [isDark, handleNotePress, handleLongPress],
+    [isDark, handleNotePress, handleLongPress, handleSwipeAction],
   );
 
   if (!configured) {
     return (
-      <View style={[styles.screen, { backgroundColor: pageBg }]}>
+      <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
         <Appbar.Header mode="center-aligned" style={{ backgroundColor: 'transparent' }}>
           <Appbar.BackAction onPress={() => dismissOrHome(router)} />
           <Appbar.Content title={pm.title} />
@@ -215,7 +217,7 @@ export function NotesScreen() {
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: pageBg }]}>
+    <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
       <Appbar.Header mode="center-aligned" style={{ backgroundColor: 'transparent' }}>
         <Appbar.BackAction onPress={() => dismissOrHome(router)} />
         <Appbar.Content title={pm.title} />
@@ -257,53 +259,71 @@ export function NotesScreen() {
             }
             ListEmptyComponent={
               <View style={styles.empty}>
-                <Icon source="note-text-outline" size={48} color={mutedColor} />
-                <Text style={{ color: mutedColor, marginTop: 8 }}>{pm.empty}</Text>
-                <Text style={{ color: mutedColor, fontSize: 12 }}>{pm.emptyHint}</Text>
+                <View style={[styles.emptyIconWrap, { backgroundColor: colors.accent.selectionBg }]}>
+                  <Icon source="note-text-outline" size={40} color={colors.accent.primary} />
+                </View>
+                <Text style={{ color: colors.text.secondary, marginTop: 12, fontSize: 16, fontWeight: '600' }}>{pm.empty}</Text>
+                <Text style={{ color: colors.text.tertiary, fontSize: 13, textAlign: 'center', maxWidth: 240 }}>{pm.emptyHint}</Text>
               </View>
             }
           />
         )}
       </View>
 
-      {/* Bottom composer — matches ChatComposer shell style */}
+      {/* Bottom composer — multiline with smart intent detection */}
       <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
         <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-          <View style={[styles.composerShell, { backgroundColor: surface, borderColor: border }]}>
+          {/* Intent badge */}
+          {captureText.trim().length > 0 && (() => {
+            const intent = parseCaptureIntent(captureText);
+            const badgeKey = captureIntentBadgeKey(intent);
+            if (!badgeKey) return null;
+            return (
+              <View style={[styles.intentBadge, { backgroundColor: colors.accent.selectionBg, borderColor: colors.border.subtle }]}>
+                <Icon source={intent.kind === 'todo' ? 'checkbox-marked-outline' : 'link'} size={14} color={colors.accent.primary} />
+                <Text style={{ fontSize: 11, color: colors.accent.primary }}>
+                  {pm[badgeKey]}
+                </Text>
+              </View>
+            );
+          })()}
+          <View style={[styles.composerShell, { backgroundColor: colors.surface.input, borderColor: colors.border.default }]}>
             <View style={styles.composerRow}>
               <Pressable style={styles.toolBtn} onPress={() => void handlePickImage('photos')}>
-                <Icon source="image-outline" size={20} color={mutedColor} />
+                <Icon source="image-outline" size={20} color={colors.text.tertiary} />
               </Pressable>
               <Pressable style={styles.toolBtn} onPress={() => void handlePickImage('camera')}>
-                <Icon source="camera-outline" size={20} color={mutedColor} />
+                <Icon source="camera-outline" size={20} color={colors.text.tertiary} />
               </Pressable>
               <TextInput
-                style={[styles.composerInput, { color: textColor }]}
+                style={[styles.composerInput, { color: colors.text.primary }]}
                 placeholder={pm.quickCapturePlaceholder}
-                placeholderTextColor={mutedColor}
+                placeholderTextColor={colors.text.tertiary}
                 value={captureText}
                 onChangeText={setCaptureText}
                 onSubmitEditing={handleCapture}
                 returnKeyType="send"
-                multiline={false}
+                multiline
+                blurOnSubmit
+                textAlignVertical="center"
               />
               {captureText.trim() ? (
                 <Pressable
-                  style={[styles.sendCircle, { backgroundColor: '#1C1C1E' }]}
+                  style={[styles.sendCircle, { backgroundColor: colors.text.primary }]}
                   onPress={handleCapture}
                   disabled={captureMutation.isPending}
                   hitSlop={8}
                 >
-                  <Icon source="arrow-up" size={20} color="#FFFFFF" />
+                  <Icon source="arrow-up" size={20} color={colors.text.inverse} />
                 </Pressable>
               ) : (
                 <Pressable
-                  style={[styles.toolBtn, recording && { backgroundColor: '#EF4444', borderRadius: 18 }]}
+                  style={[styles.toolBtn, recording && styles.recordingBtn]}
                   onPressIn={() => void handleVoiceStart()}
                   onPressOut={() => void handleVoiceEnd()}
                   hitSlop={8}
                 >
-                  <Icon source="microphone" size={20} color={recording ? '#FFFFFF' : mutedColor} />
+                  <Icon source="microphone" size={20} color={recording ? '#FFFFFF' : colors.text.tertiary} />
                 </Pressable>
               )}
             </View>
@@ -313,23 +333,25 @@ export function NotesScreen() {
 
       {/* Action sheet for long-press */}
       {actionNote && (
-        <View style={[styles.actionSheet, { backgroundColor: surface, borderColor: border }]}>
-          <Pressable style={styles.actionItem} onPress={() => { void handleAction(actionNote, actionNote.pinned ? 'unpin' : 'pin'); dismissAction(); }}>
-            <Icon source={actionNote.pinned ? 'pin-off' : 'pin'} size={20} color={textColor} />
-            <Text style={{ color: textColor }}>{actionNote.pinned ? pm.unpin : pm.pin}</Text>
-          </Pressable>
-          <Pressable style={styles.actionItem} onPress={() => { void handleAction(actionNote, 'archive'); dismissAction(); }}>
-            <Icon source="archive" size={20} color={textColor} />
-            <Text style={{ color: textColor }}>{pm.archive}</Text>
-          </Pressable>
-          <Pressable style={styles.actionItem} onPress={() => { void handleAction(actionNote, 'delete'); dismissAction(); }}>
-            <Icon source="delete" size={20} color="#EF4444" />
-            <Text style={{ color: '#EF4444' }}>{pm.delete}</Text>
-          </Pressable>
-          <Pressable style={styles.actionItem} onPress={dismissAction}>
-            <Text style={{ color: mutedColor }}>{m.common.cancel}</Text>
-          </Pressable>
-        </View>
+        <Pressable style={styles.actionBackdrop} onPress={dismissAction}>
+          <View style={[styles.actionSheet, { backgroundColor: colors.surface.panel, borderColor: colors.border.default }]}>
+            <Pressable style={styles.actionItem} onPress={() => { void handleAction(actionNote, actionNote.pinned ? 'unpin' : 'pin'); dismissAction(); }}>
+              <Icon source={actionNote.pinned ? 'pin-off' : 'pin'} size={20} color={colors.text.primary} />
+              <Text style={{ color: colors.text.primary }}>{actionNote.pinned ? pm.unpin : pm.pin}</Text>
+            </Pressable>
+            <Pressable style={styles.actionItem} onPress={() => { void handleAction(actionNote, 'archive'); dismissAction(); }}>
+              <Icon source="archive" size={20} color={colors.text.primary} />
+              <Text style={{ color: colors.text.primary }}>{pm.archive}</Text>
+            </Pressable>
+            <Pressable style={styles.actionItem} onPress={() => { void handleAction(actionNote, 'delete'); dismissAction(); }}>
+              <Icon source="delete" size={20} color={colors.semantic.error} />
+              <Text style={{ color: colors.semantic.error }}>{pm.delete}</Text>
+            </Pressable>
+            <Pressable style={styles.actionItem} onPress={dismissAction}>
+              <Text style={{ color: colors.text.tertiary }}>{m.common.cancel}</Text>
+            </Pressable>
+          </View>
+        </Pressable>
       )}
 
       <Snackbar visible={Boolean(snackMsg)} onDismiss={() => setSnackMsg('')} duration={2500}>
@@ -353,11 +375,30 @@ const styles = StyleSheet.create({
   },
   listArea: { flex: 1, minHeight: 0 },
   list: { padding: 16, paddingTop: 8, gap: 10, flexGrow: 1 },
-  empty: { alignItems: 'center', paddingVertical: 48, gap: 4 },
+  empty: { alignItems: 'center', paddingVertical: 48, gap: 6 },
+  emptyIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   composerWrap: {
     paddingHorizontal: 10,
     paddingTop: 6,
     paddingBottom: 4,
+    gap: 4,
+  },
+  intentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginLeft: 6,
   },
   composerShell: {
     borderWidth: 1,
@@ -385,6 +426,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: Platform.select({ ios: 5, android: 4, default: 4 }),
     borderWidth: 0,
+    maxHeight: 100,
   },
   sendCircle: {
     width: 34,
@@ -392,6 +434,15 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  recordingBtn: {
+    backgroundColor: '#EF4444',
+    borderRadius: 18,
+  },
+  actionBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
   },
   actionSheet: {
     position: 'absolute',

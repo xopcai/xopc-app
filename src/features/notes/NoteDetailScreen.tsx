@@ -1,17 +1,19 @@
+import * as Clipboard from 'expo-clipboard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
+import { Platform, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { Appbar, Snackbar, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
 import { fetchNote, type Note } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
+import { useTheme } from '../../theme';
 
 import { NoteAiPanel } from './ai/NoteAiPanel';
 import { NoteBlockEditor } from './editor/NoteBlockEditor';
-import { blocksToPlainText, noteToBlocks, type NoteAiPatch, type NoteBlock } from './note-blocks';
+import { blocksToMarkdown, blocksToPlainText, noteToBlocks, type NoteAiPatch, type NoteBlock } from './note-blocks';
 import {
   flushPendingNoteOperations,
   readLocalNote,
@@ -32,7 +34,7 @@ export function NoteDetailScreen() {
   const router = useRouter();
   useDismissOnHardwareBack(router);
   const queryClient = useQueryClient();
-  const isDark = useColorScheme() === 'dark';
+  const { colors } = useTheme();
   const m = useMessages();
   const pm = m.notesPage;
 
@@ -92,8 +94,26 @@ export function NoteDetailScreen() {
     setSnackMsg(patch.summary || pm.updated);
   }, [persistBlocks, pm.updated]);
 
-  const pageBg = isDark ? '#000000' : '#F5F5F7';
-  const mutedColor = '#8E8E93';
+  const handleSendToChat = useCallback((text: string) => {
+    const prefill = `${pm.editorSendToChatPrefix}${text}`;
+    router.push({ pathname: '/', params: { msg: prefill } });
+  }, [pm.editorSendToChatPrefix, router]);
+
+  const handleShare = useCallback(async () => {
+    const markdown = blocksToMarkdown(blocks);
+    if (Platform.OS === 'web') {
+      await Clipboard.setStringAsync(markdown);
+      setSnackMsg(pm.shareNotesCopied);
+      return;
+    }
+    try {
+      await Share.share({ message: markdown });
+    } catch {
+      // User cancelled or share failed — copy to clipboard as fallback
+      await Clipboard.setStringAsync(markdown);
+      setSnackMsg(pm.shareNotesCopied);
+    }
+  }, [blocks, pm.shareNotesCopied]);
 
   const title = note
     ? new Date(note.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -103,28 +123,29 @@ export function NoteDetailScreen() {
     : `${blocksToPlainText(blocks).length} chars`;
 
   return (
-    <View style={[styles.screen, { backgroundColor: pageBg }]}> 
+    <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
       <Appbar.Header mode="center-aligned" style={{ backgroundColor: 'transparent' }}>
         <Appbar.BackAction onPress={() => dismissOrHome(router)} />
         <Appbar.Content title={title} titleStyle={{ fontSize: 15 }} />
+        <Appbar.Action icon="share-variant-outline" onPress={() => void handleShare()} />
         <Appbar.Action icon="cloud-sync-outline" onPress={() => void handleFlush()} />
       </Appbar.Header>
 
       {noteQuery.isLoading && !note ? (
         <View style={styles.center}>
-          <Text style={{ color: mutedColor }}>Loading…</Text>
+          <Text style={{ color: colors.text.tertiary }}>Loading…</Text>
         </View>
       ) : note && id ? (
         <>
           <ScrollView style={styles.scrollArea} contentContainerStyle={styles.contentPad} keyboardDismissMode="interactive">
-            <Text style={[styles.syncText, { color: mutedColor }]}>{syncText}</Text>
-            <NoteBlockEditor blocks={blocks} isDark={isDark} onChange={persistBlocks} />
+            <Text style={[styles.syncText, { color: colors.text.tertiary }]}>{syncText}</Text>
+            <NoteBlockEditor blocks={blocks} onChange={persistBlocks} onSendToChat={handleSendToChat} />
           </ScrollView>
           <View style={styles.aiPanelWrap}>
             <NoteAiPanel
               noteId={id}
               blocks={blocks}
-              isDark={isDark}
+              isDark={colors.surface.base === '#000000'}
               onApplyBlocks={handleApplyAiBlocks}
               onMessage={setSnackMsg}
             />
@@ -132,7 +153,7 @@ export function NoteDetailScreen() {
         </>
       ) : (
         <View style={styles.center}>
-          <Text style={{ color: mutedColor }}>{pm.actionFailed}</Text>
+          <Text style={{ color: colors.text.tertiary }}>{pm.actionFailed}</Text>
         </View>
       )}
 
