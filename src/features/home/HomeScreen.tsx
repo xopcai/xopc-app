@@ -1,6 +1,6 @@
 /**
- * HomeScreen — unified entry point with smart input, quick actions,
- * and a mixed recent list (chats + notes sorted by time).
+ * HomeScreen — unified entry point with a mixed recent list
+ * (chats + notes sorted by time) and bottom quick actions.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
@@ -10,7 +10,6 @@ import {
   Pressable,
   RefreshControl,
   StyleSheet,
-  TextInput,
   View,
 } from 'react-native';
 import { ActivityIndicator, Icon, IconButton, Text } from 'react-native-paper';
@@ -18,14 +17,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { t, useMessages } from '../../i18n/messages';
 import { queryKeys } from '../../query/keys';
-import { fetchNotes, type NoteIndexEntry } from '../../query/notes';
+import { fetchNotes, quickCaptureNote } from '../../query/notes';
 import {
   createSession,
   fetchSessionsList,
-  type SessionListItem,
 } from '../../query/sessions';
 import { useGatewayConfigured } from '../../query/sessions';
-import { resolveEffectiveDefaultAgentId } from '../../query/agents';
 import { usePreferencesStore } from '../../stores/preferences-store';
 import { useTheme } from '../../theme';
 
@@ -49,7 +46,6 @@ export function HomeScreen() {
   const hp = m.homePage;
   const insets = useSafeAreaInsets();
 
-  const [inputText, setInputText] = useState('');
   const [recentFilter, setRecentFilter] = useState<RecentFilter>('all');
 
   // ── Data queries ──────────────────────────────────────
@@ -89,28 +85,23 @@ export function HomeScreen() {
     },
   });
 
-  // ── Handlers ──────────────────────────────────────────
+  const createNoteMutation = useMutation({
+    mutationFn: () => quickCaptureNote(''),
+    onSuccess: ({ note }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notes });
+      router.push(`/notes/${note.id}`);
+    },
+  });
 
-  const handleInputSubmit = useCallback(() => {
-    const text = inputText.trim();
-    if (!text) return;
-    setInputText('');
-    // Create a new chat and pass the initial message via query param
-    createChatMutation.mutate(undefined, {
-      onSuccess: (key) => {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
-        router.push({ pathname: '/chat/[k]', params: { k: key, msg: text } });
-      },
-    });
-  }, [inputText, createChatMutation, queryClient, router]);
+  // ── Handlers ──────────────────────────────────────────
 
   const handleNewChat = useCallback(() => {
     createChatMutation.mutate(undefined);
   }, [createChatMutation]);
 
   const handleNewNote = useCallback(() => {
-    router.push('/(tabs)/notes');
-  }, [router]);
+    createNoteMutation.mutate();
+  }, [createNoteMutation]);
 
   const handleRecentItemPress = useCallback(
     (item: RecentItem) => {
@@ -133,12 +124,12 @@ export function HomeScreen() {
   // ── Colors ────────────────────────────────────────────
 
   const pageBg = colors.surface.base;
-  const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
-  const inputBg = isDark ? '#2C2C2E' : '#F2F2F7';
   const chipBg = isDark ? '#2C2C2E' : '#F2F2F7';
   const chipActiveBg = colors.accent.primary;
   const chatBadgeBg = isDark ? 'rgba(0,122,255,0.15)' : 'rgba(0,122,255,0.08)';
   const noteBadgeBg = isDark ? 'rgba(255,159,10,0.15)' : 'rgba(255,159,10,0.08)';
+  const quickChatBg = isDark ? '#1A2838' : '#E8F2FF';
+  const quickNoteBg = isDark ? '#2A2218' : '#FFF4E5';
 
   // ── Filter chips ──────────────────────────────────────
 
@@ -185,54 +176,6 @@ export function HomeScreen() {
 
   const listHeader = (
     <View style={styles.listHeader}>
-      {/* ── Smart input box ── */}
-      <View style={[styles.inputBox, { backgroundColor: inputBg, borderColor: colors.border.default }]}>
-        <Icon source="star-four-points-outline" size={18} color={colors.accent.primary} />
-        <TextInput
-          style={[styles.inputField, { color: colors.text.primary }]}
-          placeholder={hp.inputPlaceholder}
-          placeholderTextColor={colors.text.tertiary}
-          value={inputText}
-          onChangeText={setInputText}
-          onSubmitEditing={handleInputSubmit}
-          returnKeyType="send"
-          blurOnSubmit
-        />
-        {inputText.trim() ? (
-          <Pressable
-            style={[styles.sendBtn, { backgroundColor: colors.accent.primary }]}
-            onPress={handleInputSubmit}
-            disabled={createChatMutation.isPending}
-            hitSlop={8}
-          >
-            {createChatMutation.isPending ? (
-              <ActivityIndicator size={16} color="#FFFFFF" />
-            ) : (
-              <Icon source="arrow-up" size={18} color="#FFFFFF" />
-            )}
-          </Pressable>
-        ) : null}
-      </View>
-
-      {/* ── Quick action chips ── */}
-      <View style={styles.quickRow}>
-        <Pressable
-          style={[styles.quickChip, { backgroundColor: chatBadgeBg }]}
-          onPress={handleNewChat}
-          disabled={createChatMutation.isPending}
-        >
-          <Icon source="robot-outline" size={16} color="#007AFF" />
-          <Text style={[styles.quickLabel, { color: '#007AFF' }]}>{hp.quickNewChat}</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.quickChip, { backgroundColor: noteBadgeBg }]}
-          onPress={handleNewNote}
-        >
-          <Icon source="note-edit-outline" size={16} color="#FF9F0A" />
-          <Text style={[styles.quickLabel, { color: '#FF9F0A' }]}>{hp.quickNewNote}</Text>
-        </Pressable>
-      </View>
-
       {/* ── Recent section header + filter chips ── */}
       <View style={styles.sectionHeaderRow}>
         <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>
@@ -289,6 +232,8 @@ export function HomeScreen() {
     );
   }
 
+  const bottomBarPadding = insets.bottom > 0 ? insets.bottom : 8;
+
   return (
     <View style={[styles.screen, { backgroundColor: pageBg, paddingTop: insets.top + 8 }]}>
       {/* Header */}
@@ -326,13 +271,47 @@ export function HomeScreen() {
               </Text>
             </View>
           }
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 88 + bottomBarPadding }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
           }
         />
       )}
+
+      {/* Bottom quick actions — floating chips over the list */}
+      <View
+        style={[
+          styles.bottomBar,
+          { paddingBottom: bottomBarPadding },
+        ]}
+        pointerEvents="box-none"
+      >
+        <Pressable
+          style={[styles.quickChip, { backgroundColor: quickChatBg }]}
+          onPress={handleNewChat}
+          disabled={createChatMutation.isPending}
+        >
+          {createChatMutation.isPending ? (
+            <ActivityIndicator size={16} color="#007AFF" />
+          ) : (
+            <Icon source="robot-outline" size={16} color="#007AFF" />
+          )}
+          <Text style={[styles.quickLabel, { color: '#007AFF' }]}>{hp.quickNewChat}</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.quickChip, { backgroundColor: quickNoteBg }]}
+          onPress={handleNewNote}
+          disabled={createNoteMutation.isPending}
+        >
+          {createNoteMutation.isPending ? (
+            <ActivityIndicator size={16} color="#FF9F0A" />
+          ) : (
+            <Icon source="note-edit-outline" size={16} color="#FF9F0A" />
+          )}
+          <Text style={[styles.quickLabel, { color: '#FF9F0A' }]}>{hp.quickNewNote}</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -353,38 +332,19 @@ const styles = StyleSheet.create({
   },
   listHeader: {
     paddingHorizontal: 16,
-    gap: 14,
     paddingBottom: 4,
   },
   listContent: {
-    paddingBottom: 24,
     flexGrow: 1,
   },
-  inputBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 10,
-  },
-  inputField: {
-    flex: 1,
-    fontSize: 15,
-    lineHeight: 20,
-    paddingVertical: 0,
-  },
-  sendBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickRow: {
+  bottomBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     flexDirection: 'row',
     gap: 10,
+    paddingHorizontal: 16,
   },
   quickChip: {
     flexDirection: 'row',

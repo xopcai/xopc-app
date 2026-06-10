@@ -101,8 +101,8 @@ export default function RootLayout() {
             <GatewayConnectLandingContext.Provider value={gatewayConnectCtx}>
               <Stack screenOptions={{ headerShown: false }}>
               {/**
-               * (tabs) is the default landing group — Home / Chats / Notes.
-               * chat/[k] pushes a full-screen chat detail on top of tabs.
+               * (tabs) is the default landing group — single home screen.
+               * chat/[k] pushes a full-screen chat detail on top.
                */}
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 <Stack.Screen name="chat" options={{ headerShown: false }} />
