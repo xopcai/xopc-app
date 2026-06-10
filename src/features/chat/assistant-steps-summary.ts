@@ -19,8 +19,8 @@ import type { Language } from '../../stores/preferences-store';
 
 export type FirstToolHeaderLabels = FriendlyToolTitleLabels;
 
-const FIRST_TOOL_DETAIL_MAX = 120;
-const COMPLETE_HEADER_LINE_MAX = 240;
+const FIRST_TOOL_DETAIL_MAX = 72;
+const COMPLETE_HEADER_LINE_MAX = 160;
 
 export function filterVisibleSteps(
   blocks: Array<ThinkingContent | ToolUseContent>,
@@ -39,6 +39,12 @@ export function viewStepsLabel(
 ): string {
   const key = count === 1 ? m.viewSteps_one : m.viewSteps_other;
   return key.replace(/\{\{count\}\}/g, String(count));
+}
+
+function shortDetail(detail: string, maxLength = FIRST_TOOL_DETAIL_MAX): string {
+  const trimmed = detail.trim();
+  if (trimmed.length <= maxLength) return trimmed;
+  return `${trimmed.slice(0, maxLength)}…`;
 }
 
 function previewDetailForFirstToolHeader(block: ToolUseContent): string {
@@ -63,7 +69,75 @@ function previewDetailForFirstToolHeader(block: ToolUseContent): string {
   return getKeyDetailLine(input).trim();
 }
 
-/** One-line "what happened" when a tool round finishes (first tool + best input preview). */
+function formatResultCount(count: number, language: Language): string {
+  if (language === 'zh') return `${count} 条结果`;
+  return `${count} result${count === 1 ? '' : 's'}`;
+}
+
+function parseToolResultCount(block: ToolUseContent): number | null {
+  if (!isWebSearchToolName(block.name) || block.result == null) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = typeof block.result === 'string' ? JSON.parse(block.result) : block.result;
+  } catch {
+    return null;
+  }
+
+  if (!parsed || typeof parsed !== 'object') return null;
+  const record = parsed as Record<string, unknown>;
+  const details = record.details;
+  if (details && typeof details === 'object') {
+    const results = (details as Record<string, unknown>).results;
+    if (Array.isArray(results)) return results.length;
+  }
+  if (Array.isArray(record.results)) return record.results.length;
+  return null;
+}
+
+function uniqueToolTitles(
+  visibleBlocks: Array<ThinkingContent | ToolUseContent>,
+  labels: FirstToolHeaderLabels,
+): string[] {
+  const titles: string[] = [];
+  const seen = new Set<string>();
+  for (const block of visibleBlocks) {
+    if (block.type !== 'tool_use') continue;
+    const title = getFriendlyToolTitle(block.name, labels);
+    if (seen.has(title)) continue;
+    seen.add(title);
+    titles.push(title);
+  }
+  return titles;
+}
+
+function joinToolTitles(titles: string[], language: Language): string {
+  const visibleTitles = titles.slice(0, 2);
+  const separator = language === 'zh' ? '、' : ', ';
+  const joined = visibleTitles.join(separator);
+  if (titles.length <= 2) return joined;
+  return language === 'zh' ? `${joined}等` : `${joined}, more`;
+}
+
+export function buildStepsRoundActiveSummary(
+  visibleBlocks: Array<ThinkingContent | ToolUseContent>,
+  labels: FirstToolHeaderLabels,
+  language: Language,
+  noToolFallback: string,
+): string {
+  const activeTool = visibleBlocks.find(
+    (block): block is ToolUseContent => block.type === 'tool_use' && block.status === 'running',
+  );
+  if (!activeTool) return noToolFallback;
+
+  const title = getFriendlyToolTitle(activeTool.name, labels);
+  const detail = shortDetail(previewDetailForFirstToolHeader(activeTool));
+  const prefix = language === 'zh' ? '正在' : 'Running';
+  const main = language === 'zh' ? `${prefix}${title}` : `${prefix} ${title.toLowerCase()}`;
+  return detail ? `${main} · ${detail}` : `${main}…`;
+}
+
+/** One-line "what happened" when a tool round finishes. */
 export function buildStepsRoundCompleteSummary(
   visibleBlocks: Array<ThinkingContent | ToolUseContent>,
   labels: FirstToolHeaderLabels,
@@ -76,18 +150,20 @@ export function buildStepsRoundCompleteSummary(
     return noToolFallback;
   }
 
-  const title = getFriendlyToolTitle(firstTool.name, labels);
+  const titles = uniqueToolTitles(visibleBlocks, labels);
+  const titleSummary = joinToolTitles(titles, language);
+  const resultCount = parseToolResultCount(firstTool);
+  const detail = shortDetail(previewDetailForFirstToolHeader(firstTool));
+  const parts = [titleSummary];
 
-  let detail = previewDetailForFirstToolHeader(firstTool);
-  if (!detail) {
-    return title;
+  if (resultCount != null) {
+    parts.push(formatResultCount(resultCount, language));
   }
-  if (detail.length > FIRST_TOOL_DETAIL_MAX) {
-    detail = `${detail.slice(0, FIRST_TOOL_DETAIL_MAX)}…`;
+  if (detail) {
+    parts.push(detail);
   }
 
-  const colon = language === 'zh' ? '：' : ': ';
-  let line = `${title}${colon}${detail}`;
+  let line = parts.join(' · ');
   if (line.length > COMPLETE_HEADER_LINE_MAX) {
     line = `${line.slice(0, COMPLETE_HEADER_LINE_MAX)}…`;
   }

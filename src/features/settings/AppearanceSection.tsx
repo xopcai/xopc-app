@@ -1,12 +1,9 @@
 /**
- * Appearance settings section — language + theme preference.
- *
- * Uses SegmentedButtons for theme (Light / Dark / System)
- * and a simple toggle for language (EN / 中文).
+ * Inline appearance preferences — language and theme on the settings home screen.
  */
 import { memo, useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Divider, SegmentedButtons, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
 import {
@@ -15,9 +12,15 @@ import {
   usePreferencesStore,
 } from '../../stores/preferences-store';
 
-const LANGUAGE_OPTIONS: { value: Language; label: string }[] = [
-  { value: 'en', label: 'English' },
-  { value: 'zh', label: '中文' },
+import {
+  SettingsOptionRow,
+  SettingsSection,
+  useSettingsColors,
+} from './settings-ui';
+
+const LANGUAGE_OPTIONS: { value: Language; labelKey: 'languageEn' | 'languageZh' }[] = [
+  { value: 'en', labelKey: 'languageEn' },
+  { value: 'zh', labelKey: 'languageZh' },
 ];
 
 const THEME_OPTIONS: { value: ThemePreference; labelKey: 'themeLight' | 'themeDark' | 'themeSystem' }[] = [
@@ -29,6 +32,7 @@ const THEME_OPTIONS: { value: ThemePreference; labelKey: 'themeLight' | 'themeDa
 export const AppearanceSection = memo(function AppearanceSection() {
   const m = useMessages();
   const s = m.settings;
+  const colors = useSettingsColors();
 
   const language = usePreferencesStore((st) => st.language);
   const themePreference = usePreferencesStore((st) => st.themePreference);
@@ -36,69 +40,55 @@ export const AppearanceSection = memo(function AppearanceSection() {
   const setThemePreference = usePreferencesStore((st) => st.setThemePreference);
 
   const handleLanguageChange = useCallback(
-    (value: string) => setLanguage(value as Language),
+    (value: Language) => setLanguage(value),
     [setLanguage],
   );
 
   const handleThemeChange = useCallback(
-    (value: string) => setThemePreference(value as ThemePreference),
+    (value: ThemePreference) => setThemePreference(value),
     [setThemePreference],
   );
 
   return (
-    <View style={styles.section}>
-      <Text variant="titleMedium" style={styles.heading}>
-        {s.appearance}
-      </Text>
+    <SettingsSection title={s.sectionPreferences}>
+      <Text style={[styles.groupLabel, { color: colors.textMuted }]}>{s.language}</Text>
+      {LANGUAGE_OPTIONS.map((opt, i) => (
+        <SettingsOptionRow
+          key={opt.value}
+          label={s[opt.labelKey]}
+          selected={language === opt.value}
+          isLast={i === LANGUAGE_OPTIONS.length - 1}
+          onPress={() => handleLanguageChange(opt.value)}
+        />
+      ))}
 
-      {/* Language */}
-      <Text variant="labelMedium" style={styles.label}>
-        {s.language}
-      </Text>
-      <SegmentedButtons
-        value={language}
-        onValueChange={handleLanguageChange}
-        buttons={LANGUAGE_OPTIONS.map((o) => ({
-          value: o.value,
-          label: o.label,
-        }))}
-        style={styles.segmented}
-      />
+      <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-      <Divider style={styles.divider} />
-
-      {/* Theme */}
-      <Text variant="labelMedium" style={styles.label}>
-        {s.theme}
-      </Text>
-      <SegmentedButtons
-        value={themePreference}
-        onValueChange={handleThemeChange}
-        buttons={THEME_OPTIONS.map((o) => ({
-          value: o.value,
-          label: s[o.labelKey],
-        }))}
-        style={styles.segmented}
-      />
-    </View>
+      <Text style={[styles.groupLabel, { color: colors.textMuted }]}>{s.theme}</Text>
+      {THEME_OPTIONS.map((opt, i) => (
+        <SettingsOptionRow
+          key={opt.value}
+          label={s[opt.labelKey]}
+          selected={themePreference === opt.value}
+          isLast={i === THEME_OPTIONS.length - 1}
+          onPress={() => handleThemeChange(opt.value)}
+        />
+      ))}
+    </SettingsSection>
   );
 });
 
 const styles = StyleSheet.create({
-  section: {
-    marginTop: 24,
-  },
-  heading: {
-    marginBottom: 12,
-  },
-  label: {
-    marginBottom: 8,
-    opacity: 0.7,
-  },
-  segmented: {
-    marginBottom: 4,
+  groupLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 4,
+    marginBottom: 2,
+    marginLeft: 16,
   },
   divider: {
-    marginVertical: 16,
+    height: StyleSheet.hairlineWidth,
+    marginVertical: 8,
+    marginHorizontal: 16,
   },
 });

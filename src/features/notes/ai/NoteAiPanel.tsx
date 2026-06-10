@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 
-import { requestNoteAiEdit } from '../../../query/notes';
+import { requestNoteAiEdit, type NoteBlock, type NoteAiPatch, type NotePatchOperation } from '../../../query/notes';
 import { transcribeVoice } from '../../../api/agent-client';
 import {
   MAX_COMPOSER_INPUT_HEIGHT,
@@ -18,17 +18,17 @@ import {
 } from '../../chat/voiceRecording';
 import { useMessages } from '../../../i18n/messages';
 import { useTheme } from '../../../theme';
-import { applyNotePatch, type NoteAiPatch, type NoteBlock, type NotePatchOperation } from '../note-blocks';
+import { documentFromBlocks, documentToBlocks } from '../blocks/convert/block-serialize';
+import { applyBlockPatchToDocument } from '../blocks/core/block-reducer';
 
-/** Human-readable description of an AI patch operation for the diff preview. */
 function describeOperation(op: NotePatchOperation): string {
   switch (op.type) {
     case 'replaceBlocks':
-      return `Replace all blocks (${op.blocks.length} blocks)`;
+      return 'Replace blocks';
     case 'insertBlocksAfter':
-      return `Insert ${op.blocks.length} block${op.blocks.length > 1 ? 's' : ''}`;
+      return `Insert ${op.blocks.length} block(s)`;
     case 'updateBlock':
-      return `Update block`;
+      return 'Update block';
     case 'updateMetadata': {
       const parts: string[] = [];
       if (op.title) parts.push(`title → "${op.title}"`);
@@ -45,6 +45,8 @@ export interface NoteAiPanelProps {
   noteId: string;
   blocks: NoteBlock[];
   isDark: boolean;
+  initialInstruction?: string;
+  blockContextLabel?: string;
   onApplyBlocks: (blocks: NoteBlock[], patch: NoteAiPatch) => void;
   onMessage: (message: string) => void;
 }
@@ -55,10 +57,12 @@ export const NoteAiPanel = memo(function NoteAiPanel({
   noteId,
   blocks,
   isDark,
+  initialInstruction = '',
+  blockContextLabel,
   onApplyBlocks,
   onMessage,
 }: NoteAiPanelProps) {
-  const [instruction, setInstruction] = useState('');
+  const [instruction, setInstruction] = useState(initialInstruction);
   const [loading, setLoading] = useState(false);
   const [pendingPatch, setPendingPatch] = useState<NoteAiPatch | null>(null);
   const [acceptedOps, setAcceptedOps] = useState<Set<number>>(new Set());
@@ -102,7 +106,6 @@ export const NoteAiPanel = memo(function NoteAiPanel({
 
   const applyPatch = useCallback(() => {
     if (!pendingPatch) return;
-    // Apply only accepted operations (or all if none explicitly selected)
     const ops = pendingPatch.operations;
     const hasSelections = acceptedOps.size > 0 || rejectedOps.size > 0;
     const selectedOps = hasSelections
@@ -115,7 +118,10 @@ export const NoteAiPanel = memo(function NoteAiPanel({
     }
 
     const filteredPatch: NoteAiPatch = { ...pendingPatch, operations: selectedOps };
-    onApplyBlocks(applyNotePatch(blocks, filteredPatch), filteredPatch);
+    onApplyBlocks(
+      documentToBlocks(applyBlockPatchToDocument(documentFromBlocks(blocks), filteredPatch)),
+      filteredPatch,
+    );
     setPendingPatch(null);
     setAcceptedOps(new Set());
     setRejectedOps(new Set());
@@ -156,6 +162,10 @@ export const NoteAiPanel = memo(function NoteAiPanel({
       void discardRecording(recordingToDiscard);
     }
   }, []);
+
+  useEffect(() => {
+    setInstruction(initialInstruction);
+  }, [initialInstruction]);
 
   const appendTranscribedText = useCallback((text: string) => {
     const transcribedText = text.trim();
@@ -231,7 +241,12 @@ export const NoteAiPanel = memo(function NoteAiPanel({
   const voiceDisabled = loading || transcribing;
 
   return (
-    <View style={[styles.panel, { backgroundColor: surface, borderColor: border }]}> 
+    <View style={[styles.panel, { backgroundColor: surface, borderColor: border }]}>
+      {blockContextLabel ? (
+        <Text style={[styles.blockContext, { color: mutedColor }]} numberOfLines={2}>
+          {blockContextLabel}
+        </Text>
+      ) : null}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -250,7 +265,6 @@ export const NoteAiPanel = memo(function NoteAiPanel({
           <Text style={[styles.suggestionTitle, { color: textColor }]}>{pm.aiSuggestionTitle}</Text>
           <Text style={{ color: mutedColor, lineHeight: 19, fontSize: 13 }}>{pendingPatch.summary}</Text>
 
-          {/* Per-operation diff preview */}
           {pendingPatch.operations.map((op, index) => {
             const isAccepted = acceptedOps.has(index);
             const isRejected = rejectedOps.has(index);
@@ -289,7 +303,7 @@ export const NoteAiPanel = memo(function NoteAiPanel({
         </View>
       ) : null}
 
-      <View style={[styles.inputRow, { borderColor: border }]}> 
+      <View style={[styles.inputRow, { borderColor: border }]}>
         <Pressable
           style={[
             styles.voiceButton,
@@ -333,6 +347,7 @@ export const NoteAiPanel = memo(function NoteAiPanel({
 
 const styles = StyleSheet.create({
   panel: { borderWidth: 1, borderRadius: 18, padding: 12, gap: 10 },
+  blockContext: { fontSize: 13, lineHeight: 18 },
   quickRow: { flexDirection: 'row', gap: 6, paddingRight: 4 },
   quickChip: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 9, paddingVertical: 6 },
   suggestion: { borderWidth: 1, borderRadius: 12, padding: 10, gap: 8 },

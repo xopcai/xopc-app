@@ -43,6 +43,8 @@ export type AccentColors = {
   primaryHover: string;
   /** Selection highlight background */
   selectionBg: string;
+  /** Soft accent tint for cards / highlights (e.g. Today Brief) */
+  soft: string;
 };
 
 export type SemanticColors = {
@@ -66,7 +68,8 @@ export type ColorScheme = {
 const lightSurface: SurfaceColors = {
   base: '#F5F5F7',
   panel: '#FFFFFF',
-  input: '#F5F5F7',
+  /** White panel on grouped base — clearer field edges than same-as-base gray */
+  input: '#FFFFFF',
   hover: '#E8E8ED',
   active: '#DCDCDE',
 };
@@ -82,9 +85,9 @@ const darkSurface: SurfaceColors = {
 // ── Text ────────────────────────────────────────────────────
 
 const lightText: TextColors = {
-  primary: '#1C1C1E',
+  primary: '#1D1D1F',
   secondary: '#6E6E73',
-  tertiary: '#8E8E93',
+  tertiary: '#86868B',
   disabled: '#AEAEB2',
   inverse: '#FFFFFF',
 };
@@ -101,8 +104,8 @@ const darkText: TextColors = {
 
 const lightBorder: BorderColors = {
   subtle: '#EBEBED',
-  default: '#E5E5EA',
-  strong: '#D2D2D7',
+  default: '#D2D2D7',
+  strong: '#BCBCC0',
 };
 
 const darkBorder: BorderColors = {
@@ -114,15 +117,17 @@ const darkBorder: BorderColors = {
 // ── Accent & Semantic ───────────────────────────────────────
 
 const lightAccent: AccentColors = {
-  primary: '#007AFF',
-  primaryHover: '#0066D6',
-  selectionBg: 'rgba(0,122,255,0.10)',
+  primary: '#2563EB',
+  primaryHover: '#1D4ED8',
+  selectionBg: 'rgba(37,99,235,0.10)',
+  soft: '#EFF6FF',
 };
 
 const darkAccent: AccentColors = {
-  primary: '#0A84FF',
-  primaryHover: '#409CFF',
-  selectionBg: 'rgba(0,122,255,0.18)',
+  primary: '#3B82F6',
+  primaryHover: '#60A5FA',
+  selectionBg: 'rgba(59,130,246,0.18)',
+  soft: '#151B2B',
 };
 
 export const semantic = {

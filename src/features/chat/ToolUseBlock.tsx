@@ -38,6 +38,9 @@ export type ToolUseBlockLabels = {
   noOutput: string;
   toolRunning: string;
   toolError: string;
+  searchResults: string;
+  showMoreResults: string;
+  showLessResults: string;
 };
 
 function statusColor(status: ToolUseContent['status']) {
@@ -96,6 +99,9 @@ export const ToolUseBlock = memo(function ToolUseBlock({
     noOutput: '(no output)',
     toolRunning: 'Running…',
     toolError: 'Error',
+    searchResults: '{{count}} results',
+    showMoreResults: 'Show more',
+    showLessResults: 'Show less',
   };
 
   const title = getFriendlyToolTitle(block.name, friendlyLabels);
@@ -160,22 +166,13 @@ export const ToolUseBlock = memo(function ToolUseBlock({
         </View>
         <View style={inlineStyles.content}>
           <View style={inlineStyles.titleRow}>
-            <View
-              style={[
-                inlineStyles.labelPill,
-                {
-                  backgroundColor: isDark ? chatColors.accentSoftDark : chatColors.accentSoft,
-                },
-              ]}
+            <Text
+              variant="labelSmall"
+              style={[inlineStyles.label, { color: isDark ? '#D1D5DB' : '#374151' }]}
+              numberOfLines={2}
             >
-              <Text
-                variant="labelSmall"
-                style={[inlineStyles.label, { color: isDark ? '#E5E7EB' : '#374151' }]}
-                numberOfLines={2}
-              >
-                {title}
-              </Text>
-            </View>
+              {title}
+            </Text>
             {isRunning ? (
               <Text variant="labelSmall" style={inlineStyles.statusMuted}>
                 {friendlyLabels.toolRunning}
@@ -187,22 +184,13 @@ export const ToolUseBlock = memo(function ToolUseBlock({
             ) : null}
           </View>
           {detailLine ? (
-            <View
-              style={[
-                inlineStyles.detailBox,
-                {
-                  backgroundColor: isDark ? chatColors.accentSoftDark : chatColors.accentSoft,
-                },
-              ]}
+            <Text
+              variant="bodySmall"
+              numberOfLines={2}
+              style={[inlineStyles.detailText, { color: isDark ? '#9CA3AF' : '#6B7280' }]}
             >
-              <Text
-                variant="bodySmall"
-                numberOfLines={2}
-                style={[inlineStyles.detailText, { color: isDark ? '#9CA3AF' : '#6B7280' }]}
-              >
-                {detailLine}
-              </Text>
-            </View>
+              {detailLine}
+            </Text>
           ) : null}
           {isError && resultText ? (
             <Text
@@ -262,7 +250,14 @@ export const ToolUseBlock = memo(function ToolUseBlock({
             </ScrollView>
           ) : null}
           {!isRunning && !isError && webSearchLinks.length > 0 ? (
-            <WebSearchToolResultLinks links={webSearchLinks} />
+            <WebSearchToolResultLinks
+              links={webSearchLinks}
+              labels={{
+                summary: friendlyLabels.searchResults,
+                showMore: friendlyLabels.showMoreResults,
+                showLess: friendlyLabels.showLessResults,
+              }}
+            />
           ) : null}
           {fileLinks}
         </View>

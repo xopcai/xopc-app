@@ -16,6 +16,7 @@ import type { InfiniteData } from '@tanstack/react-query';
 
 import { AgentMessageSender, submitClarifyResponse, type MessagingCallbacks } from '../../api/agent-client';
 import { queryKeys } from '../../query/keys';
+import { invalidateSessionLists } from '../../query/workspace-sync';
 import { fetchSessionMessagePage, type SessionMessagePage } from '../../query/sessions';
 import {
   useAgentStreamResume,
@@ -29,6 +30,7 @@ import {
   canSendComposerDraft,
   buildOptimisticUserMessage,
 } from './composer-send-helpers';
+import { ensureOptimisticSessionRegistered } from './session-prefetch';
 import type { WireAttachment } from './composer.types';
 import type { Message, ProgressState } from './messages.types';
 import type { ClarifyPromptState } from './ClarifyPrompt';
@@ -205,7 +207,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
   // ── Session invalidation ─────────────────────────────────
   const invalidateSessionByKey = useCallback((targetSessionKey: string) => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.sessionHistory(targetSessionKey) });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
+    invalidateSessionLists(queryClient);
     void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoal(targetSessionKey) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoalRuns(targetSessionKey, 1) });
   }, [queryClient]);
@@ -224,7 +226,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       queryKeys.sessionHistory(targetSessionKey),
       (oldData) => mergeLatestSessionHistoryPage(oldData, latestPage),
     );
-    void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
+    invalidateSessionLists(queryClient);
     void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoal(targetSessionKey) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoalRuns(targetSessionKey, 1) });
   }, [invalidateSessionByKey, queryClient]);
@@ -494,6 +496,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       setAwaitingSessionRefresh(false);
       lastStreamActivityAtRef.current = Date.now();
       try {
+        await ensureOptimisticSessionRegistered(sessionKey);
         await senderRef.current.sendMessage(
           text.trim(),
           sessionKey,
@@ -558,6 +561,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       streamRecoveryRef.current.cancelRecovery();
       setAwaitingSessionRefresh(false);
       try {
+        await ensureOptimisticSessionRegistered(sessionKey);
         await senderRef.current.sendVoiceMessage(
           payload,
           sessionKey,

@@ -5,7 +5,7 @@
  * Assistant messages: left-aligned, markdown rendering, thinking/tool blocks.
  */
 import { memo, useMemo } from 'react';
-import { StyleSheet, useColorScheme, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
 import { AssistantStepsBlock, hasTextAfterIndex, isAnyBlockActive } from './AssistantStepsBlock';
@@ -22,6 +22,7 @@ import { extractMarkdownCodeBlocks } from './extract-markdown-code';
 import { MessageActionsBar, type MessageAction } from './MessageActionsBar';
 import type { ImageContent, Message, MessageContent, ProgressState, ThinkingContent, ToolUseContent } from './messages.types';
 import { useMessages } from '../../i18n/messages';
+import { typography, useTheme } from '../../theme';
 import { extractUserMessageText } from './composer-send-helpers';
 import { chatColors, chatLayout } from './styles';
 
@@ -71,7 +72,7 @@ const GARBLED_PLACEHOLDER = '⚠️ Content encoding error — text cannot be di
 
 const garbledStyles = StyleSheet.create({
   notice: {
-    fontSize: 13,
+    ...typography.label,
     fontStyle: 'italic',
     color: '#9CA3AF',
     paddingVertical: 4,
@@ -199,36 +200,37 @@ export const MessageBubble = memo(function MessageBubble({
   onAssistantRegenerate?: () => void;
 }) {
   const m = useMessages();
-  const isDark = useColorScheme() === 'dark';
+  const { colors, isDark } = useTheme();
   const isUser = message.role === 'user' || message.role === 'user-with-attachments';
   const isAssistant = message.role === 'assistant';
+  const contentBlocks = message.content ?? [];
 
   const userText = useMemo(
-    () => (isUser ? userContentText(message.content) : ''),
-    [isUser, message.content],
+    () => (isUser ? userContentText(contentBlocks) : ''),
+    [isUser, contentBlocks],
   );
 
   const userAudio = useMemo(
-    () => (isUser ? userAudioBlocks(message.content) : []),
-    [isUser, message.content],
+    () => (isUser ? userAudioBlocks(contentBlocks) : []),
+    [isUser, contentBlocks],
   );
 
   const displayContent = useMemo(
-    () => (isAssistant ? (message.content ?? []).filter((b) => b.type !== 'image') : (message.content ?? [])),
-    [isAssistant, message.content],
+    () => (isAssistant ? contentBlocks.filter((b) => b.type !== 'image') : contentBlocks),
+    [isAssistant, contentBlocks],
   );
 
   const assistantWorkspacePaths = useMemo(
-    () => (isAssistant ? collectAssistantWorkspaceOutputPaths(message.content) : []),
-    [isAssistant, message.content],
+    () => (isAssistant ? collectAssistantWorkspaceOutputPaths(contentBlocks) : []),
+    [isAssistant, contentBlocks],
   );
 
   const assistantImageBlocks = useMemo(
     () =>
       isAssistant
-        ? (message.content ?? []).filter((b): b is ImageContent => b.type === 'image' && Boolean(b.source?.data))
+        ? contentBlocks.filter((b): b is ImageContent => b.type === 'image' && Boolean(b.source?.data))
         : [],
-    [isAssistant, message.content],
+    [isAssistant, contentBlocks],
   );
 
   const assistantImageAttachments = useMemo(
@@ -241,12 +243,11 @@ export const MessageBubble = memo(function MessageBubble({
 
   const stepsActive = useMemo(() => {
     if (!isAssistant || !isStreaming) return false;
-    const content = message.content ?? [];
-    const stepBlocks = content.filter(
+    const stepBlocks = contentBlocks.filter(
       (b): b is ThinkingContent | ToolUseContent => b.type === 'thinking' || b.type === 'tool_use',
     );
     return isAnyBlockActive(stepBlocks);
-  }, [isAssistant, isStreaming, message.content]);
+  }, [isAssistant, isStreaming, contentBlocks]);
 
   const showProgressDetail =
     Boolean(progress?.detail?.trim()) &&
@@ -256,7 +257,7 @@ export const MessageBubble = memo(function MessageBubble({
     isStreaming &&
     !progress?.message &&
     !stepsActive &&
-    !message.content?.some((b) => b.type === 'thinking' && b.streaming);
+    !contentBlocks.some((b) => b.type === 'thinking' && b.streaming);
 
   const attachmentsForBubble = useMemo(() => {
     if (!isAssistant) return message.attachments;
@@ -271,12 +272,12 @@ export const MessageBubble = memo(function MessageBubble({
 
   const assistantPlainText = useMemo(() => {
     if (!isAssistant) return '';
-    return message.content
+    return contentBlocks
       .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
       .map((b) => b.text)
       .join('\n')
       .trim();
-  }, [isAssistant, message.content]);
+  }, [isAssistant, contentBlocks]);
 
   const assistantCodeText = useMemo(
     () => (assistantPlainText ? extractMarkdownCodeBlocks(assistantPlainText) : ''),
@@ -402,9 +403,8 @@ export const MessageBubble = memo(function MessageBubble({
               <Text
                 selectable
                 style={{
-                  color: isDark ? '#E5E7EB' : '#1F2937',
-                  fontSize: 15,
-                  lineHeight: 22,
+                  color: colors.text.primary,
+                  ...typography.body,
                 }}
               >
                 {userText}
@@ -468,7 +468,7 @@ export const MessageBubble = memo(function MessageBubble({
       {!isUser && message.usage?.totalTokens ? (
         <Text variant="labelSmall" style={styles.usage}>
           {message.usage.totalTokens.toLocaleString()} tokens
-          {message.usage.cost != null ? ` · $${message.usage.cost.toFixed(4)}` : ''}
+          {typeof message.usage.cost === 'number' ? ` · $${message.usage.cost.toFixed(4)}` : ''}
         </Text>
       ) : null}
     </View>
@@ -493,11 +493,11 @@ const styles = StyleSheet.create({
   },
   metaTime: {
     color: chatColors.timestamp,
-    fontSize: 11,
+    ...typography.micro,
   },
   metaProgress: {
     color: chatColors.timestamp,
-    fontSize: 11,
+    ...typography.micro,
     fontStyle: 'italic',
   },
   metaProgressCol: {
@@ -507,7 +507,7 @@ const styles = StyleSheet.create({
   },
   metaProgressDetail: {
     color: chatColors.timestamp,
-    fontSize: 10,
+    ...typography.caption,
     flexShrink: 1,
   },
   cursor: {
@@ -532,7 +532,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   artifactTitle: {
-    fontSize: 11,
+    ...typography.micro,
     fontWeight: '700',
     letterSpacing: 0.4,
   },
@@ -541,7 +541,7 @@ const styles = StyleSheet.create({
   },
   usage: {
     color: chatColors.timestamp,
-    fontSize: 10,
+    ...typography.micro,
     marginTop: 4,
     paddingHorizontal: 2,
   },

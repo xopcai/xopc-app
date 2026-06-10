@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
   },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,

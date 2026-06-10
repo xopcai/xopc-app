@@ -20,6 +20,7 @@ export {
 const EDITABLE_IMAGE_PICKER_OPTIONS: ImagePicker.ImagePickerOptions = {
   mediaTypes: ['images'],
   allowsEditing: true,
+  base64: true,
   quality: 0.92,
 };
 
@@ -61,6 +62,34 @@ async function loadFromUri(uri: string, name: string, mimeType?: string): Promis
   return composerAttachmentFromBase64({ uri, name, mimeType: resolvedMime, content, size });
 }
 
+function base64ByteLength(base64: string): number {
+  const compact = base64.replace(/\s/g, '');
+  if (!compact) return 0;
+  const padding = compact.endsWith('==') ? 2 : compact.endsWith('=') ? 1 : 0;
+  return Math.floor((compact.length * 3) / 4) - padding;
+}
+
+function loadFromImagePickerAsset(
+  asset: ImagePicker.ImagePickerAsset,
+  fallbackName: string,
+  fallbackMimeType: string,
+): Promise<ComposerAttachment> | ComposerAttachment {
+  const name = asset.fileName || fallbackName;
+  const resolvedMime = asset.mimeType ?? mimeTypeFromFileName(name) ?? fallbackMimeType;
+  const content = asset.base64?.replace(/\s/g, '');
+  if (!content) {
+    return loadFromUri(asset.uri, name, resolvedMime);
+  }
+  const size = asset.fileSize ?? base64ByteLength(content);
+  if (size > MAX_WEBCHAT_ATTACHMENT_FILE_BYTES) {
+    throw new AttachmentFileError('File too large', 'too_large', name);
+  }
+  if (size === 0) {
+    throw new AttachmentFileError('Failed to read file', 'read_failed', name);
+  }
+  return composerAttachmentFromBase64({ uri: asset.uri, name, mimeType: resolvedMime, content, size });
+}
+
 async function ensureCameraPermission(): Promise<void> {
   const current = await ImagePicker.getCameraPermissionsAsync();
   if (current.granted) return;
@@ -70,22 +99,30 @@ async function ensureCameraPermission(): Promise<void> {
   }
 }
 
+async function ensureMediaLibraryPermission(): Promise<void> {
+  const current = await ImagePicker.getMediaLibraryPermissionsAsync();
+  if (current.granted) return;
+  const requested = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!requested.granted) {
+    throw new AttachmentFileError('Media library permission denied', 'permission_denied');
+  }
+}
+
 export async function pickAttachmentFromSource(source: AttachmentPickSource): Promise<ComposerAttachment | null> {
   if (source === 'camera') {
     await ensureCameraPermission();
     const result = await ImagePicker.launchCameraAsync(EDITABLE_IMAGE_PICKER_OPTIONS);
     if (result.canceled || !result.assets[0]?.uri) return null;
     const asset = result.assets[0];
-    const name = asset.fileName || `photo-${Date.now()}.jpg`;
-    return loadFromUri(asset.uri, name, asset.mimeType ?? 'image/jpeg');
+    return loadFromImagePickerAsset(asset, `photo-${Date.now()}.jpg`, 'image/jpeg');
   }
 
   if (source === 'photos') {
+    await ensureMediaLibraryPermission();
     const result = await ImagePicker.launchImageLibraryAsync(EDITABLE_IMAGE_PICKER_OPTIONS);
     if (result.canceled || !result.assets[0]?.uri) return null;
     const asset = result.assets[0];
-    const name = asset.fileName || `image-${Date.now()}.jpg`;
-    return loadFromUri(asset.uri, name, asset.mimeType ?? 'image/jpeg');
+    return loadFromImagePickerAsset(asset, `image-${Date.now()}.jpg`, 'image/jpeg');
   }
 
   const result = await DocumentPicker.getDocumentAsync({

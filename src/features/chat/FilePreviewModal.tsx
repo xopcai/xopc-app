@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ShareAutoRequest } from '../../api/share';
 import { useMessages } from '../../i18n/messages';
+import { useGatewayStore } from '../../stores/gateway-store';
 import { ShareSheet } from '../share/ShareSheet';
 import { prefetchShare } from '../share/share-prefetch';
 import { HtmlPreviewPane } from './HtmlPreviewPane';
@@ -31,6 +32,8 @@ export type PreviewableFile = {
   textContent?: string;
   /** Workspace-relative path to load on demand. */
   workspaceRelativePath?: string;
+  /** Remote HTTP(S) URI to load on demand (e.g. gateway inbound file). */
+  remoteUri?: string;
   /** Gateway host absolute path, only for display/copy on mobile. */
   absolutePath?: string;
   /** Optional extracted text fallback for documents. */
@@ -110,6 +113,19 @@ async function loadPreview(file: PreviewableFile, sessionKey?: string | null): P
   if (kind === 'image') {
     const direct = normalizeBase64Payload(file.contentBase64);
     if (direct) return { kind, mimeType, text: null, base64: direct, absolutePath };
+    if (file.remoteUri) {
+      const token = useGatewayStore.getState().token;
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      const res = await fetch(file.remoteUri, headers ? { headers } : undefined);
+      if (!res.ok) throw new Error(`Failed to load image (${res.status})`);
+      const buffer = await res.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]!);
+      }
+      return { kind, mimeType, text: null, base64: globalThis.btoa(binary), absolutePath };
+    }
     if (file.workspaceRelativePath) {
       const loaded = await readWorkspaceFileBase64(file.workspaceRelativePath, { sessionKey });
       return { kind, mimeType, text: null, base64: loaded.contentBase64, absolutePath: loaded.absolutePath ?? absolutePath };

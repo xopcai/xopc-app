@@ -1,5 +1,5 @@
 import { NotesScreen } from '../../src/features/notes/NotesScreen';
 
-export default function NotesRoute() {
+export default function NotesListPage() {
   return <NotesScreen />;
 }

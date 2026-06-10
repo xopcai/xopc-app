@@ -1,18 +1,13 @@
 import type { Message, MessageAttachment, MessageContent } from './messages.types';
 import { mimeTypeFromFileName } from './tool-result-file-paths';
+import {
+  collapseExpandedSkillBlockForDisplay,
+  stripExpandedAtFileBlocks,
+  stripInboundFileMachineText,
+  stripStartupContextForDisplay,
+} from './wire-text-scrub';
 
-/** Remove persisted inbound machine lines from bubble text (attachments show separately). */
-export function stripInboundFileMachineText(text: string): string {
-  if (!text.includes('xopc-path:')) return text;
-  let out = text;
-  out = out.replace(
-    /\s*\[File:[^\]]+\]\s*\r?\nxopc-path:rel:[^\r\n]+\r?\n\s*xopc-path:abs:[^\r\n]+/g,
-    '',
-  );
-  out = out.replace(/\s*\[File:[^\]]+\]\s+xopc-path:rel:\S+\s+xopc-path:abs:\S+/g, '');
-  out = out.replace(/\s*\[File:[^\]]+\]\s*xopc-path:rel:\S+\s*xopc-path:abs:\S+/g, '');
-  return out.replace(/\n{3,}/g, '\n\n').trim();
-}
+export { stripInboundFileMachineText } from './wire-text-scrub';
 
 function parseFileLineMeta(fileMeta: string): { name: string; mimeType: string; size: number } {
   const nameMatch = fileMeta.match(/^([^(]+?)\s*\(/);
@@ -114,7 +109,10 @@ export function applyStripToUserContent(
   if (role !== 'user' && role !== 'user-with-attachments') return blocks;
   const mapped = blocks.map((b) => {
     if (b.type === 'text' && typeof b.text === 'string') {
-      return { ...b, text: stripInboundFileMachineText(b.text) };
+      let stripped = stripStartupContextForDisplay(b.text);
+      stripped = stripExpandedAtFileBlocks(stripped);
+      stripped = stripInboundFileMachineText(stripped);
+      return { ...b, text: collapseExpandedSkillBlockForDisplay(stripped) };
     }
     return b;
   });

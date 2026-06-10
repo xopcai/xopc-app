@@ -1,18 +1,22 @@
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, Icon, Text } from 'react-native-paper';
+
+import { FloatingHeader } from '../../../src/components/FloatingHeader';
 
 import { GatewayConnectionCard } from '../../../src/features/gateway/GatewayConnectionCard';
 import { GatewayTunnelStatusCard } from '../../../src/features/gateway/GatewayTunnelStatusCard';
 import { syncGatewayUrlsFromTunnelQr } from '../../../src/features/gateway/apply-tunnel-qr-from-api';
 import { formatGatewayHost } from '../../../src/features/gateway/gateway-connection-view';
 import { syncAfterGatewaySettingsSave } from '../../../src/features/gateway/gateway-connection-sync';
+import { openDefaultSessionAfterConnect } from '../../../src/features/gateway/navigate-after-gateway-connect';
 import {
   connectionKindLabel,
   useGatewayConnectionView,
 } from '../../../src/features/gateway/use-gateway-connection-view';
+import { ConnectionLogCard } from '../../../src/features/gateway/ConnectionLogCard';
 import {
   SettingsSection,
   useSettingsColors,
@@ -68,7 +72,7 @@ export default function GatewayListScreen() {
       try {
         switchGateway(id);
         await syncAfterGatewaySettingsSave();
-        router.replace('/');
+        await openDefaultSessionAfterConnect(router.replace);
       } finally {
         setSwitchingId(null);
       }
@@ -77,11 +81,13 @@ export default function GatewayListScreen() {
   );
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.pageBg }}
-      contentContainerStyle={styles.scroll}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={{ flex: 1, backgroundColor: colors.pageBg }}>
+      <FloatingHeader title={s.gateway} onBack={() => router.back()} />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
       <Text variant="bodySmall" style={[styles.hint, { color: colors.textMuted }]}>
         {s.gatewayHint}
       </Text>
@@ -155,6 +161,7 @@ export default function GatewayListScreen() {
             onSyncNotice={(message) => setSyncNotice(message)}
           />
           <GatewayTunnelStatusCard refreshToken={tunnelStatusRefreshToken} />
+          <ConnectionLogCard />
         </>
       ) : null}
 
@@ -163,7 +170,8 @@ export default function GatewayListScreen() {
           {syncNotice}
         </Text>
       ) : null}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 

@@ -3,6 +3,7 @@ import { Modal, Pressable, StyleSheet, useColorScheme, View } from 'react-native
 import { Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { floatingBottomPadding } from '../../theme';
 import type { AttachmentPickSource } from './attachment-file-io';
 
 type SheetItem = {
@@ -32,7 +33,7 @@ export const AttachmentSourceSheet = memo(function AttachmentSourceSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" />
-      <View style={[styles.panel, { backgroundColor: surface, paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[styles.panel, { backgroundColor: surface, paddingBottom: floatingBottomPadding(insets.bottom) }]}>
         <View style={styles.grid}>
           {items.map((item) => (
             <Pressable

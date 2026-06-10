@@ -1,6 +1,6 @@
 import { memo, useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Icon, IconButton, Text } from 'react-native-paper';
+import { Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
 import type { ChatModelOption } from '../../query/models';
@@ -14,10 +14,9 @@ export const ChatHeader = memo(function ChatHeader({
   currentModelId,
   paddingTop,
   headerBg,
-  headerBorder,
   pillText,
   pillMuted,
-  onMenuPress,
+  onBackPress,
   onAgentPress,
   onModelSelect,
   onNewChat,
@@ -28,10 +27,9 @@ export const ChatHeader = memo(function ChatHeader({
   currentModelId: string;
   paddingTop: number;
   headerBg: string;
-  headerBorder: string;
   pillText: string;
   pillMuted: string;
-  onMenuPress: () => void;
+  onBackPress?: () => void;
   onAgentPress: () => void;
   onModelSelect: (modelId: string) => void;
   onNewChat: () => void;
@@ -50,17 +48,16 @@ export const ChatHeader = memo(function ChatHeader({
 
   return (
     <>
-      <View
-        style={[
-          styles.header,
-          { backgroundColor: headerBg, borderBottomColor: headerBorder, paddingTop },
-        ]}
-      >
-        <View style={styles.headerSide}>
-          <IconButton icon="menu" size={22} onPress={onMenuPress} />
-        </View>
+      <View style={[styles.header, { paddingTop }]}> 
+        {onBackPress ? (
+          <Pressable style={[styles.iconButton, { backgroundColor: headerBg }]} onPress={onBackPress}>
+            <Icon source="chevron-left" size={24} color={pillMuted} />
+          </Pressable>
+        ) : (
+          <View style={styles.iconPlaceholder} />
+        )}
 
-        <View style={styles.headerCenter}>
+        <View style={[styles.headerCenter, { backgroundColor: headerBg }]}> 
           <Pressable
             style={styles.titlePressable}
             onPress={onAgentPress}
@@ -77,16 +74,16 @@ export const ChatHeader = memo(function ChatHeader({
             accessibilityRole="button"
             accessibilityLabel={m.chat.headerModelPicker}
           >
-            <Text style={[styles.modelTitle, { color: pillText }]} numberOfLines={1}>
+            <Text style={[styles.modelTitle, { color: pillMuted }]} numberOfLines={1}>
               {modelName}
             </Text>
             <Icon source="chevron-down" size={16} color={pillMuted} />
           </Pressable>
         </View>
 
-        <View style={styles.headerSideRight}>
-          <IconButton icon="plus" size={22} onPress={onNewChat} />
-        </View>
+        <Pressable style={[styles.iconButton, { backgroundColor: headerBg }]} onPress={onNewChat}>
+          <Icon source="plus" size={22} color={pillMuted} />
+        </Pressable>
       </View>
 
       <ModelPickerMenu
@@ -105,26 +102,29 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 6,
-    paddingHorizontal: 0,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingBottom: 8,
   },
-  headerSide: {
-    width: 48,
-    alignItems: 'flex-start',
-  },
-  headerSideRight: {
-    minWidth: 48,
-    flexDirection: 'row',
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+  },
+  iconPlaceholder: {
+    width: 44,
+    height: 44,
   },
   headerCenter: {
     flex: 1,
     minWidth: 0,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 1,
+    paddingHorizontal: 16,
   },
   titlePressable: {
     maxWidth: '100%',

@@ -11,15 +11,22 @@ import {
   Text,
   TextInput,
   View,
+  type View as RNView,
 } from 'react-native';
-import { Icon, Snackbar } from 'react-native-paper';
+import Animated, { Extrapolation, interpolate, useAnimatedStyle } from 'react-native-reanimated';
+import { Icon } from 'react-native-paper';
 
+import { AppToast } from '../../components/AppToast';
+
+import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_LONG } from '../../constants/toast';
 import { useMessages } from '../../i18n/messages';
+import { motion } from '../../motion';
 import { transcribeVoice } from '../../api/agent-client';
-import { useTheme } from '../../theme';
+import { typography, useTheme } from '../../theme';
+import { useOptionalWorkspaceTransition } from '../workspace/workspace-transition-context';
 import { ChatPendingFollowUpStack } from './ChatPendingFollowUpStack';
 import { canSendComposerDraft } from './composer-send-helpers';
-import type { WireAttachment } from './composer.types';
+import type { ComposerAttachment, WireAttachment } from './composer.types';
 import type { PendingFollowUp } from './pending-follow-up.types';
 import { wireFollowUpAttachmentsToComposer } from './follow-up-utils';
 import { useComposerActions } from './use-composer-actions';
@@ -78,6 +85,8 @@ export const ChatComposer = memo(function ChatComposer({
   placeholder,
   suggestionDraft,
   onConsumeSuggestionDraft,
+  prefillAttachments,
+  onConsumePrefillAttachments,
   keyboardVisible = false,
   onAddPendingFollowUp,
   pendingFollowUps = [],
@@ -91,6 +100,7 @@ export const ChatComposer = memo(function ChatComposer({
   steeringFollowUpId = null,
   onQueueFull,
   onPressGoalShortcut,
+  overlayShell = false,
 }: {
   sessionKey: string;
   disabled: boolean;
@@ -101,6 +111,8 @@ export const ChatComposer = memo(function ChatComposer({
   placeholder?: string;
   suggestionDraft?: string;
   onConsumeSuggestionDraft?: () => void;
+  prefillAttachments?: ComposerAttachment[];
+  onConsumePrefillAttachments?: () => void;
   keyboardVisible?: boolean;
   onAddPendingFollowUp?: (text: string, attachments?: WireAttachment[]) => void | Promise<void>;
   pendingFollowUps?: PendingFollowUp[];
@@ -118,10 +130,13 @@ export const ChatComposer = memo(function ChatComposer({
   steeringFollowUpId?: string | null;
   onQueueFull?: () => void;
   onPressGoalShortcut?: () => void;
+  overlayShell?: boolean;
 }) {
   const m = useMessages();
   const cm = m.chat;
   const { colors, isDark } = useTheme();
+  const transition = useOptionalWorkspaceTransition();
+  const shellRef = useRef<RNView>(null);
 
   const [mode, setMode] = useState<InputMode>('text');
   const [draft, setDraft] = useState('');
@@ -130,6 +145,37 @@ export const ChatComposer = memo(function ChatComposer({
   const [cursorPos, setCursorPos] = useState(0);
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
+
+  const measureShell = useCallback(async () => {
+    return new Promise<{ x: number; y: number; width: number; height: number } | null>((resolve) => {
+      shellRef.current?.measureInWindow((x, y, width, height) => {
+        if (width <= 0 || height <= 0) {
+          resolve(null);
+          return;
+        }
+        resolve({ x, y, width, height });
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!overlayShell || !transition) return;
+    transition.registerComposerMeasurer(measureShell);
+    return () => transition.registerComposerMeasurer(null);
+  }, [measureShell, overlayShell, transition]);
+
+  const shellRevealStyle = useAnimatedStyle(() => {
+    if (!overlayShell || !transition) return { opacity: 1 };
+    const t = transition.progress.value;
+    return {
+      opacity: interpolate(
+        t,
+        [0, motion.hero.revealComposerAt, 1],
+        [0, 0, 1],
+        Extrapolation.CLAMP,
+      ),
+    };
+  }, [overlayShell, transition]);
 
   const att = useComposerAttachments({
     maxAttachmentsReached: cm.maxAttachmentsReached,
@@ -156,6 +202,7 @@ export const ChatComposer = memo(function ChatComposer({
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const lastLoadedEditFollowUpIdRef = useRef<string | null>(null);
+  const lastLoadedPrefillAttachmentsRef = useRef<ComposerAttachment[] | null>(null);
   const restoredDraftSessionKeyRef = useRef<string | null>(null);
   const skipDraftPersistSessionKeyRef = useRef<string | null>(null);
 
@@ -250,10 +297,20 @@ export const ChatComposer = memo(function ChatComposer({
     setInputHeight(MIN_COMPOSER_INPUT_HEIGHT);
   }, [isFocused, draft.length]);
 
-  const updateDraft = useCallback(
+  /** Typing updates draft only; cursor comes from TextInput selection events. */
+  const onDraftInputChange = useCallback(
     (nextDraft: string) => {
       setDraft(nextDraft);
-      setCursorPos(nextDraft.length);
+      setInputHeight(estimateComposerInputHeight(nextDraft, inputWidth || undefined));
+    },
+    [inputWidth],
+  );
+
+  /** Programmatic draft updates (palette, suggestions, restore) set cursor explicitly. */
+  const updateDraft = useCallback(
+    (nextDraft: string, nextCursor = nextDraft.length) => {
+      setDraft(nextDraft);
+      setCursorPos(nextCursor);
       setInputHeight(estimateComposerInputHeight(nextDraft, inputWidth || undefined));
     },
     [inputWidth],
@@ -266,6 +323,15 @@ export const ChatComposer = memo(function ChatComposer({
     onConsumeSuggestionDraft?.();
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [suggestionDraft, onConsumeSuggestionDraft, updateDraft]);
+
+  useEffect(() => {
+    if (!prefillAttachments?.length) return;
+    if (prefillAttachments === lastLoadedPrefillAttachmentsRef.current) return;
+    lastLoadedPrefillAttachmentsRef.current = prefillAttachments;
+    att.restoreAttachments(prefillAttachments);
+    setMode('text');
+    onConsumePrefillAttachments?.();
+  }, [att, onConsumePrefillAttachments, prefillAttachments]);
 
   useEffect(() => {
     if (!editingFollowUpId) {
@@ -645,7 +711,12 @@ export const ChatComposer = memo(function ChatComposer({
   );
 
   const renderAbortButton = () => (
-    <Pressable style={styles.sendCircle} onPress={handleAbort} hitSlop={8} accessibilityLabel={cm.stop}>
+    <Pressable
+      style={[styles.sendCircle, { backgroundColor: colors.text.primary }]}
+      onPress={handleAbort}
+      hitSlop={8}
+      accessibilityLabel={cm.stop}
+    >
       <Icon source="stop" size={20} color={colors.text.inverse} />
     </Pressable>
   );
@@ -699,7 +770,7 @@ export const ChatComposer = memo(function ChatComposer({
     placeholder: composerPlaceholder,
     placeholderTextColor: colors.text.tertiary,
     value: draft,
-    onChangeText: updateDraft,
+    onChangeText: onDraftInputChange,
     onCursorChange: setCursorPos,
     cursorPos,
     isDark,
@@ -763,7 +834,16 @@ export const ChatComposer = memo(function ChatComposer({
 
       {renderCaptureRail()}
 
-      <View style={[styles.shell, { backgroundColor: surface, borderColor: border }]}>
+      <Animated.View
+        ref={shellRef}
+        onLayout={() => {
+          if (!overlayShell) return;
+          void measureShell().then((rect) => {
+            if (rect) transition?.notifyComposerAnchor(rect);
+          });
+        }}
+        style={[styles.shell, { backgroundColor: surface, borderColor: border }, shellRevealStyle]}
+      >
         {mode === 'text' ? (
           <>
             <View style={isExpanded ? undefined : styles.compactRow}>
@@ -843,7 +923,7 @@ export const ChatComposer = memo(function ChatComposer({
             {streaming ? renderStreamingRightActions() : renderAttachButton()}
           </View>
         )}
-      </View>
+      </Animated.View>
 
       <AttachmentSourceSheet
         visible={att.sheetOpen}
@@ -852,12 +932,12 @@ export const ChatComposer = memo(function ChatComposer({
         onPick={(source) => void handleAttachmentPick(source)}
       />
 
-      <Snackbar visible={Boolean(snack)} onDismiss={() => setSnack('')} duration={3200}>
+      <AppToast visible={Boolean(snack)} onDismiss={() => setSnack('')} duration={TOAST_DURATION_LONG} bottomLift={TOAST_BOTTOM_LIFT_ABOVE_BAR}>
         {snack}
-      </Snackbar>
-      <Snackbar visible={Boolean(att.snack)} onDismiss={att.dismissSnack} duration={3200}>
+      </AppToast>
+      <AppToast visible={Boolean(att.snack)} onDismiss={att.dismissSnack} duration={TOAST_DURATION_LONG} bottomLift={TOAST_BOTTOM_LIFT_ABOVE_BAR}>
         {att.snack}
-      </Snackbar>
+      </AppToast>
     </View>
   );
 });
@@ -892,7 +972,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   captureLabel: {
-    fontSize: 13,
+    ...typography.label,
     fontWeight: '600',
   },
   compactRow: {
@@ -944,8 +1024,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   input: {
-    fontSize: 15,
-    lineHeight: 20,
+    ...typography.body,
     paddingHorizontal: 4,
     paddingVertical: Platform.select({ ios: 5, android: 4, web: 0, default: 4 }),
     maxHeight: MAX_COMPOSER_INPUT_HEIGHT,
@@ -958,7 +1037,6 @@ const styles = StyleSheet.create({
   },
   inputCompact: {
     flex: 1,
-    lineHeight: 20,
     paddingVertical: 0,
     textAlignVertical: 'center',
   },
@@ -982,7 +1060,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   holdLabel: {
-    fontSize: 15,
+    ...typography.body,
     fontWeight: '600',
   },
 });

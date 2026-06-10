@@ -1,10 +1,11 @@
-import { useGatewayStore } from '../stores/gateway-store';
+import { generateNewChatId } from '../lib/session-key';
 import { apiFetch, formatApiHttpError } from '../api/client';
 import {
   readCachedSessions,
   writeCachedSessions,
 } from '../features/gateway/sessions-cache';
 import { sessionListItemSchema, sessionsListResponseSchema } from '../config/schema';
+import { useGatewayStore } from '../stores/gateway-store';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -13,6 +14,8 @@ export type SessionStatus = 'active' | 'pinned' | 'archived';
 export type SessionListItem = {
   key: string;
   name?: string;
+  title?: string;
+  displayName?: string;
   messageCount: number;
   updatedAt: string;
   sourceChannel?: string;
@@ -44,6 +47,18 @@ export type SessionMessagePage = {
   };
 };
 
+export function emptySessionMessagePage(key: string): SessionMessagePage {
+  return {
+    session: { key, messages: [] },
+    pagination: {
+      total: 0,
+      limit: 50,
+      offset: 0,
+      hasMore: false,
+    },
+  };
+}
+
 // ── Helpers ──────────────────────────────────────────────────────
 
 function throwApiError(res: Response, body: unknown): never {
@@ -59,6 +74,17 @@ function encKey(key: string): string {
   return encodeURIComponent(key);
 }
 
+function normalizedSessionName(item: SessionListItem): string | undefined {
+  return item.name?.trim() || item.title?.trim() || item.displayName?.trim() || undefined;
+}
+
+function normalizeSessionListItem(item: SessionListItem): SessionListItem {
+  return {
+    ...item,
+    name: normalizedSessionName(item),
+  };
+}
+
 // ── List / Detail / Create ───────────────────────────────────────
 
 export type SessionsPage = {
@@ -70,7 +96,7 @@ export type SessionsPage = {
 };
 
 export async function fetchSessionsList(
-  options?: { limit?: number; offset?: number; search?: string },
+  options?: { limit?: number; offset?: number; search?: string; channel?: string | null },
 ): Promise<SessionsPage> {
   const limit = options?.limit ?? 20;
   const offset = options?.offset ?? 0;
@@ -79,10 +105,10 @@ export async function fetchSessionsList(
   const params = new URLSearchParams({
     limit: String(limit),
     offset: String(offset),
-    channel: 'webchat',
     sortBy: 'updatedAt',
     sortOrder: 'desc',
   });
+  if (options?.channel !== null) params.set('channel', options?.channel ?? 'webchat');
   if (search) params.set('search', search);
 
   const res = await apiFetch(`/api/sessions?${params.toString()}`);
@@ -93,7 +119,7 @@ export async function fetchSessionsList(
   const items: SessionListItem[] = [];
   for (const row of parsed.data.items) {
     const one = sessionListItemSchema.safeParse(row);
-    if (one.success) items.push(one.data);
+    if (one.success) items.push(normalizeSessionListItem(one.data));
   }
   // Persist only the unfiltered first page so cold-start hydration matches
   // the next live first request.
@@ -143,12 +169,14 @@ export async function fetchSessionMessagePage(
 
 export async function createSession(
   agentId?: string,
-  options?: { forceNew?: boolean },
+  options?: { forceNew?: boolean; chatId?: string },
 ): Promise<string> {
   const body: Record<string, unknown> = { channel: 'webchat' };
   if (agentId?.trim()) body.agentId = agentId.trim().toLowerCase();
-  if (options?.forceNew) {
-    body.chat_id = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  if (options?.chatId?.trim()) {
+    body.chat_id = options.chatId.trim();
+  } else if (options?.forceNew) {
+    body.chat_id = generateNewChatId();
   }
   const res = await apiFetch('/api/sessions', {
     method: 'POST',

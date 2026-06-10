@@ -14,12 +14,16 @@ import {
   View,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import { Button, IconButton, Snackbar, Text, TextInput } from 'react-native-paper';
+import { Button, IconButton, Text, TextInput } from 'react-native-paper';
+
+import { AppToast } from '../../components/AppToast';
+import { TOAST_DURATION_SHORT } from '../../constants/toast';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { gatewaySettingsSchema } from '../../config/schema';
 import { useMessages } from '../../i18n/messages';
 import { queryKeys } from '../../query/keys';
+import { invalidateSessionLists } from '../../query/workspace-sync';
 import { DEFAULT_GATEWAY_BASE_URL, useGatewayStore } from '../../stores/gateway-store';
 import {
   gatewayUrlValidationMessage,
@@ -225,7 +229,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
         setSaveError(nav.message || l.connectFailed);
         return;
       }
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
+      invalidateSessionLists(queryClient);
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents });
     } finally {
       setSaving(false);
@@ -359,9 +363,9 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
         </View>
       </KeyboardAwareScrollView>
 
-      <Snackbar visible={Boolean(tokenNotice)} onDismiss={() => setTokenNotice(null)} duration={2200}>
+      <AppToast visible={Boolean(tokenNotice)} onDismiss={() => setTokenNotice(null)} duration={TOAST_DURATION_SHORT}>
         {tokenNotice}
-      </Snackbar>
+      </AppToast>
     </View>
   );
 
@@ -371,6 +375,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
       <View style={styles.webOverlay}>
         {landingContent}
         <GatewayQrScannerModal
+          embedded
           visible={scannerOpen}
           onRequestClose={() => setScannerOpen(false)}
           onScanned={applyParsed}
@@ -389,6 +394,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
     >
       {landingContent}
       <GatewayQrScannerModal
+        embedded
         visible={scannerOpen}
         onRequestClose={() => setScannerOpen(false)}
         onScanned={applyParsed}
@@ -400,7 +406,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
 
 const styles = StyleSheet.create({
   webOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 1000,
     elevation: 1000,
   },

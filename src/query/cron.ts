@@ -1,22 +1,18 @@
-/**
- * Gateway cron API — mirrors xopc `src/gateway/hono/routes/cron.ts` and web `cron-api.ts`.
- */
 import { apiFetch, formatApiHttpError } from '../api/client';
 
-export type CronPayload = {
-  kind?: 'systemEvent' | 'agentTurn';
-  text?: string;
-  message?: string;
+/** Mobile creates isolated agent-turn jobs only. */
+export type CronAgentPayload = {
+  kind: 'agentTurn';
+  message: string;
 };
 
-export type CronJobRow = {
+export type CronJob = {
   id: string;
   name?: string;
   schedule: string;
   enabled: boolean;
-  timezone?: string;
   next_run?: string;
-  payload?: CronPayload;
+  payload?: CronAgentPayload | { kind: string; [key: string]: unknown };
 };
 
 export type CronRunRow = {
@@ -29,7 +25,31 @@ export type CronRunRow = {
   duration?: number;
   error?: string;
   summary?: string;
+  sessionKey?: string;
+  sessionId?: string;
 };
+
+export function cronRunSessionKey(run: Pick<CronRunRow, 'sessionKey' | 'sessionId'>): string | null {
+  const sk = run.sessionKey?.trim();
+  if (sk) return sk;
+  const sid = run.sessionId?.trim();
+  if (sid) return sid;
+  return null;
+}
+
+export type CreateCronJobInput = {
+  name: string;
+  schedule: string;
+  message: string;
+};
+
+export type UpdateCronJobInput = {
+  name?: string;
+  schedule?: string;
+  message?: string;
+};
+
+export const RUNS_HISTORY_LIMIT = 50;
 
 function encId(id: string): string {
   return encodeURIComponent(id);
@@ -56,7 +76,7 @@ async function throwIfNotOk(res: Response): Promise<void> {
   throw new Error(formatApiHttpError(res.status, res.statusText, apiErrorMessage(data)));
 }
 
-function isCronJobRow(x: unknown): x is CronJobRow {
+function isCronJob(x: unknown): x is CronJob {
   if (x == null || typeof x !== 'object') return false;
   const o = x as Record<string, unknown>;
   return typeof o.id === 'string' && typeof o.schedule === 'string' && typeof o.enabled === 'boolean';
@@ -74,21 +94,85 @@ function isCronRunRow(x: unknown): x is CronRunRow {
   );
 }
 
-export function cronJobPromptPreview(job: Pick<CronJobRow, 'payload'>): string {
+export function isEditableCronJob(job: CronJob): job is CronJob & { payload: CronAgentPayload } {
   const payload = job.payload;
-  if (!payload) return '';
-  if (payload.kind === 'systemEvent') return (payload.text ?? '').trim();
-  return (payload.message ?? '').trim();
+  return payload?.kind === 'agentTurn' && typeof payload.message === 'string';
 }
 
-export async function fetchCronJobs(): Promise<CronJobRow[]> {
+export function cronJobMessage(job: Pick<CronJob, 'payload'>): string {
+  const payload = job.payload;
+  if (payload?.kind === 'agentTurn' && typeof payload.message === 'string') {
+    return payload.message.trim();
+  }
+  return '';
+}
+
+function createJobBody(input: CreateCronJobInput) {
+  return {
+    schedule: input.schedule,
+    name: input.name.trim(),
+    sessionTarget: 'isolated' as const,
+    delivery: { mode: 'none' as const },
+    payload: { kind: 'agentTurn' as const, message: input.message.trim() },
+  };
+}
+
+function updateJobBody(input: UpdateCronJobInput) {
+  const body: Record<string, unknown> = {};
+  if (input.name !== undefined) body.name = input.name.trim();
+  if (input.schedule !== undefined) body.schedule = input.schedule;
+  if (input.message !== undefined) {
+    body.payload = { kind: 'agentTurn', message: input.message.trim() };
+  }
+  return body;
+}
+
+export async function fetchCronJobs(): Promise<CronJob[]> {
   const res = await apiFetch('/api/cron');
   const data = (await parseJson(res)) as { jobs?: unknown };
   if (!res.ok) {
     throw new Error(formatApiHttpError(res.status, res.statusText, apiErrorMessage(data)));
   }
   if (!Array.isArray(data.jobs)) return [];
-  return data.jobs.filter(isCronJobRow);
+  return data.jobs.filter(isCronJob);
+}
+
+export async function fetchCronJob(id: string): Promise<CronJob | null> {
+  const res = await apiFetch(`/api/cron/${encId(id)}`);
+  const data = (await parseJson(res)) as { job?: unknown; error?: unknown };
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(formatApiHttpError(res.status, res.statusText, apiErrorMessage(data)));
+  }
+  return isCronJob(data.job) ? data.job : null;
+}
+
+export async function createCronJob(input: CreateCronJobInput): Promise<{ id: string }> {
+  const res = await apiFetch('/api/cron', {
+    method: 'POST',
+    body: JSON.stringify(createJobBody(input)),
+  });
+  const data = (await parseJson(res)) as { id?: unknown; error?: unknown };
+  if (!res.ok) {
+    throw new Error(formatApiHttpError(res.status, res.statusText, apiErrorMessage(data)));
+  }
+  if (typeof data.id !== 'string') {
+    throw new Error('Invalid create response');
+  }
+  return { id: data.id };
+}
+
+export async function updateCronJob(id: string, input: UpdateCronJobInput): Promise<void> {
+  const res = await apiFetch(`/api/cron/${encId(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updateJobBody(input)),
+  });
+  await throwIfNotOk(res);
+}
+
+export async function deleteCronJob(id: string): Promise<void> {
+  const res = await apiFetch(`/api/cron/${encId(id)}`, { method: 'DELETE' });
+  await throwIfNotOk(res);
 }
 
 export async function toggleCronJob(id: string, enabled: boolean): Promise<void> {
@@ -104,7 +188,7 @@ export async function runCronJobNow(id: string): Promise<void> {
   await throwIfNotOk(res);
 }
 
-export async function fetchCronRunsHistory(limit = 50): Promise<CronRunRow[]> {
+export async function fetchCronRunsHistory(limit = RUNS_HISTORY_LIMIT): Promise<CronRunRow[]> {
   const q = encodeURIComponent(String(limit));
   const res = await apiFetch(`/api/cron/runs/history?limit=${q}`);
   const data = (await parseJson(res)) as { runs?: unknown };

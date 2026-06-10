@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 
 import { readAnyNetworkLastGoodRoute } from '../features/gateway/last-good-route';
-import { runProbeRound } from '../features/gateway/probe-coordinator';
 import {
   readRouteOverride,
   writeRouteOverride,
@@ -175,6 +174,7 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
     if (override === 'lan' && lanUrl) nextActive = lanUrl;
     else if (override === 'tunnel' && baseUrl) nextActive = baseUrl;
     set({ routeOverride: override, activeBaseUrl: nextActive });
+    const { runProbeRound } = await import('../features/gateway/probe-coordinator');
     await runProbeRound('manual', { force: true });
   },
 
@@ -222,6 +222,7 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
       set({ activeBaseUrl: '' });
       return '';
     }
+    const { runProbeRound } = await import('../features/gateway/probe-coordinator');
     const outcome = await runProbeRound('settings-saved', { force: true });
     const winnerUrl = outcome.result.url;
     if (

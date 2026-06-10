@@ -1,0 +1,180 @@
+import { describe, expect, it } from 'vitest';
+
+import { composerAttachmentsToWire } from '../../chat/composer.types';
+import { MAX_CHAT_ATTACHMENTS } from '../../chat/chat-limits';
+import {
+  buildNoteChatContextText,
+  collectNoteAttachmentsForChat,
+  extractVoiceTranscripts,
+} from '../note-to-chat-payload';
+import type { NoteEditorAttachment } from '../blocks/attachment.types';
+import type { NoteAttachment, NoteBlock } from '../../../query/notes';
+
+const labels = {
+  imagePlaceholder: (alt: string) => `[Image: ${alt}]`,
+  voiceTranscript: (text: string) => `[Voice transcript: ${text}]`,
+};
+
+function paragraphBlocks(text: string): NoteBlock[] {
+  return [{
+    id: 'block_1',
+    type: 'paragraph',
+    text,
+    parentId: null,
+    childIds: [],
+    createdAt: 1,
+    updatedAt: 1,
+  }];
+}
+
+describe('buildNoteChatContextText', () => {
+  it('keeps markdown structure without embedding image attachment ids as raw data', () => {
+    const blocks: NoteBlock[] = [
+      {
+        id: 'h1',
+        type: 'heading',
+        text: 'Title',
+        level: 2,
+        parentId: null,
+        childIds: [],
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      {
+        id: 'img',
+        type: 'image',
+        attachmentId: 'att-img',
+        alt: 'screenshot',
+        parentId: null,
+        childIds: [],
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      ...paragraphBlocks('Body text'),
+    ];
+    const text = buildNoteChatContextText(blocks, labels);
+    expect(text).toContain('## Title');
+    expect(text).toContain('[Image: screenshot]');
+    expect(text).toContain('Body text');
+  });
+
+  it('appends voice transcripts after body text', () => {
+    const text = buildNoteChatContextText(paragraphBlocks('Notes'), labels, {
+      voiceTranscripts: ['Buy milk'],
+    });
+    expect(text).toBe('Notes\n\n[Voice transcript: Buy milk]');
+  });
+});
+
+describe('extractVoiceTranscripts', () => {
+  it('returns trimmed transcripts from audio attachments', () => {
+    const attachments: NoteAttachment[] = [
+      {
+        id: 'a1',
+        type: 'audio',
+        mimeType: 'audio/m4a',
+        fileName: 'voice.m4a',
+        size: 1,
+        relativePath: 'inbound/n/voice.m4a',
+        transcript: '  hello  ',
+      },
+    ];
+    expect(extractVoiceTranscripts(attachments)).toEqual(['hello']);
+  });
+});
+
+describe('collectNoteAttachmentsForChat', () => {
+  it('collects image blocks via synced attachments', async () => {
+    const blocks: NoteBlock[] = [{
+      id: 'img',
+      type: 'image',
+      attachmentId: 'att-img',
+      alt: 'pic',
+      parentId: null,
+      childIds: [],
+      createdAt: 1,
+      updatedAt: 1,
+    }];
+    const synced: NoteAttachment[] = [{
+      id: 'att-img',
+      type: 'image',
+      mimeType: 'image/png',
+      fileName: 'pic.png',
+      size: 3,
+      relativePath: 'inbound/n/pic.png',
+    }];
+    const result = await collectNoteAttachmentsForChat(blocks, [], synced);
+    expect(result.attachments).toHaveLength(1);
+    expect(result.attachments[0].type).toBe('image');
+    expect(result.attachments[0].workspaceRelativePath).toBe('inbound/n/pic.png');
+    expect(result.droppedCount).toBe(0);
+  });
+
+  it('dedupes editor strip attachments with synced note attachments', async () => {
+    const editor: NoteEditorAttachment[] = [{
+      id: 'att1',
+      type: 'image',
+      name: 'pic.png',
+      mimeType: 'image/png',
+      size: 3,
+      content: 'YWJj',
+    }];
+    const result = await collectNoteAttachmentsForChat([], editor, []);
+    expect(result.attachments).toHaveLength(1);
+  });
+
+  it('uses workspaceRelativePath for synced attachments without local base64', async () => {
+    const synced: NoteAttachment[] = [{
+      id: 'remote',
+      type: 'file',
+      mimeType: 'application/pdf',
+      fileName: 'doc.pdf',
+      size: 100,
+      relativePath: 'inbound/n/doc.pdf',
+    }];
+    const result = await collectNoteAttachmentsForChat([], [], synced);
+    expect(result.attachments[0].workspaceRelativePath).toBe('inbound/n/doc.pdf');
+    expect(result.attachments[0].content).toBe('');
+  });
+
+  it('caps attachments to MAX_CHAT_ATTACHMENTS', async () => {
+    const editor: NoteEditorAttachment[] = Array.from({ length: MAX_CHAT_ATTACHMENTS + 2 }, (_, index) => ({
+      id: `att-${index}`,
+      type: 'document' as const,
+      name: `file-${index}.txt`,
+      mimeType: 'text/plain',
+      size: 4,
+      content: btoa(`file-${index}`),
+    }));
+    const result = await collectNoteAttachmentsForChat([], editor, []);
+    expect(result.attachments).toHaveLength(MAX_CHAT_ATTACHMENTS);
+    expect(result.droppedCount).toBe(2);
+  });
+});
+
+describe('composerAttachmentsToWire for note media', () => {
+  it('maps audio attachments to voice wire type with workspace path', () => {
+    const wire = composerAttachmentsToWire([
+      {
+        id: 'v1',
+        type: 'document',
+        name: 'voice.m4a',
+        mimeType: 'audio/mp4',
+        size: 100,
+        content: '',
+        workspaceRelativePath: 'inbound/n/voice.m4a',
+        durationSeconds: 12,
+      },
+    ]);
+    expect(wire).toEqual([
+      {
+        type: 'voice',
+        mimeType: 'audio/mp4',
+        name: 'voice.m4a',
+        size: 100,
+        workspaceRelativePath: 'inbound/n/voice.m4a',
+        durationSeconds: 12,
+      },
+    ]);
+  });
+});

@@ -2,18 +2,19 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
 import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { StatusBar } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
+import { PaperProvider } from 'react-native-paper';
 
 import { tryConsumeGatewayDeeplink } from '../src/features/gateway/apply-gateway-deeplink';
 import { themedStackScreenOptions } from '../src/lib/stack-screen-theme';
+import { createPaperTheme, getColors } from '../src/theme';
 import { GatewayConnectLandingContext } from '../src/features/gateway/gateway-connect-context';
 import { GatewayConnectLandingModal } from '../src/features/gateway/GatewayConnectLandingModal';
 import { useGatewayConnectionWatch } from '../src/features/gateway/use-gateway-connection-watch';
 import { useGatewaySse } from '../src/features/gateway/use-gateway-sse';
 import { refreshNetworkSnapshotWithDeadline } from '../src/features/gateway/network-info';
-import { useMessages } from '../src/i18n/messages';
 import { queryClient } from '../src/query/query-client';
 import { useGatewayConfigured } from '../src/query/sessions';
 import { useGatewayStore } from '../src/stores/gateway-store';
@@ -21,13 +22,14 @@ import {
   subscribeSystemAppearance,
   usePreferencesStore,
 } from '../src/stores/preferences-store';
+import { useNoteTagsStore } from '../src/stores/note-tags-store';
 
 export default function RootLayout() {
   const router = useRouter();
   const resolvedTheme = usePreferencesStore((s) => s.resolvedTheme);
   const hydratePrefs = usePreferencesStore((s) => s.hydrate);
+  const hydrateNoteTags = useNoteTagsStore((s) => s.hydrate);
   const hydrateGateway = useGatewayStore((s) => s.hydrateFromStorage);
-  const m = useMessages();
   const configured = useGatewayConfigured();
   const unauthorized = useGatewayStore((s) => s.unauthorized);
   const [userDismissedConnect, setUserDismissedConnect] = useState(false);
@@ -36,8 +38,15 @@ export default function RootLayout() {
   useGatewayConnectionWatch(configured);
 
   const isDark = resolvedTheme === 'dark';
-  const paperTheme = isDark ? MD3DarkTheme : MD3LightTheme;
-  const agentsStackOptions = themedStackScreenOptions(isDark);
+  const paperTheme = useMemo(() => createPaperTheme(isDark), [isDark]);
+  const stackScreenOptions = useMemo(
+    () => ({
+      headerShown: false,
+      ...themedStackScreenOptions(isDark),
+    }),
+    [isDark],
+  );
+  const rootBackgroundColor = getColors(isDark).surface.base;
 
   useEffect(() => {
     // Eagerly refresh the network snapshot before/while we hydrate so the
@@ -47,8 +56,9 @@ export default function RootLayout() {
     void refreshNetworkSnapshotWithDeadline(150);
     hydrateGateway();
     hydratePrefs();
+    hydrateNoteTags();
     return subscribeSystemAppearance();
-  }, [hydrateGateway, hydratePrefs]);
+  }, [hydrateGateway, hydrateNoteTags, hydratePrefs]);
   useEffect(() => {
     if (configured) setUserDismissedConnect(false);
   }, [configured]);
@@ -87,24 +97,33 @@ export default function RootLayout() {
     setUserDismissedConnect(true);
     router.replace('/');
   }, [router]);
-
   const gatewayConnectCtx = useMemo(
     () => ({ openGatewayConnectLanding }),
     [openGatewayConnectLanding],
   );
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: rootBackgroundColor }}>
+      <StatusBar
+        barStyle={isDark ? 'light-content' : 'dark-content'}
+        translucent
+        backgroundColor="transparent"
+      />
       <KeyboardProvider>
         <QueryClientProvider client={queryClient}>
           <PaperProvider theme={paperTheme}>
             <GatewayConnectLandingContext.Provider value={gatewayConnectCtx}>
-              <Stack screenOptions={{ headerShown: false }}>
+              <Stack screenOptions={stackScreenOptions}>
               {/**
-               * Keep the main app group first so cold start / restored state default to chat,
-               * not the first modal screen declared below.
+               * (home) is the default landing group — single home screen.
+               * chat/[k] pushes a full-screen chat detail on top.
                */}
-                <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
+                <Stack.Screen name="(home)" options={{ headerShown: false }} />
+                <Stack.Screen name="chat" options={{ headerShown: false }} />
+                <Stack.Screen name="inbox" options={{ headerShown: false }} />
+                <Stack.Screen name="notes/index" options={{ headerShown: false }} />
+                <Stack.Screen name="sessions" options={{ headerShown: false }} />
+                <Stack.Screen name="items/[id]" options={{ headerShown: false }} />
                 <Stack.Screen
                   name="settings"
                   options={{
@@ -113,30 +132,21 @@ export default function RootLayout() {
                   }}
                 />
                 <Stack.Screen
-                  name="agents"
-                  options={{
-                    headerShown: true,
-                    title: m.agentsPage.title,
-                    presentation: 'modal',
-                    ...agentsStackOptions,
-                  }}
-                />
-                <Stack.Screen
-                  name="schedules"
+                  name="ai"
                   options={{
                     headerShown: false,
                     presentation: 'modal',
                   }}
                 />
                 <Stack.Screen
-                  name="tasks"
+                  name="automation"
                   options={{
                     headerShown: false,
                     presentation: 'modal',
                   }}
                 />
                 <Stack.Screen
-                  name="notes"
+                  name="sharing"
                   options={{
                     headerShown: false,
                     presentation: 'modal',

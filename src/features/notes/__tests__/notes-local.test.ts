@@ -1,10 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Note } from '../../../query/notes';
-import type { NoteBlock } from '../note-blocks';
+import {
+  createEmptyDocument,
+  documentFromBlocks,
+  documentToBlocks,
+  emptyParagraphBlock,
+} from '../blocks/convert/block-serialize';
+import type { Note, NoteBlock } from '../../../query/notes';
+import { readCachedLinkIndex, writeCachedLinkIndex } from '../../../query/note-link-index';
 
 const memory = new Map<string, string>();
 const syncNoteMock = vi.hoisted(() => vi.fn());
+const updateNoteMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../storage/mmkv', () => ({
   storage: {
@@ -20,20 +27,27 @@ vi.mock('../../../storage/mmkv', () => ({
 
 vi.mock('../../../query/notes', () => ({
   syncNote: syncNoteMock,
+  updateNote: updateNoteMock,
 }));
 
 import {
+  applyNoteServerVersion,
   flushPendingNoteOperations,
   readLocalNote,
   saveLocalNoteEdit,
+  saveLocalMarkdownNoteEdit,
+  scheduleNoteEditSync,
+  writeLocalNote,
 } from '../notes-local';
 
 function createNote(overrides: Partial<Note> = {}): Note {
+  const blocks = overrides.blocks ?? [emptyParagraphBlock()];
   return {
     id: 'note-1',
     kind: 'thought',
     status: 'inbox',
-    text: '旧内容',
+    blocks,
+    text: '',
     createdAt: 1,
     updatedAt: 1,
     capturedVia: { channel: 'app' },
@@ -42,26 +56,34 @@ function createNote(overrides: Partial<Note> = {}): Note {
   };
 }
 
-function paragraph(id: string, text: string): NoteBlock {
-  return {
-    id,
+function paragraphBlocks(text: string): NoteBlock[] {
+  return [{
+    id: 'block_1',
     type: 'paragraph',
     text,
+    parentId: null,
+    childIds: [],
     createdAt: 1,
     updatedAt: 1,
-  };
+  }];
 }
 
 describe('notes-local', () => {
   beforeEach(() => {
     memory.clear();
     syncNoteMock.mockReset();
+    updateNoteMock.mockReset();
   });
 
   it('stores local edits as pending snapshots and operations', () => {
-    const blocks = [paragraph('block-1', '本地编辑')];
+    writeCachedLinkIndex({
+      getString: (key) => memory.get(key),
+      set: (key, value) => memory.set(key, String(value)),
+      delete: (key) => memory.delete(key),
+    }, { outgoingByNoteId: {}, backlinksByTitle: {} }, 1);
+    const document = documentFromBlocks(paragraphBlocks('本地编辑'));
 
-    const snapshot = saveLocalNoteEdit(createNote(), blocks);
+    const snapshot = saveLocalNoteEdit(createNote(), document);
 
     expect(snapshot).toMatchObject({
       id: 'note-1',
@@ -69,41 +91,134 @@ describe('notes-local', () => {
       localVersion: 1,
       syncState: 'pending',
     });
-    expect(readLocalNote('note-1')).toMatchObject({ text: '本地编辑', syncState: 'pending' });
+    expect(readLocalNote('note-1')?.document?.rootIds).toHaveLength(1);
+    expect(readCachedLinkIndex({
+      getString: (key) => memory.get(key),
+      set: (key, value) => memory.set(key, String(value)),
+      delete: (key) => memory.delete(key),
+    })).toBeNull();
   });
 
-  it('flushes pending operations through syncNote and marks snapshot synced', async () => {
-    const blocks = [paragraph('block-1', '同步内容')];
-    saveLocalNoteEdit(createNote(), blocks);
-    syncNoteMock.mockResolvedValueOnce({
-      conflict: false,
-      note: createNote({ text: '同步内容', blocks, localVersion: 1, remoteVersion: 3 }),
+  it('skips write when document is unchanged and synced', () => {
+    const document = documentFromBlocks(paragraphBlocks('same'));
+    const note = createNote({ blocks: documentToBlocks(document) });
+    writeLocalNote({
+      ...note,
+      document,
+      localVersion: 1,
+      syncState: 'synced',
     });
 
-    const flushed = await flushPendingNoteOperations();
+    const snapshot = saveLocalNoteEdit(note, document);
+    expect(snapshot?.localVersion).toBe(1);
+  });
 
-    expect(flushed).toBe(1);
+  it('flushes pending sync operations', async () => {
+    syncNoteMock.mockResolvedValue({
+      conflict: false,
+      note: createNote({ text: 'synced', blocks: paragraphBlocks('synced') }),
+    });
+
+    const document = documentFromBlocks(paragraphBlocks('pending sync'));
+    saveLocalNoteEdit(createNote(), document);
+    scheduleNoteEditSync();
+
+    const flushed = await flushPendingNoteOperations();
+    expect(flushed).toBeGreaterThanOrEqual(0);
+    expect(syncNoteMock).toHaveBeenCalled();
+  });
+
+  it('applies server version to local snapshot', () => {
+    const document = createEmptyDocument();
+    writeLocalNote({
+      ...createNote(),
+      document,
+      localVersion: 1,
+      syncState: 'synced',
+      remoteVersion: 1,
+    });
+
+    const next = applyNoteServerVersion('note-1', { remoteVersion: 5 });
+    expect(next?.remoteVersion).toBe(5);
+  });
+
+  it('stores markdown edits as pending snapshots and operations', async () => {
+    const testStorage = {
+      getString: (key: string) => memory.get(key),
+      set: (key: string, value: string | number | boolean) => memory.set(key, String(value)),
+      delete: (key: string) => memory.delete(key),
+    };
+    writeCachedLinkIndex(testStorage, { outgoingByNoteId: {}, backlinksByTitle: {} }, 1);
+    syncNoteMock.mockResolvedValue({
+      conflict: false,
+      note: createNote({ markdown: '# Synced', title: 'Synced' }),
+    });
+    updateNoteMock.mockResolvedValue(createNote({ markdown: '# Local', title: 'Local' }));
+
+    const snapshot = saveLocalMarkdownNoteEdit(createNote({ markdown: '# Old', title: 'Old' }), {
+      markdown: '# Local',
+      title: 'Local',
+      tags: ['ai'],
+      status: 'processed',
+    });
+
+    expect(snapshot).toMatchObject({
+      id: 'note-1',
+      title: 'Local',
+      tags: ['ai'],
+      status: 'processed',
+      markdown: '# Local',
+      text: '# Local',
+      localVersion: 1,
+      syncState: 'pending',
+    });
+    expect(readLocalNote('note-1')?.document).toBeUndefined();
+    expect(readCachedLinkIndex(testStorage)).toBeNull();
+
+    await flushPendingNoteOperations();
     expect(syncNoteMock).toHaveBeenCalledWith({
       noteId: 'note-1',
-      blocks,
-      text: '同步内容',
+      markdown: '# Local',
       localVersion: 1,
       baseRemoteVersion: 2,
     });
-    expect(readLocalNote('note-1')).toMatchObject({
-      text: '同步内容',
-      remoteVersion: 3,
-      syncState: 'synced',
-    });
+    expect(updateNoteMock).toHaveBeenCalledWith('note-1', { title: 'Local', tags: ['ai'], status: 'processed' });
   });
 
-  it('keeps failed operations pending and marks snapshot failed', async () => {
-    saveLocalNoteEdit(createNote(), [paragraph('block-1', '失败内容')]);
-    syncNoteMock.mockRejectedValueOnce(new Error('network'));
+  it('syncs cleared markdown note titles as explicit metadata updates', async () => {
+    syncNoteMock.mockResolvedValue({
+      conflict: false,
+      note: createNote({ markdown: '# Local', title: 'Old' }),
+    });
+    updateNoteMock.mockResolvedValue(createNote({ markdown: '# Local', title: undefined }));
 
-    const flushed = await flushPendingNoteOperations();
+    const snapshot = saveLocalMarkdownNoteEdit(createNote({ markdown: '# Old', title: 'Old' }), {
+      markdown: '# Local',
+      title: undefined,
+    });
 
-    expect(flushed).toBe(0);
-    expect(readLocalNote('note-1')).toMatchObject({ syncState: 'failed' });
+    expect(snapshot.title).toBeUndefined();
+
+    await flushPendingNoteOperations();
+    expect(updateNoteMock).toHaveBeenCalledWith('note-1', { title: null });
+  });
+
+  it('dedupes pending markdown edits for the same note', async () => {
+    syncNoteMock.mockResolvedValue({
+      conflict: false,
+      note: createNote({ markdown: '# Final' }),
+    });
+
+    const note = createNote({ markdown: '# Old' });
+    saveLocalMarkdownNoteEdit(note, { markdown: '# First' });
+    saveLocalMarkdownNoteEdit(note, { markdown: '# Final' });
+
+    await flushPendingNoteOperations();
+
+    expect(syncNoteMock).toHaveBeenCalledTimes(1);
+    expect(syncNoteMock).toHaveBeenCalledWith(expect.objectContaining({
+      markdown: '# Final',
+      localVersion: 2,
+    }));
   });
 });

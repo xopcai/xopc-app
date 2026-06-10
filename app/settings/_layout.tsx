@@ -11,14 +11,12 @@ export default function SettingsLayout() {
   return (
     <Stack
       screenOptions={{
-        headerShown: true,
+        headerShown: false,
         ...themedScreenOptions,
       }}
     >
       <Stack.Screen name="index" options={{ title: s.title }} />
       <Stack.Screen name="gateway" options={{ headerShown: false }} />
-      <Stack.Screen name="language" options={{ title: s.language }} />
-      <Stack.Screen name="theme" options={{ title: s.theme }} />
       <Stack.Screen name="about" options={{ title: s.about }} />
     </Stack>
   );

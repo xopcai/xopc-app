@@ -290,6 +290,18 @@ function ShareSheetBody({
           primary
         />
       </View>
+
+      <Pressable
+        onPress={() => {
+          onClose();
+          router.push('/sharing');
+        }}
+        style={({ pressed }) => [styles.manageLink, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={m.share.manageAll}
+      >
+        <Text style={[styles.manageLinkText, { color: palette.primary }]}>{m.share.manageAll}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -498,7 +510,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   thumbnailPendingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -574,6 +586,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  manageLink: {
+    alignItems: 'center',
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  manageLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   pressed: {
     opacity: 0.75,

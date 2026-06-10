@@ -11,6 +11,7 @@ import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 
 import {
+  buildStepsRoundActiveSummary,
   buildStepsRoundCompleteSummary,
   filterVisibleSteps,
   viewStepsLabel,
@@ -132,12 +133,38 @@ export const AssistantStepsBlock = memo(function AssistantStepsBlock({
       noOutput: m.chat.noOutput,
       toolRunning: m.chat.toolRunning,
       toolError: m.chat.toolError,
+      searchResults: m.chat.searchResults,
+      showMoreResults: m.chat.showMoreResults,
+      showLessResults: m.chat.showLessResults,
     }),
     [m.chat],
   );
 
   const completedHeader = useMemo(() => {
-    if (anyActive) return '';
+    const fallback = viewStepsLabel(stepCount, {
+      viewSteps_one: m.chat.viewSteps_one,
+      viewSteps_other: m.chat.viewSteps_other,
+    });
+
+    if (anyActive) {
+      return buildStepsRoundActiveSummary(
+        visibleBlocks,
+        {
+          searchedWeb: m.chat.stepSearchedWeb,
+          readFile: m.chat.stepReadFile,
+          runCommand: m.chat.stepRunCommand,
+          listDirectory: m.chat.stepListDirectory,
+          writeFile: m.chat.stepWriteFile,
+          editFile: m.chat.stepEditFile,
+          openUrl: m.chat.stepOpenUrl,
+          fetchUrl: m.chat.stepFetchUrl,
+          unknownTool: m.chat.stepUnknownTool,
+        },
+        language,
+        fallback,
+      );
+    }
+
     return buildStepsRoundCompleteSummary(
       visibleBlocks,
       {
@@ -152,21 +179,13 @@ export const AssistantStepsBlock = memo(function AssistantStepsBlock({
         unknownTool: m.chat.stepUnknownTool,
       },
       language,
-      viewStepsLabel(stepCount, {
-        viewSteps_one: m.chat.viewSteps_one,
-        viewSteps_other: m.chat.viewSteps_other,
-      }),
+      fallback,
     );
   }, [anyActive, visibleBlocks, language, stepCount, m.chat]);
 
   if (stepCount === 0) return null;
 
-  const headerMain = anyActive
-    ? viewStepsLabel(stepCount, {
-        viewSteps_one: m.chat.viewSteps_one,
-        viewSteps_other: m.chat.viewSteps_other,
-      })
-    : completedHeader;
+  const headerMain = completedHeader;
 
   return (
     <View
@@ -196,22 +215,13 @@ export const AssistantStepsBlock = memo(function AssistantStepsBlock({
         )}
 
         <View style={styles.headerCenter}>
-          <View
-            style={[
-              styles.headerPill,
-              {
-                backgroundColor: isDark ? chatColors.accentSoftDark : chatColors.accentSoft,
-              },
-            ]}
+          <Text
+            variant="labelSmall"
+            style={[styles.headerLabel, { color: isDark ? '#D1D5DB' : '#374151' }]}
+            numberOfLines={2}
           >
-            <Text
-              variant="labelSmall"
-              style={[styles.headerLabel, { color: isDark ? '#E5E7EB' : '#374151' }]}
-              numberOfLines={2}
-            >
-              {headerMain}
-            </Text>
-          </View>
+            {headerMain}
+          </Text>
           {anyActive ? (
             <StepRoundDurationText
               active={anyActive}
@@ -346,15 +356,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  headerPill: {
-    maxWidth: '100%',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
   headerLabel: {
+    flexShrink: 1,
     fontWeight: '500',
     fontSize: 12,
+    lineHeight: 16,
   },
   durationText: {
     fontSize: 11,

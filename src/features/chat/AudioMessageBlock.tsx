@@ -1,4 +1,5 @@
-import { Audio } from 'expo-av';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import type { AudioPlayer } from 'expo-audio';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
@@ -29,7 +30,7 @@ export const AudioMessageBlock = memo(function AudioMessageBlock({
   const isDark = useColorScheme() === 'dark';
   const m = useMessages();
   const token = useGatewayStore((s) => s.token);
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const playerRef = useRef<AudioPlayer | null>(null);
   const [loading, setLoading] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [positionMillis, setPositionMillis] = useState(0);
@@ -44,12 +45,12 @@ export const AudioMessageBlock = memo(function AudioMessageBlock({
 
   const title = audio.name?.trim() || audioNameFromPath(audio.workspaceRelativePath, 'voice.mp3');
 
-  const unload = useCallback(async () => {
-    const sound = soundRef.current;
-    soundRef.current = null;
-    if (!sound) return;
+  const unload = useCallback(() => {
+    const player = playerRef.current;
+    playerRef.current = null;
+    if (!player) return;
     try {
-      await sound.unloadAsync();
+      player.remove();
     } catch {
       // Ignore unload races when the component unmounts or source changes.
     }
@@ -57,52 +58,47 @@ export const AudioMessageBlock = memo(function AudioMessageBlock({
 
   useEffect(() => {
     return () => {
-      void unload();
+      unload();
     };
   }, [unload]);
 
   useEffect(() => {
-    void unload();
+    unload();
     setPlaying(false);
     setPositionMillis(0);
     setDurationMillis((audio.durationSeconds ?? 0) * 1000);
     setError(null);
   }, [audio.durationSeconds, unload, uri]);
 
-  const ensureSound = useCallback(async () => {
-    if (soundRef.current) return soundRef.current;
+  const ensurePlayer = useCallback(async () => {
+    if (playerRef.current) return playerRef.current;
     if (!uri) throw new Error(m.chat.audioMissingSource);
 
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
+    await setAudioModeAsync({
+      allowsRecording: false,
+      playsInSilentMode: true,
     });
 
-    const { sound } = await Audio.Sound.createAsync(
-      {
-        uri,
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      },
-      { shouldPlay: false },
-      (status) => {
-        if (!status.isLoaded) {
-          setPlaying(false);
-          return;
-        }
-        setPlaying(status.isPlaying);
-        setPositionMillis(status.positionMillis ?? 0);
-        setDurationMillis(status.durationMillis ?? durationMillis);
-        if (status.didJustFinish) {
-          setPlaying(false);
-          void soundRef.current?.setPositionAsync(0).catch(() => {});
-        }
-      },
-    );
-    soundRef.current = sound;
-    return sound;
+    const source = {
+      uri,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    };
+    const player = createAudioPlayer(source, { updateInterval: 250 });
+    player.addListener('playbackStatusUpdate', (status) => {
+      if (!status.isLoaded) {
+        setPlaying(false);
+        return;
+      }
+      setPlaying(status.playing);
+      setPositionMillis(Math.round((status.currentTime ?? 0) * 1000));
+      setDurationMillis(Math.round((status.duration ?? 0) * 1000) || durationMillis);
+      if (status.didJustFinish) {
+        setPlaying(false);
+        void player.seekTo(0).catch(() => {});
+      }
+    });
+    playerRef.current = player;
+    return player;
   }, [durationMillis, m.chat.audioMissingSource, token, uri]);
 
   const toggle = useCallback(async () => {
@@ -110,12 +106,11 @@ export const AudioMessageBlock = memo(function AudioMessageBlock({
     setLoading(true);
     setError(null);
     try {
-      const sound = await ensureSound();
-      const status = await sound.getStatusAsync();
-      if (status.isLoaded && status.isPlaying) {
-        await sound.pauseAsync();
+      const player = await ensurePlayer();
+      if (player.playing) {
+        player.pause();
       } else {
-        await sound.playAsync();
+        player.play();
       }
     } catch {
       setError(m.chat.audioPlaybackFailed);
@@ -123,7 +118,7 @@ export const AudioMessageBlock = memo(function AudioMessageBlock({
     } finally {
       setLoading(false);
     }
-  }, [ensureSound, loading, m.chat.audioPlaybackFailed]);
+  }, [ensurePlayer, loading, m.chat.audioPlaybackFailed]);
 
   const progress = durationMillis > 0 ? Math.min(1, Math.max(0, positionMillis / durationMillis)) : 0;
   const border = isDark ? 'rgba(255,255,255,0.12)' : '#E5E7EB';

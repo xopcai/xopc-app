@@ -12,6 +12,6 @@ describe('extractUserMessageText', () => {
         { type: 'text', text: 'world' },
       ],
     };
-    expect(extractUserMessageText(msg.content)).toBe('hello\nworld');
+    expect(extractUserMessageText(msg.content)).toBe('hello\n\nworld');
   });
 });

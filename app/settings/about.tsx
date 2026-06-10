@@ -1,21 +1,26 @@
 import Constants from 'expo-constants';
+import { useRouter } from 'expo-router';
 import { Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
+import { FloatingHeader } from '../../src/components/FloatingHeader';
 import { SettingsRow, SettingsSection, useSettingsColors } from '../../src/features/settings/settings-ui';
 import { useMessages } from '../../src/i18n/messages';
 
 export default function AboutSettingsScreen() {
+  const router = useRouter();
   const m = useMessages();
   const s = m.settings;
   const colors = useSettingsColors();
   const appVersion = Constants.expoConfig?.version ?? '1.0.0';
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.pageBg }}
-      contentContainerStyle={styles.scroll}
-    >
+    <View style={{ flex: 1, backgroundColor: colors.pageBg }}>
+      <FloatingHeader title={s.about} onBack={() => router.back()} />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scroll}
+      >
       <View style={styles.hero}>
         <Text style={[styles.appName, { color: colors.text }]}>XOPC</Text>
         <Text style={[styles.version, { color: colors.textMuted }]}>v{appVersion}</Text>
@@ -37,7 +42,8 @@ export default function AboutSettingsScreen() {
           onPress={() => void Linking.openURL('https://github.com/xopcai/xopc')}
         />
       </SettingsSection>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 

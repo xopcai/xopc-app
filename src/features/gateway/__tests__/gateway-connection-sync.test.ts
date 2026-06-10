@@ -10,7 +10,11 @@ vi.mock('../../../query/query-client', () => ({
 }));
 
 vi.mock('../../../query/keys', () => ({
-  queryKeys: { sessions: ['sessions'], agents: ['agents'] },
+  queryKeys: {
+    sessionsAll: ['sessions'],
+    home: ['home'],
+    agents: ['agents'],
+  },
 }));
 
 vi.mock('../use-gateway-sse', () => ({
@@ -45,13 +49,13 @@ describe('syncGatewayAfterConnectivityChange', () => {
     expect(invalidateQueries).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(2_000);
-    expect(invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(invalidateQueries).toHaveBeenCalledTimes(3);
     expect(reconnect).toHaveBeenCalledTimes(1);
   });
 
   it('runs immediately when requested', () => {
     syncGatewayAfterConnectivityChange({ immediate: true });
-    expect(invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(invalidateQueries).toHaveBeenCalledTimes(3);
     expect(reconnect).toHaveBeenCalledTimes(1);
   });
 
