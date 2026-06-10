@@ -55,7 +55,7 @@ export function HomeScreen() {
   // ── Data queries ──────────────────────────────────────
 
   const sessionsQuery = useQuery({
-    queryKey: queryKeys.sessions(''),
+    queryKey: queryKeys.sessionsRecent,
     queryFn: () => fetchSessionsList({ limit: RECENT_SESSIONS_LIMIT }),
     enabled: configured,
   });
@@ -187,7 +187,7 @@ export function HomeScreen() {
     <View style={styles.listHeader}>
       {/* ── Smart input box ── */}
       <View style={[styles.inputBox, { backgroundColor: inputBg, borderColor: colors.border.default }]}>
-        <Icon source="sparkles" size={18} color={colors.accent.primary} />
+        <Icon source="star-four-points-outline" size={18} color={colors.accent.primary} />
         <TextInput
           style={[styles.inputField, { color: colors.text.primary }]}
           placeholder={hp.inputPlaceholder}

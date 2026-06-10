@@ -100,8 +100,8 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
         offset: pageParam,
         search: debouncedSearch,
       }),
-    getNextPageParam: (last: SessionsPage) =>
-      last.hasMore ? last.offset + last.limit : undefined,
+    getNextPageParam: (last: SessionsPage | undefined) =>
+      last?.hasMore ? last.offset + last.limit : undefined,
     enabled: configured,
     // Hydrate the no-search first page from MMKV for instant cold-start paint.
     // react-query immediately revalidates because initialDataUpdatedAt is 0.

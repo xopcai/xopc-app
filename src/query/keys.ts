@@ -1,5 +1,7 @@
 export const queryKeys = {
   sessions: (search?: string) => ['sessions', search?.trim() ?? ''] as const,
+  /** Home tab preview — must not share key with infinite session lists. */
+  sessionsRecent: ['sessions', 'recent'] as const,
   sessionsAll: ['sessions'] as const,
   session: (key: string) => ['session', key] as const,
   sessionHistory: (key: string) => ['session', key, 'history'] as const,

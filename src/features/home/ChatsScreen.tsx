@@ -84,13 +84,22 @@ export function ChatsScreen() {
     return () => clearTimeout(handle);
   }, [searchQuery]);
 
+  // HomeScreen previously used useQuery with the same key; drop stale flat payloads.
+  useEffect(() => {
+    const key = queryKeys.sessions(debouncedSearch);
+    const cached = queryClient.getQueryData(key);
+    if (cached != null && !Array.isArray((cached as { pages?: unknown }).pages)) {
+      queryClient.removeQueries({ queryKey: key });
+    }
+  }, [debouncedSearch, queryClient]);
+
   const sessionsQuery = useInfiniteQuery({
     queryKey: queryKeys.sessions(debouncedSearch),
     initialPageParam: 0 as number,
     queryFn: ({ pageParam }) =>
       fetchSessionsList({ limit: SESSIONS_PAGE_SIZE, offset: pageParam, search: debouncedSearch }),
-    getNextPageParam: (last: SessionsPage) =>
-      last.hasMore ? last.offset + last.limit : undefined,
+    getNextPageParam: (last: SessionsPage | undefined) =>
+      last?.hasMore ? last.offset + last.limit : undefined,
     enabled: configured,
     initialData: () => {
       if (debouncedSearch) return undefined;
