@@ -41,11 +41,13 @@ export function BottomCommandBar({ bottomInset, onSearch, onAskAi, onAskAiPressI
     return () => transition.registerPillMeasurer(null);
   }, [measurePill, transition]);
 
+  const phase = transition?.phase;
   const pillHiddenStyle = useAnimatedStyle(() => {
     if (!transition) return { opacity: 1 };
-    const hidden = transition.progress.value > 0.02;
-    return { opacity: hidden ? 0 : 1 };
-  }, [transition]);
+    // Keep the home pill hidden until the overlay transition fully settles,
+    // so it does not overlap the morphing ghost on close.
+    return { opacity: phase === 'closed' ? 1 : 0 };
+  }, [phase, transition]);
 
   const barHiddenStyle = useAnimatedStyle(() => {
     if (!transition) return { opacity: 1, transform: [{ translateY: 0 }] };
