@@ -9,8 +9,8 @@ import { NotesScreen } from '../notes/NotesScreen';
 import { WorkspaceHomeScreen } from './WorkspaceHomeScreen';
 import { WorkspaceNavigationProvider } from './workspace-navigation-context';
 
+const CHAT_PAGE_INDEX = 0;
 const HOME_PAGE_INDEX = 1;
-const CHAT_PAGE_INDEX = 2;
 
 export function WorkspacePagerScreen() {
   const pagerRef = useRef<PagerView>(null);
@@ -47,14 +47,14 @@ export function WorkspacePagerScreen() {
           initialPage={HOME_PAGE_INDEX}
           onPageSelected={(event) => setPageIndex(event.nativeEvent.position)}
         >
-          <View key="notes" style={styles.page}>
-            <NotesScreen embedded onRequestHome={navigateToHome} />
+          <View key="chat" style={styles.page}>
+            <ChatScreen embedded onRequestHome={navigateToHome} />
           </View>
           <View key="home" style={styles.page}>
             <WorkspaceHomeScreen />
           </View>
-          <View key="chat" style={styles.page}>
-            <ChatScreen embedded onRequestHome={navigateToHome} />
+          <View key="notes" style={styles.page}>
+            <NotesScreen embedded onRequestHome={navigateToHome} />
           </View>
         </PagerView>
       </View>
