@@ -57,8 +57,7 @@
               "arm64-v8a"
             ],
             "enableMinifyInReleaseBuilds": true,
-            "enableShrinkResourcesInReleaseBuilds": true,
-            "extraProguardRules": "-dontwarn expo.modules.kotlin.types.AnyTypeCache\n-dontwarn expo.modules.kotlin.types.descriptors.RawTypeDescriptor\n-dontwarn expo.modules.kotlin.types.descriptors.TypeDescriptor\n-dontwarn expo.modules.kotlin.types.descriptors.TypeDescriptorKt\n-dontwarn expo.modules.kotlin.types.descriptors.TypeDescriptorOfKt"
+            "enableShrinkResourcesInReleaseBuilds": true
           }
         }
       ],
