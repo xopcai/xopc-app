@@ -3,8 +3,18 @@ import { Platform } from 'react-native';
 import { apiFetch } from '../api/client';
 import { createTextBlock, type NoteAiPatch, type NoteBlock } from '../features/notes/note-blocks';
 
-export type NoteKind = 'thought' | 'todo' | 'voice' | 'media' | 'bookmark' | 'mixed';
+export type { NoteBlock, NoteAiPatch } from '../features/notes/note-blocks';
+
+export type NoteKind = 'thought' | 'todo' | 'voice' | 'media' | 'bookmark' | 'mixed' | 'task';
 export type NoteStatus = 'inbox' | 'processed' | 'archived' | 'trashed';
+
+export interface NoteTaskMeta {
+  done: boolean;
+  dueAt?: number;
+  priority?: 'high' | 'medium' | 'low';
+  sourceSessionKey?: string;
+  sourceNoteId?: string;
+}
 
 export interface NoteIndexEntry {
   id: string;
@@ -15,6 +25,10 @@ export interface NoteIndexEntry {
   pinned?: boolean;
   tags?: string[];
   snippet?: string;
+  groupId?: string;
+  lastOpenedAt?: number;
+  taskDone?: boolean;
+  taskDueAt?: number;
 }
 
 export interface NoteAttachment {
@@ -42,6 +56,9 @@ export interface Note {
   pinned?: boolean;
   localVersion?: number;
   remoteVersion?: number;
+  groupId?: string;
+  lastOpenedAt?: number;
+  taskMeta?: NoteTaskMeta;
 }
 
 export interface NotesListResult {
@@ -55,6 +72,10 @@ export interface NotesListQuery {
   search?: string;
   limit?: number;
   offset?: number;
+  groupId?: string;
+  pendingTasksOnly?: boolean;
+  sortBy?: 'createdAt' | 'updatedAt' | 'lastOpenedAt';
+  sortOrder?: 'asc' | 'desc';
 }
 
 export interface NoteAiEditRequest {
@@ -93,8 +114,10 @@ export async function fetchNotes(query?: NotesListQuery): Promise<NotesListResul
   if (query?.search) params.set('search', query.search);
   if (query?.limit) params.set('limit', String(query.limit));
   if (query?.offset) params.set('offset', String(query.offset));
-  params.set('sortBy', 'createdAt');
-  params.set('sortOrder', 'desc');
+  if (query?.groupId) params.set('groupId', query.groupId);
+  if (query?.pendingTasksOnly) params.set('pendingTasksOnly', 'true');
+  params.set('sortBy', query?.sortBy ?? 'createdAt');
+  params.set('sortOrder', query?.sortOrder ?? 'desc');
   const qs = params.toString();
   const res = await apiFetch(`/api/notes${qs ? `?${qs}` : ''}`);
   if (!res.ok) throw await readError(res);
@@ -173,4 +196,40 @@ export async function syncNote(request: NoteSyncRequest): Promise<NoteSyncResult
   });
   if (!res.ok) throw await readError(res);
   return res.json() as Promise<NoteSyncResult>;
+}
+
+// ── Task / Open / Move ─────────────────────────────────────────────
+
+export async function createTask(
+  title: string,
+  options?: { dueAt?: number; priority?: 'high' | 'medium' | 'low'; sourceSessionKey?: string; sourceNoteId?: string; groupId?: string },
+): Promise<{ note: Note }> {
+  const platform = Platform.OS === 'ios' ? 'ios' : 'android';
+  const res = await apiFetch('/api/notes/task', {
+    method: 'POST',
+    body: JSON.stringify({ title, channel: 'app', platform, ...options }),
+  });
+  if (!res.ok) throw await readError(res);
+  return res.json() as Promise<{ note: Note }>;
+}
+
+export async function toggleTaskDone(noteId: string): Promise<{ note: Note }> {
+  const res = await apiFetch(`/api/notes/${encodeURIComponent(noteId)}/toggle-done`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw await readError(res);
+  return res.json() as Promise<{ note: Note }>;
+}
+
+export async function recordNoteOpen(noteId: string): Promise<void> {
+  await apiFetch(`/api/notes/${encodeURIComponent(noteId)}/open`, { method: 'POST' });
+}
+
+export async function moveNoteToGroup(noteId: string, groupId: string | null): Promise<{ note: Note }> {
+  const res = await apiFetch(`/api/notes/${encodeURIComponent(noteId)}/move`, {
+    method: 'POST',
+    body: JSON.stringify({ groupId }),
+  });
+  if (!res.ok) throw await readError(res);
+  return res.json() as Promise<{ note: Note }>;
 }

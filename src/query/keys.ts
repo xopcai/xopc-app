@@ -1,6 +1,5 @@
 export const queryKeys = {
   sessions: (search?: string) => ['sessions', search?.trim() ?? ''] as const,
-  /** Home tab preview — must not share key with infinite session lists. */
   sessionsRecent: ['sessions', 'recent'] as const,
   sessionsAll: ['sessions'] as const,
   session: (key: string) => ['session', key] as const,
@@ -13,6 +12,8 @@ export const queryKeys = {
   webchatGoal: (sessionKey: string) => ['webchat', 'goal', sessionKey] as const,
   webchatGoalRuns: (sessionKey: string, limit: number) => ['webchat', 'goal', 'runs', sessionKey, limit] as const,
   shares: ['shares'] as const,
-  notes: ['notes'] as const,
+  notes: (query?: string) => ['notes', query?.trim() ?? ''] as const,
+  notesAll: ['notes'] as const,
   note: (id: string) => ['note', id] as const,
+  home: ['home'] as const,
 };

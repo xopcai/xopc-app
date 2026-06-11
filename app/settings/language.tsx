@@ -1,4 +1,7 @@
-import { ScrollView, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
+import { ScrollView, StyleSheet, View } from 'react-native';
+
+import { FloatingHeader } from '../../src/components/FloatingHeader';
 
 import {
   SettingsOptionRow,
@@ -14,6 +17,7 @@ const OPTIONS: { value: Language; labelKey: 'languageEn' | 'languageZh' }[] = [
 ];
 
 export default function LanguageSettingsScreen() {
+  const router = useRouter();
   const m = useMessages();
   const s = m.settings;
   const colors = useSettingsColors();
@@ -21,10 +25,12 @@ export default function LanguageSettingsScreen() {
   const setLanguage = usePreferencesStore((st) => st.setLanguage);
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.pageBg }}
-      contentContainerStyle={styles.scroll}
-    >
+    <View style={{ flex: 1, backgroundColor: colors.pageBg }}>
+      <FloatingHeader title={s.language} onBack={() => router.back()} />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scroll}
+      >
       <SettingsSection>
         {OPTIONS.map((opt, i) => (
           <SettingsOptionRow
@@ -36,7 +42,8 @@ export default function LanguageSettingsScreen() {
           />
         ))}
       </SettingsSection>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 

@@ -12,6 +12,7 @@ const KIND_ICONS: Record<NoteKind, string> = {
   media: 'image',
   bookmark: 'link',
   mixed: 'lightbulb-outline',
+  task: 'checkbox-marked-circle-outline',
 };
 
 export type NoteCardProps = {

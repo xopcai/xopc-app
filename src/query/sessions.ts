@@ -70,7 +70,7 @@ export type SessionsPage = {
 };
 
 export async function fetchSessionsList(
-  options?: { limit?: number; offset?: number; search?: string },
+  options?: { limit?: number; offset?: number; search?: string; channel?: string | null },
 ): Promise<SessionsPage> {
   const limit = options?.limit ?? 20;
   const offset = options?.offset ?? 0;
@@ -79,10 +79,10 @@ export async function fetchSessionsList(
   const params = new URLSearchParams({
     limit: String(limit),
     offset: String(offset),
-    channel: 'webchat',
     sortBy: 'updatedAt',
     sortOrder: 'desc',
   });
+  if (options?.channel !== null) params.set('channel', options?.channel ?? 'webchat');
   if (search) params.set('search', search);
 
   const res = await apiFetch(`/api/sessions?${params.toString()}`);

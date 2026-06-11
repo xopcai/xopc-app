@@ -1,12 +1,14 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useCameraPermissions } from 'expo-camera';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Alert, Platform, StyleSheet, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Button, HelperText, Snackbar, Text, TextInput } from 'react-native-paper';
+
+import { FloatingHeader } from '../../../src/components/FloatingHeader';
 
 import { type GatewayProfileForm, gatewayProfileSchema } from '../../../src/config/schema';
 import { syncGatewayUrlsFromTunnelQr } from '../../../src/features/gateway/apply-tunnel-qr-from-api';
@@ -36,7 +38,6 @@ function normalizeBaseUrl(raw: string): string {
 
 export default function GatewayEditScreen() {
   const router = useRouter();
-  const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const isNew = id === 'new';
 
@@ -84,13 +85,6 @@ export default function GatewayEditScreen() {
       token: existingProfile?.token ?? '',
     },
   });
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      title: isNew ? s.newGateway : s.editGateway,
-    });
-  }, [isNew, navigation, s.editGateway, s.newGateway]);
-
   useEffect(() => {
     if (isNew) return;
     if (!existingProfile) {
@@ -326,9 +320,10 @@ export default function GatewayEditScreen() {
   }
 
   return (
-    <>
+    <View style={{ flex: 1, backgroundColor: colors.pageBg }}>
+      <FloatingHeader title={isNew ? s.newGateway : s.editGateway} onBack={() => router.back()} />
       <KeyboardAwareScrollView
-        style={{ flex: 1, backgroundColor: colors.pageBg }}
+        style={{ flex: 1 }}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         bottomOffset={16}
@@ -454,7 +449,7 @@ export default function GatewayEditScreen() {
       <Snackbar visible={Boolean(tokenNotice)} onDismiss={() => setTokenNotice(null)} duration={2200}>
         {tokenNotice}
       </Snackbar>
-    </>
+    </View>
   );
 }
 

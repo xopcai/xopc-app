@@ -26,6 +26,11 @@ export interface QueuedOperation<T> {
   retryCount: number;
 }
 
+export interface DeadLetterOperation<T> extends QueuedOperation<T> {
+  failedAt: number;
+  reason?: string;
+}
+
 export type OperationProcessor<T> = (operation: QueuedOperation<T>) => Promise<void>;
 
 export interface OfflineQueueOptions<T> {
@@ -46,10 +51,20 @@ export interface OfflineQueue<T> {
   pendingCount: () => number;
   /** Get all pending operations (for display). */
   pending: () => QueuedOperation<T>[];
+  /** Get operations that exceeded retry budget. */
+  deadLetters: () => DeadLetterOperation<T>[];
+  /** Get count of operations that exceeded retry budget. */
+  deadLetterCount: () => number;
+  /** Retry a dead-letter operation by moving it back to the pending queue. */
+  retryDeadLetter: (operationId: string) => boolean;
   /** Remove a specific operation by ID (e.g. user cancelled). */
   remove: (operationId: string) => void;
+  /** Remove a specific dead-letter operation by ID. */
+  removeDeadLetter: (operationId: string) => void;
   /** Clear all pending operations. */
   clear: () => void;
+  /** Clear all dead-letter operations. */
+  clearDeadLetters: () => void;
 }
 
 // ── Implementation ──────────────────────────────────────────
@@ -70,7 +85,9 @@ function parseJson<R>(raw: string | undefined): R | null {
 export function createOfflineQueue<T>(options: OfflineQueueOptions<T>): OfflineQueue<T> {
   const { namespace, processor, maxRetries = 5 } = options;
   const idsKey = `${namespace}:ids`;
+  const deadLetterIdsKey = `${namespace}:dead-letter-ids`;
   const opPrefix = `${namespace}:op:`;
+  const deadLetterPrefix = `${namespace}:dead-letter:`;
 
   function readIds(): string[] {
     return parseJson<string[]>(storage.getString(idsKey)) ?? [];
@@ -80,20 +97,62 @@ export function createOfflineQueue<T>(options: OfflineQueueOptions<T>): OfflineQ
     storage.set(idsKey, JSON.stringify(ids));
   }
 
+  function readDeadLetterIds(): string[] {
+    return parseJson<string[]>(storage.getString(deadLetterIdsKey)) ?? [];
+  }
+
+  function writeDeadLetterIds(ids: string[]): void {
+    storage.set(deadLetterIdsKey, JSON.stringify(ids));
+  }
+
   function opStorageKey(id: string): string {
     return `${opPrefix}${id}`;
+  }
+
+  function deadLetterStorageKey(id: string): string {
+    return `${deadLetterPrefix}${id}`;
   }
 
   function readOp(id: string): QueuedOperation<T> | null {
     return parseJson<QueuedOperation<T>>(storage.getString(opStorageKey(id)));
   }
 
+  function readDeadLetter(id: string): DeadLetterOperation<T> | null {
+    return parseJson<DeadLetterOperation<T>>(storage.getString(deadLetterStorageKey(id)));
+  }
+
   function writeOp(op: QueuedOperation<T>): void {
     storage.set(opStorageKey(op.id), JSON.stringify(op));
   }
 
+  function writeDeadLetter(op: DeadLetterOperation<T>): void {
+    storage.set(deadLetterStorageKey(op.id), JSON.stringify(op));
+    const ids = readDeadLetterIds();
+    if (!ids.includes(op.id)) {
+      ids.push(op.id);
+      writeDeadLetterIds(ids);
+    }
+  }
+
   function deleteOp(id: string): void {
     storage.delete(opStorageKey(id));
+  }
+
+  function deleteDeadLetter(id: string): void {
+    storage.delete(deadLetterStorageKey(id));
+  }
+
+  function errorReason(error: unknown): string | undefined {
+    return error instanceof Error ? error.message : undefined;
+  }
+
+  function moveToDeadLetter(operation: QueuedOperation<T>, reason?: string): void {
+    writeDeadLetter({
+      ...operation,
+      failedAt: Date.now(),
+      reason,
+    });
+    deleteOp(operation.id);
   }
 
   const queue: OfflineQueue<T> = {
@@ -125,8 +184,7 @@ export function createOfflineQueue<T>(options: OfflineQueueOptions<T>): OfflineQ
         }
 
         if (operation.retryCount >= maxRetries) {
-          // Dead-letter — remove from queue
-          deleteOp(id);
+          moveToDeadLetter(operation, 'retry limit exceeded');
           continue;
         }
 
@@ -134,11 +192,14 @@ export function createOfflineQueue<T>(options: OfflineQueueOptions<T>): OfflineQ
           await processor(operation);
           deleteOp(id);
           flushed++;
-        } catch {
-          // Increment retry count and keep in queue
+        } catch (error) {
           operation.retryCount++;
-          writeOp(operation);
-          remainingIds.push(id);
+          if (operation.retryCount >= maxRetries) {
+            moveToDeadLetter(operation, errorReason(error));
+          } else {
+            writeOp(operation);
+            remainingIds.push(id);
+          }
           // Stop on first failure to preserve ordering
           // Append remaining un-attempted IDs
           const currentIndex = ids.indexOf(id);
@@ -165,16 +226,63 @@ export function createOfflineQueue<T>(options: OfflineQueueOptions<T>): OfflineQ
       return results;
     },
 
+    deadLetters(): DeadLetterOperation<T>[] {
+      const ids = readDeadLetterIds();
+      const results: DeadLetterOperation<T>[] = [];
+      for (const id of ids) {
+        const op = readDeadLetter(id);
+        if (op) results.push(op);
+      }
+      return results;
+    },
+
+    deadLetterCount(): number {
+      return this.deadLetters().length;
+    },
+
+    retryDeadLetter(operationId: string): boolean {
+      const operation = readDeadLetter(operationId);
+      if (!operation) return false;
+
+      const queuedOperation: QueuedOperation<T> = {
+        id: operation.id,
+        payload: operation.payload,
+        createdAt: operation.createdAt,
+        retryCount: 0,
+      };
+      writeOp(queuedOperation);
+      deleteDeadLetter(operationId);
+      writeDeadLetterIds(readDeadLetterIds().filter((id) => id !== operationId));
+      const ids = readIds();
+      if (!ids.includes(operationId)) {
+        ids.push(operationId);
+        writeIds(ids);
+      }
+      return true;
+    },
+
     remove(operationId: string): void {
       deleteOp(operationId);
       const ids = readIds().filter((id) => id !== operationId);
       writeIds(ids);
     },
 
+    removeDeadLetter(operationId: string): void {
+      deleteDeadLetter(operationId);
+      const ids = readDeadLetterIds().filter((id) => id !== operationId);
+      writeDeadLetterIds(ids);
+    },
+
     clear(): void {
       const ids = readIds();
       for (const id of ids) deleteOp(id);
       writeIds([]);
+    },
+
+    clearDeadLetters(): void {
+      const ids = readDeadLetterIds();
+      for (const id of ids) deleteDeadLetter(id);
+      writeDeadLetterIds([]);
     },
   };
 

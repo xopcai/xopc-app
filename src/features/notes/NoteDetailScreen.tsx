@@ -2,8 +2,11 @@ import * as Clipboard from 'expo-clipboard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Share, StyleSheet, View } from 'react-native';
-import { Appbar, Snackbar, Text } from 'react-native-paper';
+import { KeyboardAvoidingView, Platform, Share, StyleSheet, View } from 'react-native';
+import { Snackbar, Text } from 'react-native-paper';
+import type { UnifiedEditor } from './editor/types';
+
+import { FloatingHeader } from '../../components/FloatingHeader';
 
 import { useMessages } from '../../i18n/messages';
 import { dismissOrHome, openChat, useDismissOnHardwareBack } from '../../lib/navigation';
@@ -13,10 +16,15 @@ import { createSession } from '../../query/sessions';
 import { useTheme } from '../../theme';
 
 import { NoteAiPanel } from './ai/NoteAiPanel';
-import { NoteBlockEditor, type NoteBlockEditorHandle } from './editor/NoteBlockEditor';
+import { NoteBlockEditor } from './editor/NoteBlockEditor';
 import { EditorActionBar } from './editor/EditorActionBar';
-import { SlashCommandMenu } from './editor/SlashCommandMenu';
-import { blocksToMarkdown, blocksToPlainText, noteToBlocks, type NoteAiPatch, type NoteBlock, type NoteBlockType } from './note-blocks';
+import {
+  blocksToMarkdown,
+  blocksToPlainText,
+  noteToBlocks,
+  type NoteAiPatch,
+  type NoteBlock,
+} from './note-blocks';
 import {
   flushPendingNoteOperations,
   readLocalNote,
@@ -44,8 +52,7 @@ export function NoteDetailScreen() {
   const [localNote, setLocalNote] = useState<LocalNoteSnapshot | null>(null);
   const [blocks, setBlocks] = useState<NoteBlock[]>([]);
   const [snackMsg, setSnackMsg] = useState('');
-  const [slashMenuVisible, setSlashMenuVisible] = useState(false);
-  const [editorHandle, setEditorHandle] = useState<NoteBlockEditorHandle | null>(null);
+  const editorRef = useRef<UnifiedEditor | null>(null);
 
   const noteQuery = useQuery({
     queryKey: id ? queryKeys.note(id) : ['note', ''],
@@ -89,7 +96,7 @@ export function NoteDetailScreen() {
     if (id) {
       await queryClient.invalidateQueries({ queryKey: queryKeys.note(id) });
     }
-    await queryClient.invalidateQueries({ queryKey: queryKeys.notes });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.notesAll });
     setLocalNote(id ? readLocalNote(id) : null);
     setSnackMsg(flushed > 0 ? pm.updated : pm.savedOffline);
   }, [id, pm.savedOffline, pm.updated, queryClient]);
@@ -98,17 +105,6 @@ export function NoteDetailScreen() {
     persistBlocks(nextBlocks);
     setSnackMsg(patch.summary || pm.updated);
   }, [persistBlocks, pm.updated]);
-
-  const handleSendToChat = useCallback((text: string) => {
-    const prefill = `${pm.editorSendToChatPrefix}${text}`;
-    void createSession(undefined, { forceNew: true })
-      .then((key) => {
-        openChat(router, key, { msg: prefill });
-      })
-      .catch(() => {
-        setSnackMsg(pm.actionFailed);
-      });
-  }, [pm.actionFailed, pm.editorSendToChatPrefix, router]);
 
   const handleShare = useCallback(async () => {
     const markdown = blocksToMarkdown(blocks);
@@ -125,30 +121,9 @@ export function NoteDetailScreen() {
     }
   }, [blocks, pm.shareNotesCopied]);
 
-  // ── Slash command menu ───────────────────────────────────
-
-  const handleOpenSlashMenu = useCallback(() => {
-    setSlashMenuVisible(true);
+  const handleEditorReady = useCallback((editor: UnifiedEditor) => {
+    editorRef.current = editor;
   }, []);
-
-  const handleSlashSelect = useCallback((type: NoteBlockType) => {
-    setSlashMenuVisible(false);
-    editorHandle?.convertActiveBlock(type);
-  }, [editorHandle]);
-
-  const handleSlashDismiss = useCallback(() => {
-    setSlashMenuVisible(false);
-  }, []);
-
-  // ── Action bar handlers ──────────────────────────────────
-
-  const handleActionBarConvert = useCallback((type: NoteBlockType) => {
-    editorHandle?.convertActiveBlock(type);
-  }, [editorHandle]);
-
-  const handleActionBarInsert = useCallback(() => {
-    editorHandle?.insertAfterActive();
-  }, [editorHandle]);
 
   const title = note
     ? new Date(note.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -158,18 +133,19 @@ export function NoteDetailScreen() {
     : `${blocksToPlainText(blocks).length} chars`;
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
-      <Appbar.Header mode="center-aligned" style={{ backgroundColor: 'transparent' }}>
-        <Appbar.BackAction onPress={() => dismissOrHome(router)} />
-        <Appbar.Content title={title} titleStyle={{ fontSize: 15 }} />
-        <Appbar.Action icon="share-variant-outline" onPress={() => void handleShare()} />
-        <Appbar.Action icon="cloud-sync-outline" onPress={() => void handleFlush()} />
-      </Appbar.Header>
+        <View style={[styles.screen, { backgroundColor: colors.surface.base }]}> 
+      <FloatingHeader
+        title={title}
+        onBack={() => dismissOrHome(router)}
+        rightActions={[
+          { icon: 'share-variant-outline', onPress: () => void handleShare() },
+          { icon: 'cloud-sync-outline', onPress: () => void handleFlush() },
+        ]}
+      />
 
       <KeyboardAvoidingView
         style={styles.keyboardAvoid}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         {noteQuery.isLoading && !note ? (
           <View style={styles.center}>
@@ -177,22 +153,15 @@ export function NoteDetailScreen() {
           </View>
         ) : note && id ? (
           <>
-            <ScrollView style={styles.scrollArea} contentContainerStyle={styles.contentPad} keyboardDismissMode="interactive">
+            <View style={styles.editorWrap}>
               <Text style={[styles.syncText, { color: colors.text.tertiary }]}>{syncText}</Text>
               <NoteBlockEditor
                 blocks={blocks}
                 onChange={persistBlocks}
-                onSendToChat={handleSendToChat}
-                onRequestSlashMenu={handleOpenSlashMenu}
-                onHandleChange={setEditorHandle}
+                onEditorReady={handleEditorReady}
               />
-            </ScrollView>
-            <EditorActionBar
-              activeBlockType={editorHandle?.activeBlockType ?? null}
-              onConvertBlock={handleActionBarConvert}
-              onInsertBlock={handleActionBarInsert}
-              onOpenSlashMenu={handleOpenSlashMenu}
-            />
+            </View>
+            <EditorActionBar editor={editorRef.current} />
             <View style={styles.aiPanelWrap}>
               <NoteAiPanel
                 noteId={id}
@@ -202,11 +171,6 @@ export function NoteDetailScreen() {
                 onMessage={setSnackMsg}
               />
             </View>
-            <SlashCommandMenu
-              visible={slashMenuVisible}
-              onSelect={handleSlashSelect}
-              onDismiss={handleSlashDismiss}
-            />
           </>
         ) : (
           <View style={styles.center}>
@@ -226,8 +190,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   keyboardAvoid: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  scrollArea: { flex: 1 },
-  contentPad: { padding: 16, paddingBottom: 24 },
+  editorWrap: { flex: 1, padding: 16, paddingBottom: 0 },
   syncText: { fontSize: 12, marginBottom: 10 },
   aiPanelWrap: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 },
 });

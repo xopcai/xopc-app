@@ -11,7 +11,7 @@ export default function GatewaySettingsLayout() {
   return (
     <Stack
       screenOptions={{
-        headerShown: true,
+        headerShown: false,
         ...themedScreenOptions,
       }}
     >

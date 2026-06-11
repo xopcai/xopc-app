@@ -1,0 +1,52 @@
+### AI 原生工作空间技术改造 ###
+- [x] [xopc] 新建 `src/workspace/types.ts` 定义 Workspace 统一类型
+- [x] [xopc] 新建 `src/workspace/store.ts` 实现文件型 Workspace 存储
+- [x] [xopc] 新建 `src/workspace/service.ts` 实现 Workspace 业务服务
+- [x] [xopc] 新建 `src/workspace/intent-router.ts` 实现 Omnibar 意图路由
+- [x] [xopc] 新建 `src/gateway/hono/routes/workspace.ts` 实现 Workspace API
+- [x] [xopc] 新建 `src/gateway/hono/routes/inbox.ts` 实现 Inbox API
+- [x] [xopc] 新建 `src/gateway/hono/routes/threads.ts` 实现 Thread API
+- [x] [xopc] 新建 `src/gateway/hono/routes/command.ts` 实现 Command API
+- [x] [xopc] 修改 `src/gateway/hono/app.ts` 注册新 API 路由
+- [x] [xopc] 修改 `src/gateway/hono/routes/lazy-bundles.ts` 纳入新 API 路径
+- [x] [xopc] 新建 `src/workspace/__tests__/service.test.ts`
+- [x] [xopc] 新建 `src/workspace/__tests__/intent-router.test.ts`
+- [x] [xopc] 新建 `src/gateway/__tests__/workspace-routes.test.ts`
+- [x] [xopc-app] 新建 `src/query/workspace.ts` 实现 Workspace client
+- [x] [xopc-app] 新建 `src/query/inbox.ts` 实现 Inbox client
+- [x] [xopc-app] 新建 `src/query/threads.ts` 实现 Thread client
+- [x] [xopc-app] 新建 `src/query/command.ts` 实现 Command client
+- [x] [xopc-app] 修改 `src/query/keys.ts` 增加新 query keys
+- [x] [xopc-app] 修改 `app/_layout.tsx` 注册新 IA 路由
+- [x] [xopc-app] 修改 `app/(tabs)/_layout.tsx` 保持单首页入口
+- [x] [xopc-app] 修改 `app/(tabs)/index.tsx` 切换新 Workspace Home
+- [x] [xopc-app] 新建 `app/command.tsx`
+- [x] [xopc-app] 新建 `app/inbox/index.tsx`
+- [x] [xopc-app] 新建 `app/spaces/[id].tsx`
+- [x] [xopc-app] 新建 `app/items/[id].tsx`
+- [x] [xopc-app] 新建 `app/threads/[id].tsx`
+- [x] [xopc-app] 新建 `src/features/workspace/WorkspaceHomeScreen.tsx`
+- [x] [xopc-app] 新建 `src/features/workspace/Omnibar.tsx`
+- [x] [xopc-app] 新建 `src/features/workspace/ContinueRail.tsx`
+- [x] [xopc-app] 新建 `src/features/workspace/TodayBrief.tsx`
+- [x] [xopc-app] 新建 `src/features/workspace/InboxPreview.tsx`
+- [x] [xopc-app] 新建 `src/features/workspace/SpaceList.tsx`
+- [x] [xopc-app] 新建 `src/features/workspace/BottomCommandBar.tsx`
+- [x] [xopc-app] 新建 `src/features/inbox/InboxScreen.tsx`
+- [x] [xopc-app] 新建 `src/features/inbox/AiOrganizeSheet.tsx`
+- [x] [xopc-app] 新建 `src/features/page/PageScreen.tsx`
+- [x] [xopc-app] 新建 `src/features/page/PageAiActions.tsx`
+- [x] [xopc-app] 新建 `src/features/thread/ThreadScreen.tsx`
+- [x] [xopc-app] 新建 `src/features/thread/ThreadOutputs.tsx`
+- [x] [xopc-app] 新建 `src/features/command/CommandScreen.tsx`
+- [x] [xopc-app] 新建 `src/sync/workspace-sync.ts`
+- [x] [xopc-app] 修改 `src/sync/offline-queue.ts` 支持 dead-letter 查询
+- [x] [xopc-app] 新建 `src/query/__tests__/workspace.test.ts`
+- [x] [xopc-app] 新建 `src/query/__tests__/inbox.test.ts`
+- [x] [manual] 运行后端 typecheck 与 workspace/gateway 测试
+- [x] [manual] 运行移动端 typecheck、lint、test
+- [ ] [manual] 真机验证 Home、Omnibar、Inbox、Page、Thread、离线捕获链路
+
+updateAtTime: 2026/6/11 10:54:21
+
+planId: b4515765-b298-490a-aaa0-2f4913b02597

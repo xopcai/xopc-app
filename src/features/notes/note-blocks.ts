@@ -1,5 +1,7 @@
 import type { Note } from '../../query/notes';
 
+// ── Block types ────────────────────────────────────────────
+
 export type NoteBlockType =
   | 'paragraph'
   | 'heading'
@@ -8,8 +10,7 @@ export type NoteBlockType =
   | 'numberedList'
   | 'quote'
   | 'code'
-  | 'divider'
-  | 'aiSuggestion';
+  | 'divider';
 
 export interface BaseNoteBlock {
   id: string;
@@ -19,10 +20,9 @@ export interface BaseNoteBlock {
 }
 
 export interface TextNoteBlock extends BaseNoteBlock {
-  type: 'paragraph' | 'heading' | 'bulletList' | 'numberedList' | 'quote' | 'code' | 'aiSuggestion';
+  type: 'paragraph' | 'heading' | 'bulletList' | 'numberedList' | 'quote' | 'code';
   text: string;
   level?: 1 | 2 | 3;
-  indent?: number;
 }
 
 export interface TodoNoteBlock extends BaseNoteBlock {
@@ -37,6 +37,8 @@ export interface DividerNoteBlock extends BaseNoteBlock {
 
 export type NoteBlock = TextNoteBlock | TodoNoteBlock | DividerNoteBlock;
 
+// ── AI patch types ─────────────────────────────────────────
+
 export type NotePatchOperation =
   | { type: 'replaceBlocks'; blocks: NoteBlock[] }
   | { type: 'insertBlocksAfter'; afterBlockId: string; blocks: NoteBlock[] }
@@ -48,6 +50,8 @@ export interface NoteAiPatch {
   summary: string;
   operations: NotePatchOperation[];
 }
+
+// ── Block factories ────────────────────────────────────────
 
 export function createBlockId(): string {
   return `block_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -62,7 +66,6 @@ export function createTextBlock(type: TextNoteBlock['type'], text = ''): TextNot
     createdAt: now,
     updatedAt: now,
     ...(type === 'heading' ? { level: 2 as const } : null),
-    ...(type === 'bulletList' || type === 'numberedList' ? { indent: 0 } : null),
   };
 }
 
@@ -78,6 +81,8 @@ export function createTodoBlock(text = ''): TodoNoteBlock {
   };
 }
 
+// ── Legacy text → blocks ───────────────────────────────────
+
 export function noteTextToBlocks(text?: string): NoteBlock[] {
   const source = text?.trimEnd() ?? '';
   if (!source) return [createTextBlock('paragraph')];
@@ -88,6 +93,8 @@ export function noteToBlocks(note?: Pick<Note, 'text' | 'blocks'> | null): NoteB
   if (note?.blocks?.length) return note.blocks;
   return noteTextToBlocks(note?.text);
 }
+
+// ── Serialization ──────────────────────────────────────────
 
 export function blocksToPlainText(blocks: NoteBlock[]): string {
   return blocks
@@ -100,7 +107,6 @@ export function blocksToPlainText(blocks: NoteBlock[]): string {
     .join('\n\n');
 }
 
-/** Serialize blocks to Markdown for sharing/export. */
 export function blocksToMarkdown(blocks: NoteBlock[]): string {
   return blocks
     .map((block) => {
@@ -119,6 +125,134 @@ export function blocksToMarkdown(blocks: NoteBlock[]): string {
     .filter((line) => line.trim().length > 0)
     .join('\n\n');
 }
+
+// ── HTML ↔ blocks conversion (for TipTap bridge) ──────────
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/** Convert blocks to HTML suitable for TipTap editor `setContent`. */
+export function blocksToHtml(blocks: NoteBlock[]): string {
+  return blocks
+    .map((block) => {
+      if (block.type === 'divider') return '<hr>';
+      if (block.type === 'heading') {
+        const level = block.level ?? 2;
+        return `<h${level}>${escapeHtml(block.text)}</h${level}>`;
+      }
+      if (block.type === 'todo') {
+        const checked = block.checked ? ' checked="checked"' : '';
+        return `<ul data-type="taskList"><li data-type="taskItem" data-checked="${block.checked ? 'true' : 'false'}"><label><input type="checkbox"${checked}></label><div><p>${escapeHtml(block.text)}</p></div></li></ul>`;
+      }
+      if (block.type === 'bulletList') return `<ul><li><p>${escapeHtml(block.text)}</p></li></ul>`;
+      if (block.type === 'numberedList') return `<ol><li><p>${escapeHtml(block.text)}</p></li></ol>`;
+      if (block.type === 'quote') return `<blockquote><p>${escapeHtml(block.text)}</p></blockquote>`;
+      if (block.type === 'code') return `<pre><code>${escapeHtml(block.text)}</code></pre>`;
+      return `<p>${escapeHtml(block.text) || '<br>'}</p>`;
+    })
+    .join('');
+}
+
+function unescapeHtml(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/g, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .trim();
+}
+
+/** Parse TipTap HTML output back into NoteBlock array. */
+export function htmlToBlocks(html: string): NoteBlock[] {
+  if (!html?.trim()) return [createTextBlock('paragraph')];
+
+  const blocks: NoteBlock[] = [];
+  const tagPattern = /<(h[1-3]|p|ul|ol|blockquote|pre|hr)\b[^>]*>([\s\S]*?)<\/\1>|<hr\s*\/?>/gi;
+
+  let match: RegExpExecArray | null;
+  while ((match = tagPattern.exec(html)) !== null) {
+    const fullMatch = match[0];
+    const tag = (match[1] || '').toLowerCase();
+    const inner = match[2] || '';
+
+    if (fullMatch === '<hr>' || fullMatch === '<hr/>' || fullMatch === '<hr />') {
+      blocks.push({ id: createBlockId(), type: 'divider', createdAt: Date.now(), updatedAt: Date.now() });
+      continue;
+    }
+
+    if (tag === 'hr') {
+      blocks.push({ id: createBlockId(), type: 'divider', createdAt: Date.now(), updatedAt: Date.now() });
+      continue;
+    }
+
+    if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
+      const level = Number(tag[1]) as 1 | 2 | 3;
+      blocks.push(Object.assign(createTextBlock('heading', unescapeHtml(inner)), { level }));
+      continue;
+    }
+
+    if (tag === 'blockquote') {
+      blocks.push(createTextBlock('quote', unescapeHtml(inner)));
+      continue;
+    }
+
+    if (tag === 'pre') {
+      const codeContent = inner.replace(/<code[^>]*>([\s\S]*?)<\/code>/i, '$1');
+      blocks.push(createTextBlock('code', unescapeHtml(codeContent)));
+      continue;
+    }
+
+    if (tag === 'ul') {
+      // Check if this is a task list
+      if (inner.includes('data-type="taskItem"') || inner.includes('data-type="taskList"')) {
+        const taskItemPattern = /<li[^>]*data-checked="(true|false)"[^>]*>[\s\S]*?<p>([\s\S]*?)<\/p>[\s\S]*?<\/li>/gi;
+        let taskMatch: RegExpExecArray | null;
+        while ((taskMatch = taskItemPattern.exec(inner)) !== null) {
+          const checked = taskMatch[1] === 'true';
+          const text = unescapeHtml(taskMatch[2]);
+          blocks.push(Object.assign(createTodoBlock(text), { checked }));
+        }
+        if (blocks.length === 0 || !inner.includes('data-checked')) {
+          // Fallback: single task item without proper structure
+          blocks.push(createTodoBlock(unescapeHtml(inner)));
+        }
+      } else {
+        // Regular bullet list
+        const listItemPattern = /<li[^>]*>[\s\S]*?<p>([\s\S]*?)<\/p>[\s\S]*?<\/li>|<li[^>]*>([\s\S]*?)<\/li>/gi;
+        let liMatch: RegExpExecArray | null;
+        while ((liMatch = listItemPattern.exec(inner)) !== null) {
+          const text = unescapeHtml(liMatch[1] || liMatch[2] || '');
+          blocks.push(createTextBlock('bulletList', text));
+        }
+      }
+      continue;
+    }
+
+    if (tag === 'ol') {
+      const listItemPattern = /<li[^>]*>[\s\S]*?<p>([\s\S]*?)<\/p>[\s\S]*?<\/li>|<li[^>]*>([\s\S]*?)<\/li>/gi;
+      let liMatch: RegExpExecArray | null;
+      while ((liMatch = listItemPattern.exec(inner)) !== null) {
+        const text = unescapeHtml(liMatch[1] || liMatch[2] || '');
+        blocks.push(createTextBlock('numberedList', text));
+      }
+      continue;
+    }
+
+    if (tag === 'p') {
+      blocks.push(createTextBlock('paragraph', unescapeHtml(inner)));
+      continue;
+    }
+  }
+
+  return blocks.length ? blocks : [createTextBlock('paragraph')];
+}
+
+// ── AI patch application ───────────────────────────────────
 
 export function applyNotePatch(blocks: NoteBlock[], patch: NoteAiPatch): NoteBlock[] {
   return patch.operations.reduce((currentBlocks, operation) => {

@@ -1,5 +1,5 @@
 /**
- * Main layout — single home screen (no bottom tabs).
+ * Main layout — AI Workspace single home screen (no bottom tabs).
  *
  * expo-router file-system route: app/(tabs)/_layout.tsx
  */

@@ -29,7 +29,6 @@ import {
 } from 'react-native';
 import {
   ActivityIndicator,
-  Appbar,
   Button,
   Dialog,
   IconButton,
@@ -39,6 +38,8 @@ import {
   Text,
 } from 'react-native-paper';
 import { useQueryClient } from '@tanstack/react-query';
+
+import { FloatingHeader } from '../../components/FloatingHeader';
 
 import { t, useMessages } from '../../i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
@@ -118,10 +119,7 @@ export function MySharesScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: bg }]}>
-      <Appbar.Header mode="center-aligned" style={{ backgroundColor: 'transparent' }}>
-        <Appbar.BackAction onPress={() => dismissOrHome(router)} />
-        <Appbar.Content title={pm.title} />
-      </Appbar.Header>
+      <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
 
       {list.isLoading ? (
         <View style={styles.center}>

@@ -5,7 +5,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo } from 'react';
 import { FlatList, Linking, RefreshControl, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Appbar, Button, Chip, Icon, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Chip, Icon, Text } from 'react-native-paper';
+
+import { FloatingHeader } from '../src/components/FloatingHeader';
 
 import { useMessages } from '../src/i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '../src/lib/navigation';
@@ -139,10 +141,7 @@ export default function TasksScreen() {
   if (!configured) {
     return (
       <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
-        <Appbar.Header mode="center-aligned" style={{ backgroundColor: 'transparent' }}>
-          <Appbar.BackAction onPress={() => dismissOrHome(router)} />
-          <Appbar.Content title={pm.title} />
-        </Appbar.Header>
+        <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
         <View style={styles.center}>
           <Text style={{ opacity: 0.6 }}>{m.sessions.gatewayNotConfigured}</Text>
         </View>
@@ -153,10 +152,7 @@ export default function TasksScreen() {
   if (runsQuery.isLoading) {
     return (
       <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
-        <Appbar.Header mode="center-aligned" style={{ backgroundColor: 'transparent' }}>
-          <Appbar.BackAction onPress={() => dismissOrHome(router)} />
-          <Appbar.Content title={pm.title} />
-        </Appbar.Header>
+        <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
         <View style={styles.center}>
           <ActivityIndicator size="large" />
         </View>
@@ -167,10 +163,7 @@ export default function TasksScreen() {
   if (runsQuery.isError) {
     return (
       <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
-        <Appbar.Header mode="center-aligned" style={{ backgroundColor: 'transparent' }}>
-          <Appbar.BackAction onPress={() => dismissOrHome(router)} />
-          <Appbar.Content title={pm.title} />
-        </Appbar.Header>
+        <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
         <View style={styles.center}>
           <Text style={{ opacity: 0.6, marginBottom: 12 }}>{pm.loadFailed}</Text>
           <Button
@@ -186,10 +179,7 @@ export default function TasksScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
-      <Appbar.Header mode="center-aligned" style={{ backgroundColor: 'transparent' }}>
-        <Appbar.BackAction onPress={() => dismissOrHome(router)} />
-        <Appbar.Content title={pm.title} />
-      </Appbar.Header>
+      <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
       <FlatList
         data={runs}
         keyExtractor={(item) => item.id}

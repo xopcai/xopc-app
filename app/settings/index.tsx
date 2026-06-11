@@ -1,8 +1,9 @@
 import Constants from 'expo-constants';
-import { useNavigation, useRouter } from 'expo-router';
-import { useLayoutEffect, useMemo } from 'react';
+import { useRouter } from 'expo-router';
+import { useMemo } from 'react';
 import { Linking, ScrollView, StyleSheet, View } from 'react-native';
-import { IconButton } from 'react-native-paper';
+
+import { FloatingHeader } from '../../src/components/FloatingHeader';
 
 import {
   SettingsRow,
@@ -36,7 +37,6 @@ function languageLabel(lang: Language, s: ReturnType<typeof useMessages>['settin
 
 export default function SettingsIndexScreen() {
   const router = useRouter();
-  const navigation = useNavigation();
   const m = useMessages();
   const s = m.settings;
   const colors = useSettingsColors();
@@ -74,21 +74,14 @@ export default function SettingsIndexScreen() {
   const appVersion = Constants.expoConfig?.version ?? '1.0.0';
 
   useDismissOnHardwareBack(router);
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerLeft: () => (
-        <IconButton icon="arrow-left" onPress={() => dismissOrHome(router)} />
-      ),
-    });
-  }, [navigation, router]);
-
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.pageBg }}
-      contentContainerStyle={styles.scroll}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={{ flex: 1, backgroundColor: colors.pageBg }}>
+      <FloatingHeader title={s.title} onBack={() => dismissOrHome(router)} />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
       <SettingsSection>
         <SettingsRow
           icon="web"
@@ -172,7 +165,8 @@ export default function SettingsIndexScreen() {
       </SettingsSection>
 
       <View style={styles.bottomSpacer} />
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 

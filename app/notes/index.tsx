@@ -1,8 +1,5 @@
-/**
- * Legacy /notes list URL — redirect to home.
- */
-import { Redirect } from 'expo-router';
+import { NotesScreen } from '../../src/features/notes/NotesScreen';
 
-export default function NotesListRedirect() {
-  return <Redirect href="/(tabs)" />;
+export default function NotesListPage() {
+  return <NotesScreen />;
 }

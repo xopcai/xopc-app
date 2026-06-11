@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
@@ -11,9 +11,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { ActivityIndicator, Appbar, Chip, Icon, Snackbar, Text } from 'react-native-paper';
+import { ActivityIndicator, Chip, Icon, Snackbar, Text } from 'react-native-paper';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { FloatingHeader } from '../../components/FloatingHeader';
 
 import { pickAttachmentFromSource } from '../chat/attachment-file-io';
 import {
@@ -49,6 +51,7 @@ type KindFilter = 'all' | NoteKind;
 
 export function NotesScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ kind?: string }>();
   useDismissOnHardwareBack(router);
   const queryClient = useQueryClient();
   const { colors, isDark } = useTheme();
@@ -57,15 +60,16 @@ export function NotesScreen() {
   const pm = m.notesPage;
   const insets = useSafeAreaInsets();
 
+  const initialKind = (params.kind as KindFilter) || 'all';
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [kindFilter, setKindFilter] = useState<KindFilter>('all');
+  const [kindFilter, setKindFilter] = useState<KindFilter>(initialKind);
   const [captureText, setCaptureText] = useState('');
   const [snackMsg, setSnackMsg] = useState('');
   const [recording, setRecording] = useState(false);
   const recordingRef = useRef<ExpoRecording | null>(null);
 
   const notesQuery = useQuery({
-    queryKey: [...queryKeys.notes, statusFilter, kindFilter],
+    queryKey: [...queryKeys.notesAll, statusFilter, kindFilter],
     queryFn: () =>
       fetchNotes({
         status: statusFilter === 'all' ? undefined : statusFilter,
@@ -78,7 +82,7 @@ export function NotesScreen() {
   const captureMutation = useMutation({
     mutationFn: (text: string) => quickCaptureNote(text),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.notes });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.notesAll });
     },
     onError: (_err, text) => {
       queueNote(text);
@@ -151,7 +155,7 @@ export function NotesScreen() {
         else if (action === 'unpin') await updateNote(note.id, { pinned: false });
         else if (action === 'archive') await updateNote(note.id, { status: 'archived' });
         else if (action === 'delete') await deleteNote(note.id);
-        await queryClient.invalidateQueries({ queryKey: queryKeys.notes });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.notesAll });
         setSnackMsg(action === 'delete' ? pm.deleted : pm.updated);
       } catch (err) {
         setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
@@ -173,7 +177,7 @@ export function NotesScreen() {
 
   const onRefresh = useCallback(async () => {
     await flushPendingNotes();
-    await queryClient.invalidateQueries({ queryKey: queryKeys.notes });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.notesAll });
   }, [queryClient]);
 
   const notes = notesQuery.data?.items ?? [];
@@ -205,10 +209,7 @@ export function NotesScreen() {
   if (!configured) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
-        <Appbar.Header mode="center-aligned" style={{ backgroundColor: 'transparent' }}>
-          <Appbar.BackAction onPress={() => dismissOrHome(router)} />
-          <Appbar.Content title={pm.title} />
-        </Appbar.Header>
+        <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
         <View style={styles.center}>
           <Text style={{ opacity: 0.6 }}>{m.sessions.gatewayNotConfigured}</Text>
         </View>
@@ -218,10 +219,7 @@ export function NotesScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
-      <Appbar.Header mode="center-aligned" style={{ backgroundColor: 'transparent' }}>
-        <Appbar.BackAction onPress={() => dismissOrHome(router)} />
-        <Appbar.Content title={pm.title} />
-      </Appbar.Header>
+      <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
 
       {/* Filters — single row, horizontally scrollable */}
       <ScrollView

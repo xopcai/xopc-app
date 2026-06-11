@@ -4,6 +4,8 @@ import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, Icon, Text } from 'react-native-paper';
 
+import { FloatingHeader } from '../../../src/components/FloatingHeader';
+
 import { GatewayConnectionCard } from '../../../src/features/gateway/GatewayConnectionCard';
 import { GatewayTunnelStatusCard } from '../../../src/features/gateway/GatewayTunnelStatusCard';
 import { syncGatewayUrlsFromTunnelQr } from '../../../src/features/gateway/apply-tunnel-qr-from-api';
@@ -78,11 +80,13 @@ export default function GatewayListScreen() {
   );
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.pageBg }}
-      contentContainerStyle={styles.scroll}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={{ flex: 1, backgroundColor: colors.pageBg }}>
+      <FloatingHeader title={s.gateway} onBack={() => router.back()} />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
       <Text variant="bodySmall" style={[styles.hint, { color: colors.textMuted }]}>
         {s.gatewayHint}
       </Text>
@@ -164,7 +168,8 @@ export default function GatewayListScreen() {
           {syncNotice}
         </Text>
       ) : null}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 

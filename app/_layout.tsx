@@ -106,6 +106,10 @@ export default function RootLayout() {
                */}
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 <Stack.Screen name="chat" options={{ headerShown: false }} />
+                <Stack.Screen name="inbox" options={{ headerShown: false }} />
+                <Stack.Screen name="spaces" options={{ headerShown: false }} />
+                <Stack.Screen name="items" options={{ headerShown: false }} />
+                <Stack.Screen name="search" options={{ headerShown: false }} />
                 <Stack.Screen
                   name="settings"
                   options={{
@@ -116,8 +120,7 @@ export default function RootLayout() {
                 <Stack.Screen
                   name="agents"
                   options={{
-                    headerShown: true,
-                    title: m.agentsPage.title,
+                    headerShown: false,
                     presentation: 'modal',
                     ...agentsStackOptions,
                   }}
@@ -131,13 +134,6 @@ export default function RootLayout() {
                 />
                 <Stack.Screen
                   name="tasks"
-                  options={{
-                    headerShown: false,
-                    presentation: 'modal',
-                  }}
-                />
-                <Stack.Screen
-                  name="notes"
                   options={{
                     headerShown: false,
                     presentation: 'modal',

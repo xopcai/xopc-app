@@ -7,6 +7,7 @@ import { useCallback } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, Icon, Text } from 'react-native-paper';
 
+import { FloatingHeader } from '../src/components/FloatingHeader';
 import {
   SettingsAgentRow,
   SettingsSection,
@@ -56,48 +57,23 @@ export default function AgentsScreen() {
     [createMut],
   );
 
-  if (!configured) {
     return (
-      <View style={[styles.center, { backgroundColor: colors.pageBg }]}>
-        <Text style={{ color: colors.textMuted }}>{m.sessions.gatewayNotConfigured}</Text>
+      <View style={{ flex: 1, backgroundColor: colors.pageBg }}>
+        <FloatingHeader title={am.title} onBack={() => router.back()} />
+        <View style={styles.center}>
+          <Icon source="robot-off-outline" size={48} color={colors.textMuted} />
+          <Text style={[styles.emptyText, { color: colors.textMuted }]}>{am.empty}</Text>
+        </View>
       </View>
     );
-  }
-
-  if (agentsQuery.isLoading) {
-    return (
-      <View style={[styles.center, { backgroundColor: colors.pageBg }]}>
-        <ActivityIndicator color={colors.accent} />
-      </View>
-    );
-  }
-
-  if (agentsQuery.isError) {
-    return (
-      <View style={[styles.center, { backgroundColor: colors.pageBg }]}>
-        <Text style={{ color: colors.textMuted, marginBottom: 12 }}>{am.loadFailed}</Text>
-        <Button mode="outlined" onPress={() => void agentsQuery.refetch()}>
-          {m.common.retry}
-        </Button>
-      </View>
-    );
-  }
-
-  if (agents.length === 0) {
-    return (
-      <View style={[styles.center, { backgroundColor: colors.pageBg }]}>
-        <Icon source="robot-off-outline" size={48} color={colors.textMuted} />
-        <Text style={[styles.emptyText, { color: colors.textMuted }]}>{am.empty}</Text>
-      </View>
-    );
-  }
-
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.pageBg }}
-      contentContainerStyle={styles.scroll}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={{ flex: 1, backgroundColor: colors.pageBg }}>
+      <FloatingHeader title={am.title} onBack={() => router.back()} />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
       <Text style={[styles.hint, { color: colors.textMuted }]}>{am.listHint}</Text>
 
       <SettingsSection>
@@ -122,7 +98,8 @@ export default function AgentsScreen() {
           );
         })}
       </SettingsSection>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
