@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 import { apiFetch } from '../api/client';
-import type { NoteAiPatch, NoteBlock } from '../features/notes/note-blocks';
+import { createTextBlock, type NoteAiPatch, type NoteBlock } from '../features/notes/note-blocks';
 
 export type NoteKind = 'thought' | 'todo' | 'voice' | 'media' | 'bookmark' | 'mixed';
 export type NoteStatus = 'inbox' | 'processed' | 'archived' | 'trashed';
@@ -108,7 +108,29 @@ export async function quickCaptureNote(text: string): Promise<{ note: { id: stri
     body: JSON.stringify({ text, channel: 'app', platform }),
   });
   if (!res.ok) throw await readError(res);
-  return res.json() as Promise<{ note: { id: string } }>;
+  return readCreatedNote(res);
+}
+
+/** Create an empty note for the block editor (POST /api/notes, not quick-capture). */
+export async function createBlankNote(): Promise<{ note: { id: string } }> {
+  const platform = Platform.OS === 'ios' ? 'ios' : 'android';
+  const res = await apiFetch('/api/notes', {
+    method: 'POST',
+    body: JSON.stringify({
+      channel: 'app',
+      platform,
+      blocks: [createTextBlock('paragraph')],
+    }),
+  });
+  if (!res.ok) throw await readError(res);
+  return readCreatedNote(res);
+}
+
+async function readCreatedNote(res: Response): Promise<{ note: { id: string } }> {
+  const data = await res.json() as { note?: { id?: string } };
+  const id = data.note?.id?.trim();
+  if (!id) throw new Error('Create note: missing id');
+  return { note: { id } };
 }
 
 export async function updateNote(id: string, patch: Record<string, unknown>): Promise<Note> {

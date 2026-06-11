@@ -12,12 +12,12 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { ActivityIndicator, Icon, IconButton, Text } from 'react-native-paper';
+import { ActivityIndicator, Icon, IconButton, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { t, useMessages } from '../../i18n/messages';
 import { queryKeys } from '../../query/keys';
-import { fetchNotes, quickCaptureNote } from '../../query/notes';
+import { createBlankNote, fetchNotes } from '../../query/notes';
 import {
   createSession,
   fetchSessionsList,
@@ -47,6 +47,7 @@ export function HomeScreen() {
   const insets = useSafeAreaInsets();
 
   const [recentFilter, setRecentFilter] = useState<RecentFilter>('all');
+  const [snackMsg, setSnackMsg] = useState('');
 
   // ── Data queries ──────────────────────────────────────
 
@@ -86,10 +87,13 @@ export function HomeScreen() {
   });
 
   const createNoteMutation = useMutation({
-    mutationFn: () => quickCaptureNote(''),
+    mutationFn: () => createBlankNote(),
     onSuccess: ({ note }) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.notes });
       router.push(`/notes/${note.id}`);
+    },
+    onError: (err) => {
+      setSnackMsg(err instanceof Error ? err.message : m.notesPage.actionFailed);
     },
   });
 
@@ -312,6 +316,10 @@ export function HomeScreen() {
           <Text style={[styles.quickLabel, { color: '#FF9F0A' }]}>{hp.quickNewNote}</Text>
         </Pressable>
       </View>
+
+      <Snackbar visible={Boolean(snackMsg)} onDismiss={() => setSnackMsg('')} duration={2500}>
+        {snackMsg}
+      </Snackbar>
     </View>
   );
 }
