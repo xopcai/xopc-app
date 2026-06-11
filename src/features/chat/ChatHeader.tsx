@@ -29,7 +29,7 @@ export const ChatHeader = memo(function ChatHeader({
   headerBg: string;
   pillText: string;
   pillMuted: string;
-  onBackPress: () => void;
+  onBackPress?: () => void;
   onAgentPress: () => void;
   onModelSelect: (modelId: string) => void;
   onNewChat: () => void;
@@ -49,9 +49,13 @@ export const ChatHeader = memo(function ChatHeader({
   return (
     <>
       <View style={[styles.header, { paddingTop }]}> 
-        <Pressable style={[styles.iconButton, { backgroundColor: headerBg }]} onPress={onBackPress}>
-          <Icon source="chevron-left" size={24} color={pillMuted} />
-        </Pressable>
+        {onBackPress ? (
+          <Pressable style={[styles.iconButton, { backgroundColor: headerBg }]} onPress={onBackPress}>
+            <Icon source="chevron-left" size={24} color={pillMuted} />
+          </Pressable>
+        ) : (
+          <View style={styles.iconPlaceholder} />
+        )}
 
         <View style={[styles.headerCenter, { backgroundColor: headerBg }]}> 
           <Pressable
@@ -108,6 +112,10 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  iconPlaceholder: {
+    width: 44,
+    height: 44,
   },
   headerCenter: {
     flex: 1,

@@ -222,7 +222,7 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
   if (!configured) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
-        <FloatingHeader title={pm.title} onBack={handleBack} />
+        <FloatingHeader title={pm.title} onBack={embedded ? undefined : handleBack} />
         <View style={styles.center}>
           <Text style={{ opacity: 0.6 }}>{m.sessions.gatewayNotConfigured}</Text>
         </View>
@@ -232,7 +232,7 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
-      <FloatingHeader title={pm.title} onBack={handleBack} />
+      <FloatingHeader title={pm.title} onBack={embedded ? undefined : handleBack} />
 
       {/* Filters — single row, horizontally scrollable */}
       <ScrollView
