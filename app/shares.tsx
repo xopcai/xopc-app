@@ -1,7 +1,7 @@
 /**
  * My Shares — list of share links created on this gateway.
  *
- * Route: /shares (linked from the Settings → Gateway features section).
+ * Route: /shares (linked from Settings → Gateway → Gateway management).
  */
 import { MySharesScreen } from '../src/features/share/MySharesScreen';
 

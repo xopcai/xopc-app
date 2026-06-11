@@ -69,18 +69,18 @@ describe('note-blocks', () => {
 describe('blocksToHtml', () => {
   it('converts paragraph to <p>', () => {
     const html = blocksToHtml([textBlock('a', 'Hello world')]);
-    expect(html).toBe('<p>Hello world</p>');
+    expect(html).toBe('<p data-block-id="a">Hello world</p>');
   });
 
   it('converts empty paragraph to <p><br></p>', () => {
     const html = blocksToHtml([textBlock('a', '')]);
-    expect(html).toBe('<p><br></p>');
+    expect(html).toBe('<p data-block-id="a"><br></p>');
   });
 
   it('converts heading with level', () => {
     const block = Object.assign(createTextBlock('heading', '标题'), { level: 1 as const, id: 'h' });
     const html = blocksToHtml([block]);
-    expect(html).toBe('<h1>标题</h1>');
+    expect(html).toBe('<h1 data-block-id="h">标题</h1>');
   });
 
   it('converts todo blocks', () => {
@@ -97,21 +97,21 @@ describe('blocksToHtml', () => {
     const bullet = createTextBlock('bulletList', 'Item A');
     const numbered = createTextBlock('numberedList', 'Step 1');
     const html = blocksToHtml([bullet, numbered]);
-    expect(html).toContain('<ul><li><p>Item A</p></li></ul>');
-    expect(html).toContain('<ol><li><p>Step 1</p></li></ol>');
+    expect(html).toMatch(/<ul data-block-id="[^"]+"><li><p>Item A<\/p><\/li><\/ul>/);
+    expect(html).toMatch(/<ol data-block-id="[^"]+"><li><p>Step 1<\/p><\/li><\/ol>/);
   });
 
   it('converts quote and code', () => {
     const quote = createTextBlock('quote', '名言');
     const code = createTextBlock('code', 'const x = 1;');
     const html = blocksToHtml([quote, code]);
-    expect(html).toContain('<blockquote><p>名言</p></blockquote>');
-    expect(html).toContain('<pre><code>const x = 1;</code></pre>');
+    expect(html).toMatch(/<blockquote data-block-id="[^"]+"><p>名言<\/p><\/blockquote>/);
+    expect(html).toMatch(/<pre data-block-id="[^"]+"><code>const x = 1;<\/code><\/pre>/);
   });
 
   it('converts divider to <hr>', () => {
     const divider: NoteBlock = { id: 'd', type: 'divider', createdAt: 1, updatedAt: 1 };
-    expect(blocksToHtml([divider])).toBe('<hr>');
+    expect(blocksToHtml([divider])).toBe('<hr data-block-id="d">');
   });
 
   it('escapes HTML entities in text', () => {
@@ -183,23 +183,29 @@ describe('htmlToBlocks', () => {
 
   it('roundtrips: blocks → html → blocks preserves structure', () => {
     const original: NoteBlock[] = [
-      Object.assign(createTextBlock('heading', '标题'), { level: 2 as const }),
-      createTextBlock('paragraph', '正文内容'),
+      Object.assign(createTextBlock('heading', '标题'), { level: 2 as const, id: 'h1' }),
+      Object.assign(createTextBlock('paragraph', '正文内容'), { id: 'p1' }),
       { id: 'todo1', type: 'todo' as const, text: '待办事项', checked: false, createdAt: 1, updatedAt: 1 },
-      createTextBlock('bulletList', '列表项'),
-      createTextBlock('quote', '引用文字'),
+      Object.assign(createTextBlock('bulletList', '列表项'), { id: 'b1' }),
+      Object.assign(createTextBlock('quote', '引用文字'), { id: 'q1' }),
       { id: 'div', type: 'divider' as const, createdAt: 1, updatedAt: 1 },
     ];
     const html = blocksToHtml(original);
-    const restored = htmlToBlocks(html);
+    const restored = htmlToBlocks(html, original);
 
     expect(restored).toHaveLength(original.length);
-    expect(restored[0]).toMatchObject({ type: 'heading', text: '标题', level: 2 });
-    expect(restored[1]).toMatchObject({ type: 'paragraph', text: '正文内容' });
-    expect(restored[2]).toMatchObject({ type: 'todo', text: '待办事项', checked: false });
-    expect(restored[3]).toMatchObject({ type: 'bulletList', text: '列表项' });
-    expect(restored[4]).toMatchObject({ type: 'quote', text: '引用文字' });
-    expect(restored[5]).toMatchObject({ type: 'divider' });
+    expect(restored[0]).toMatchObject({ id: 'h1', type: 'heading', text: '标题', level: 2 });
+    expect(restored[1]).toMatchObject({ id: 'p1', type: 'paragraph', text: '正文内容' });
+    expect(restored[2]).toMatchObject({ id: 'todo1', type: 'todo', text: '待办事项', checked: false });
+    expect(restored[3]).toMatchObject({ id: 'b1', type: 'bulletList', text: '列表项' });
+    expect(restored[4]).toMatchObject({ id: 'q1', type: 'quote', text: '引用文字' });
+    expect(restored[5]).toMatchObject({ id: 'div', type: 'divider' });
+  });
+
+  it('preserves block ids when converting html back to blocks', () => {
+    const original = [textBlock('stable-id', 'Hello'), textBlock('second-id', 'World')];
+    const restored = htmlToBlocks(blocksToHtml(original), original);
+    expect(restored.map((block) => block.id)).toEqual(['stable-id', 'second-id']);
   });
 });
 

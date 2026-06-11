@@ -463,7 +463,9 @@ export const en = {
   // ── Settings screen ─────────────────────────────────────
   settings: {
     title: 'Settings',
+    sectionConnection: 'Connection',
     sectionPreferences: 'Preferences',
+    sectionGatewayManagement: 'Gateway management',
     sectionGatewayFeatures: 'Gateway features',
     sectionAbout: 'About',
     about: 'About',

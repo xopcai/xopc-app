@@ -461,7 +461,9 @@ export const zh: MessageBundle = {
   // ── 设置界面 ────────────────────────────────────────────
   settings: {
     title: '设置',
+    sectionConnection: '连接',
     sectionPreferences: '偏好设置',
+    sectionGatewayManagement: '网关管理',
     sectionGatewayFeatures: '网关功能',
     sectionAbout: '关于',
     about: '关于',

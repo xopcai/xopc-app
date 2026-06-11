@@ -128,6 +128,8 @@ export function blocksToMarkdown(blocks: NoteBlock[]): string {
 
 // ── HTML ↔ blocks conversion (for TipTap bridge) ──────────
 
+const BLOCK_ID_ATTR = 'data-block-id';
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -135,24 +137,39 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
+function blockIdAttr(id: string): string {
+  return ` ${BLOCK_ID_ATTR}="${id}"`;
+}
+
+function readBlockId(openTag: string): string | undefined {
+  const match = openTag.match(new RegExp(`${BLOCK_ID_ATTR}="([^"]+)"`));
+  return match?.[1];
+}
+
+function blockWithId<T extends NoteBlock>(block: T, id?: string): T {
+  if (!id) return block;
+  return { ...block, id };
+}
+
 /** Convert blocks to HTML suitable for TipTap editor `setContent`. */
 export function blocksToHtml(blocks: NoteBlock[]): string {
   return blocks
     .map((block) => {
-      if (block.type === 'divider') return '<hr>';
+      const id = blockIdAttr(block.id);
+      if (block.type === 'divider') return `<hr${id}>`;
       if (block.type === 'heading') {
         const level = block.level ?? 2;
-        return `<h${level}>${escapeHtml(block.text)}</h${level}>`;
+        return `<h${level}${id}>${escapeHtml(block.text)}</h${level}>`;
       }
       if (block.type === 'todo') {
         const checked = block.checked ? ' checked="checked"' : '';
-        return `<ul data-type="taskList"><li data-type="taskItem" data-checked="${block.checked ? 'true' : 'false'}"><label><input type="checkbox"${checked}></label><div><p>${escapeHtml(block.text)}</p></div></li></ul>`;
+        return `<ul data-type="taskList"${id}><li data-type="taskItem" data-checked="${block.checked ? 'true' : 'false'}"><label><input type="checkbox"${checked}></label><div><p>${escapeHtml(block.text)}</p></div></li></ul>`;
       }
-      if (block.type === 'bulletList') return `<ul><li><p>${escapeHtml(block.text)}</p></li></ul>`;
-      if (block.type === 'numberedList') return `<ol><li><p>${escapeHtml(block.text)}</p></li></ol>`;
-      if (block.type === 'quote') return `<blockquote><p>${escapeHtml(block.text)}</p></blockquote>`;
-      if (block.type === 'code') return `<pre><code>${escapeHtml(block.text)}</code></pre>`;
-      return `<p>${escapeHtml(block.text) || '<br>'}</p>`;
+      if (block.type === 'bulletList') return `<ul${id}><li><p>${escapeHtml(block.text)}</p></li></ul>`;
+      if (block.type === 'numberedList') return `<ol${id}><li><p>${escapeHtml(block.text)}</p></li></ol>`;
+      if (block.type === 'quote') return `<blockquote${id}><p>${escapeHtml(block.text)}</p></blockquote>`;
+      if (block.type === 'code') return `<pre${id}><code>${escapeHtml(block.text)}</code></pre>`;
+      return `<p${id}>${escapeHtml(block.text) || '<br>'}</p>`;
     })
     .join('');
 }
@@ -164,70 +181,95 @@ function unescapeHtml(html: string): string {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
+
+/** Normalize TipTap HTML for stable comparison (avoid spurious setContent). */
+export function normalizeEditorHtml(html: string): string {
+  return html
+    .replace(/\sdata-block-id="[^"]*"/g, '')
+    .replace(/<p><\/p>/g, '<p><br></p>')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
 /** Parse TipTap HTML output back into NoteBlock array. */
-export function htmlToBlocks(html: string): NoteBlock[] {
+export function htmlToBlocks(html: string, previousBlocks: NoteBlock[] = []): NoteBlock[] {
   if (!html?.trim()) return [createTextBlock('paragraph')];
 
+  const previousById = new Map(previousBlocks.map((block) => [block.id, block]));
+  let previousIndex = 0;
+
+  const nextId = (explicitId?: string, fallbackType?: NoteBlockType): string => {
+    if (explicitId && previousById.has(explicitId)) return explicitId;
+    while (previousIndex < previousBlocks.length) {
+      const candidate = previousBlocks[previousIndex++];
+      if (!fallbackType || candidate.type === fallbackType) return candidate.id;
+    }
+    return createBlockId();
+  };
+
   const blocks: NoteBlock[] = [];
-  const tagPattern = /<(h[1-3]|p|ul|ol|blockquote|pre|hr)\b[^>]*>([\s\S]*?)<\/\1>|<hr\s*\/?>/gi;
+  const tagPattern =
+    /<(h[1-3]|p|ul|ol|blockquote|pre|hr)\b([^>]*)>([\s\S]*?)<\/\1>|<hr\b([^>]*)\s*\/?>/gi;
 
   let match: RegExpExecArray | null;
   while ((match = tagPattern.exec(html)) !== null) {
     const fullMatch = match[0];
-    const tag = (match[1] || '').toLowerCase();
-    const inner = match[2] || '';
+    const tag = (match[1] || 'hr').toLowerCase();
+    const attrs = match[2] || match[4] || '';
+    const inner = match[3] || '';
+    const blockId = readBlockId(attrs ? ` ${attrs}` : '');
 
-    if (fullMatch === '<hr>' || fullMatch === '<hr/>' || fullMatch === '<hr />') {
-      blocks.push({ id: createBlockId(), type: 'divider', createdAt: Date.now(), updatedAt: Date.now() });
-      continue;
-    }
-
-    if (tag === 'hr') {
-      blocks.push({ id: createBlockId(), type: 'divider', createdAt: Date.now(), updatedAt: Date.now() });
+    if (tag === 'hr' || fullMatch.startsWith('<hr')) {
+      blocks.push(blockWithId(
+        { id: createBlockId(), type: 'divider', createdAt: Date.now(), updatedAt: Date.now() },
+        nextId(blockId, 'divider'),
+      ));
       continue;
     }
 
     if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
       const level = Number(tag[1]) as 1 | 2 | 3;
-      blocks.push(Object.assign(createTextBlock('heading', unescapeHtml(inner)), { level }));
+      blocks.push(blockWithId(
+        Object.assign(createTextBlock('heading', unescapeHtml(inner)), { level }),
+        nextId(blockId, 'heading'),
+      ));
       continue;
     }
 
     if (tag === 'blockquote') {
-      blocks.push(createTextBlock('quote', unescapeHtml(inner)));
+      blocks.push(blockWithId(createTextBlock('quote', unescapeHtml(inner)), nextId(blockId, 'quote')));
       continue;
     }
 
     if (tag === 'pre') {
       const codeContent = inner.replace(/<code[^>]*>([\s\S]*?)<\/code>/i, '$1');
-      blocks.push(createTextBlock('code', unescapeHtml(codeContent)));
+      blocks.push(blockWithId(createTextBlock('code', unescapeHtml(codeContent)), nextId(blockId, 'code')));
       continue;
     }
 
     if (tag === 'ul') {
-      // Check if this is a task list
-      if (inner.includes('data-type="taskItem"') || inner.includes('data-type="taskList"')) {
+      if (inner.includes('data-type="taskItem"') || attrs.includes('data-type="taskList"') || inner.includes('data-type="taskList"')) {
         const taskItemPattern = /<li[^>]*data-checked="(true|false)"[^>]*>[\s\S]*?<p>([\s\S]*?)<\/p>[\s\S]*?<\/li>/gi;
         let taskMatch: RegExpExecArray | null;
+        let foundTask = false;
         while ((taskMatch = taskItemPattern.exec(inner)) !== null) {
+          foundTask = true;
           const checked = taskMatch[1] === 'true';
           const text = unescapeHtml(taskMatch[2]);
-          blocks.push(Object.assign(createTodoBlock(text), { checked }));
+          blocks.push(blockWithId(Object.assign(createTodoBlock(text), { checked }), nextId(undefined, 'todo')));
         }
-        if (blocks.length === 0 || !inner.includes('data-checked')) {
-          // Fallback: single task item without proper structure
-          blocks.push(createTodoBlock(unescapeHtml(inner)));
+        if (!foundTask) {
+          blocks.push(blockWithId(createTodoBlock(unescapeHtml(inner)), nextId(blockId, 'todo')));
         }
       } else {
-        // Regular bullet list
         const listItemPattern = /<li[^>]*>[\s\S]*?<p>([\s\S]*?)<\/p>[\s\S]*?<\/li>|<li[^>]*>([\s\S]*?)<\/li>/gi;
         let liMatch: RegExpExecArray | null;
         while ((liMatch = listItemPattern.exec(inner)) !== null) {
           const text = unescapeHtml(liMatch[1] || liMatch[2] || '');
-          blocks.push(createTextBlock('bulletList', text));
+          blocks.push(blockWithId(createTextBlock('bulletList', text), nextId(undefined, 'bulletList')));
         }
       }
       continue;
@@ -238,14 +280,13 @@ export function htmlToBlocks(html: string): NoteBlock[] {
       let liMatch: RegExpExecArray | null;
       while ((liMatch = listItemPattern.exec(inner)) !== null) {
         const text = unescapeHtml(liMatch[1] || liMatch[2] || '');
-        blocks.push(createTextBlock('numberedList', text));
+        blocks.push(blockWithId(createTextBlock('numberedList', text), nextId(undefined, 'numberedList')));
       }
       continue;
     }
 
     if (tag === 'p') {
-      blocks.push(createTextBlock('paragraph', unescapeHtml(inner)));
-      continue;
+      blocks.push(blockWithId(createTextBlock('paragraph', unescapeHtml(inner)), nextId(blockId, 'paragraph')));
     }
   }
 

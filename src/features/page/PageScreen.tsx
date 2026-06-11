@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Share, StyleSheet, View } from 'react-native';
-import { Icon, Snackbar, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Icon, Snackbar, Text } from 'react-native-paper';
 
 import { FloatingHeader } from '../../components/FloatingHeader';
 
@@ -20,9 +20,12 @@ import { useTheme } from '../../theme';
 import { NoteAiPanel } from '../notes/ai/NoteAiPanel';
 import { NoteBlockEditor } from '../notes/editor/NoteBlockEditor';
 import { EditorActionBar } from '../notes/editor/EditorActionBar';
+import { useDebouncedCallback } from '../notes/editor/useDebouncedCallback';
 import type { UnifiedEditor } from '../notes/editor/types';
 import {
+  blocksToHtml,
   blocksToMarkdown,
+  htmlToBlocks,
   noteToBlocks,
   type NoteAiPatch,
   type NoteBlock,
@@ -55,9 +58,16 @@ export function PageScreen() {
 
   const [localNote, setLocalNote] = useState<LocalNoteSnapshot | null>(null);
   const [blocks, setBlocks] = useState<NoteBlock[]>([]);
+  const [editor, setEditor] = useState<UnifiedEditor | null>(null);
+  const [contentRevision, setContentRevision] = useState(0);
+  const [editorSeed, setEditorSeed] = useState<{ key: string; html: string } | null>(null);
   const [snackMsg, setSnackMsg] = useState('');
   const [showAiPanel, setShowAiPanel] = useState(false);
-  const editorRef = useRef<UnifiedEditor | null>(null);
+  const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const lastSeedKeyRef = useRef('');
+
+  const blocksRef = useRef<NoteBlock[]>([]);
+  blocksRef.current = blocks;
 
   const noteQuery = useQuery({
     queryKey: id ? queryKeys.note(id) : ['note', 'missing'],
@@ -67,6 +77,7 @@ export function PageScreen() {
       return note;
     },
     enabled: Boolean(id),
+    retry: 1,
   });
 
   const note = useMemo(
@@ -80,28 +91,42 @@ export function PageScreen() {
   }, [id]);
 
   useEffect(() => {
-    if (!note) return;
-    setBlocks(noteToBlocks(note));
-    if (id && !localNote) {
+    lastSeedKeyRef.current = '';
+    setContentRevision(0);
+    setEditorSeed(null);
+    setEditor(null);
+  }, [id]);
+
+  // Seed editor when note first loads or external revision bumps (AI patch).
+  useEffect(() => {
+    if (!note || !id) return;
+    const seedKey = `${id}:${contentRevision}`;
+    if (lastSeedKeyRef.current === seedKey) return;
+    lastSeedKeyRef.current = seedKey;
+
+    const nextBlocks = noteToBlocks(note);
+    const html = blocksToHtml(nextBlocks);
+    setEditorSeed({ key: seedKey, html });
+    setBlocks(nextBlocks);
+
+    if (contentRevision === 0 && !readLocalNote(id)) {
       writeLocalNote({
         ...note,
-        blocks: noteToBlocks(note),
+        blocks: nextBlocks,
         localVersion: note.localVersion ?? 0,
         syncState: 'synced',
       });
     }
-  }, [id, localNote, note]);
+  }, [id, contentRevision, note]);
 
-  const persistBlocks = useCallback(
-    (nextBlocks: NoteBlock[]) => {
-      if (!note) return;
-      setBlocks(nextBlocks);
-      const snapshot = saveLocalNoteEdit(note, nextBlocks);
-      setLocalNote(snapshot);
-      queryClient.setQueryData(queryKeys.note(note.id), snapshot);
-    },
-    [note, queryClient],
-  );
+  const persistHtml = useDebouncedCallback((html: string) => {
+    if (!note) return;
+    const nextBlocks = htmlToBlocks(html, blocksRef.current);
+    setBlocks(nextBlocks);
+    const snapshot = saveLocalNoteEdit(note, nextBlocks);
+    setLocalNote(snapshot);
+    queryClient.setQueryData(queryKeys.note(note.id), snapshot);
+  }, 400);
 
   const handleFlush = useCallback(async () => {
     await flushPendingNoteOperations();
@@ -115,10 +140,15 @@ export function PageScreen() {
 
   const handleApplyAiBlocks = useCallback(
     (nextBlocks: NoteBlock[], patch: NoteAiPatch) => {
-      persistBlocks(nextBlocks);
+      if (!note) return;
+      const snapshot = saveLocalNoteEdit(note, nextBlocks);
+      setLocalNote(snapshot);
+      queryClient.setQueryData(queryKeys.note(note.id), snapshot);
+      setBlocks(nextBlocks);
+      setContentRevision((revision) => revision + 1);
       setSnackMsg(patch.summary || pm.updated);
     },
-    [persistBlocks, pm.updated],
+    [note, pm.updated, queryClient],
   );
 
   const handleShare = useCallback(async () => {
@@ -136,8 +166,8 @@ export function PageScreen() {
     }
   }, [blocks, pm.shareNotesCopied]);
 
-  const handleEditorReady = useCallback((editor: UnifiedEditor) => {
-    editorRef.current = editor;
+  const handleEditorReady = useCallback((nextEditor: UnifiedEditor) => {
+    setEditor(nextEditor);
   }, []);
 
   const title = note
@@ -149,10 +179,14 @@ export function PageScreen() {
       })
     : '';
 
+  const showLoading = noteQuery.isLoading && !note;
+  const showError = noteQuery.isError && !note;
+  const showEditor = Boolean(note && id && editorSeed);
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
       <FloatingHeader
-        title={title || '笔记'}
+        title={title || pm.title}
         onBack={() => router.back()}
         rightActions={[
           { icon: 'share-variant-outline', onPress: () => void handleShare() },
@@ -164,22 +198,38 @@ export function PageScreen() {
         style={styles.keyboardAvoid}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {noteQuery.isLoading && !note ? (
+        {showLoading ? (
           <View style={styles.center}>
-            <Text style={{ color: colors.text.tertiary }}>Loading…</Text>
+            <ActivityIndicator color={colors.accent.primary} />
+            <Text style={{ color: colors.text.tertiary }}>{m.common.loading}</Text>
           </View>
-        ) : note && id ? (
+        ) : showError ? (
+          <View style={styles.center}>
+            <Icon source="cloud-alert-outline" size={42} color={colors.text.tertiary} />
+            <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>
+              {noteQuery.error instanceof Error ? noteQuery.error.message : pm.editorSlashNoMatch}
+            </Text>
+            <Button mode="contained-tonal" onPress={() => void noteQuery.refetch()}>
+              {m.common.retry}
+            </Button>
+          </View>
+        ) : showEditor ? (
           <>
             <View style={styles.editorWrap}>
               <NoteBlockEditor
-                blocks={blocks}
-                onChange={persistBlocks}
+                key={editorSeed!.key}
+                contentKey={editorSeed!.key}
+                initialHtml={editorSeed!.html}
+                onChange={persistHtml}
                 onEditorReady={handleEditorReady}
+                slashMenuOpen={showSlashMenu}
+                onSlashMenuClose={() => setShowSlashMenu(false)}
               />
             </View>
             <EditorActionBar
-              editor={editorRef.current}
+              editor={editor}
               onAiPress={() => setShowAiPanel(true)}
+              onSlashPress={() => setShowSlashMenu(true)}
             />
             <Modal
               visible={showAiPanel}
@@ -195,7 +245,7 @@ export function PageScreen() {
                   ]}
                 >
                   <NoteAiPanel
-                    noteId={id}
+                    noteId={id!}
                     blocks={blocks}
                     isDark={colors.surface.base === '#000000'}
                     onApplyBlocks={(nextBlocks, patch) => {
@@ -216,7 +266,7 @@ export function PageScreen() {
               color={colors.text.tertiary}
             />
             <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>
-              内容不存在
+              {pm.editorSlashNoMatch}
             </Text>
           </View>
         )}
@@ -236,9 +286,9 @@ export function PageScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   keyboardAvoid: { flex: 1 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 24 },
   editorWrap: { flex: 1, paddingHorizontal: 16 },
-  emptyTitle: { fontSize: 18, fontWeight: '800' },
+  emptyTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center' },
   modalOverlay: {
     flex: 1,
     justifyContent: 'flex-end',

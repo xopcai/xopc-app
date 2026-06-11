@@ -8,6 +8,7 @@ import type { UnifiedEditor } from './types';
 export interface EditorActionBarProps {
   editor: UnifiedEditor | null;
   onAiPress?: () => void;
+  onSlashPress?: () => void;
 }
 
 interface ActionItem {
@@ -19,15 +20,19 @@ interface ActionItem {
 export const EditorActionBar = memo(function EditorActionBar({
   editor,
   onAiPress,
+  onSlashPress,
 }: EditorActionBarProps) {
   const { colors } = useTheme();
+  const disabled = !editor;
 
   const actions = useMemo<ActionItem[]>(() => [
     { id: 'bold', icon: 'format-bold', action: (e) => e.toggleBold() },
     { id: 'italic', icon: 'format-italic', action: (e) => e.toggleItalic() },
     { id: 'strike', icon: 'format-strikethrough', action: (e) => e.toggleStrike() },
     { id: 'code', icon: 'code-tags', action: (e) => e.toggleCode() },
-    { id: 'heading', icon: 'format-header-2', action: (e) => e.toggleHeading(2) },
+    { id: 'h1', icon: 'format-header-1', action: (e) => e.toggleHeading(1) },
+    { id: 'h2', icon: 'format-header-2', action: (e) => e.toggleHeading(2) },
+    { id: 'h3', icon: 'format-header-3', action: (e) => e.toggleHeading(3) },
     { id: 'bullet', icon: 'format-list-bulleted', action: (e) => e.toggleBulletList() },
     { id: 'number', icon: 'format-list-numbered', action: (e) => e.toggleOrderedList() },
     { id: 'task', icon: 'checkbox-marked-outline', action: (e) => e.toggleTaskList() },
@@ -52,6 +57,11 @@ export const EditorActionBar = memo(function EditorActionBar({
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="always"
       >
+        {onSlashPress && (
+          <Pressable style={styles.actionBtn} onPress={onSlashPress}>
+            <Icon source="slash-forward" size={20} color={colors.accent.primary} />
+          </Pressable>
+        )}
         {onAiPress && (
           <Pressable style={styles.actionBtn} onPress={onAiPress}>
             <Icon source="creation-outline" size={20} color={colors.accent.primary} />
@@ -60,13 +70,14 @@ export const EditorActionBar = memo(function EditorActionBar({
         {actions.map((item) => (
           <Pressable
             key={item.id}
-            style={styles.actionBtn}
+            style={[styles.actionBtn, disabled && styles.disabled]}
             onPress={() => handlePress(item)}
+            disabled={disabled}
           >
             <Icon
               source={item.icon}
               size={18}
-              color={colors.text.secondary}
+              color={disabled ? colors.text.tertiary : colors.text.secondary}
             />
           </Pressable>
         ))}
@@ -91,5 +102,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  disabled: {
+    opacity: 0.45,
   },
 });

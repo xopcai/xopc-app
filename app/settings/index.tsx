@@ -1,16 +1,14 @@
-import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
-import { Linking, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { FloatingHeader } from '../../src/components/FloatingHeader';
-
+import { AppearanceSection } from '../../src/features/settings/AppearanceSection';
 import {
   SettingsRow,
   SettingsSection,
   useSettingsColors,
 } from '../../src/features/settings/settings-ui';
-import { ConnectionLogCard } from '../../src/features/gateway/ConnectionLogCard';
 import { useMessages } from '../../src/i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '../../src/lib/navigation';
 import {
@@ -19,21 +17,6 @@ import {
 } from '../../src/features/gateway/use-gateway-connection-view';
 import { useGatewayConfigured } from '../../src/query/sessions';
 import { useGatewayStore } from '../../src/stores/gateway-store';
-import {
-  type Language,
-  type ThemePreference,
-  usePreferencesStore,
-} from '../../src/stores/preferences-store';
-
-function themeLabel(pref: ThemePreference, s: ReturnType<typeof useMessages>['settings']): string {
-  if (pref === 'light') return s.themeLight;
-  if (pref === 'dark') return s.themeDark;
-  return s.themeSystem;
-}
-
-function languageLabel(lang: Language, s: ReturnType<typeof useMessages>['settings']): string {
-  return lang === 'zh' ? s.languageZh : s.languageEn;
-}
 
 export default function SettingsIndexScreen() {
   const router = useRouter();
@@ -68,11 +51,6 @@ export default function SettingsIndexScreen() {
     s.gatewayNotConfigured,
   ]);
 
-  const language = usePreferencesStore((st) => st.language);
-  const themePreference = usePreferencesStore((st) => st.themePreference);
-
-  const appVersion = Constants.expoConfig?.version ?? '1.0.0';
-
   useDismissOnHardwareBack(router);
   return (
     <View style={{ flex: 1, backgroundColor: colors.pageBg }}>
@@ -82,89 +60,30 @@ export default function SettingsIndexScreen() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-      <SettingsSection>
-        <SettingsRow
-          icon="web"
-          iconColor="#5856D6"
-          label={s.gateway}
-          value={gatewayValue}
-          isLast
-          onPress={() => router.push('/settings/gateway')}
-        />
-      </SettingsSection>
+        <SettingsSection title={s.sectionConnection}>
+          <SettingsRow
+            icon="web"
+            iconColor="#5856D6"
+            label={s.gateway}
+            value={gatewayValue}
+            isLast
+            onPress={() => router.push('/settings/gateway')}
+          />
+        </SettingsSection>
 
-      <SettingsSection title={s.sectionPreferences}>
-        <SettingsRow
-          icon="translate"
-          iconColor="#34C759"
-          label={s.language}
-          value={languageLabel(language, s)}
-          onPress={() => router.push('/settings/language')}
-        />
-        <SettingsRow
-          icon="theme-light-dark"
-          iconColor="#FF9500"
-          label={s.theme}
-          value={themeLabel(themePreference, s)}
-          isLast
-          onPress={() => router.push('/settings/theme')}
-        />
-      </SettingsSection>
+        <AppearanceSection />
 
-      <SettingsSection title={s.sectionGatewayFeatures}>
-        <SettingsRow
-          icon="robot-outline"
-          iconColor="#007AFF"
-          label={m.agentsPage.title}
-          onPress={() => router.push('/agents')}
-        />
-        <SettingsRow
-          icon="clock-outline"
-          iconColor="#FF9500"
-          label={m.schedulesPage.title}
-          onPress={() => router.push('/schedules')}
-        />
-        <SettingsRow
-          icon="checkbox-marked-outline"
-          iconColor="#34C759"
-          label={m.tasksPage.title}
-          onPress={() => router.push('/tasks')}
-        />
-        <SettingsRow
-          icon="share-variant"
-          iconColor="#2563EB"
-          label={m.mySharesPage.title}
-          isLast
-          onPress={() => router.push('/shares')}
-        />
-      </SettingsSection>
+        <SettingsSection title={s.sectionAbout}>
+          <SettingsRow
+            icon="information-outline"
+            iconColor="#8E8E93"
+            label={s.about}
+            isLast
+            onPress={() => router.push('/settings/about')}
+          />
+        </SettingsSection>
 
-      <ConnectionLogCard />
-
-      <SettingsSection title={s.sectionAbout}>
-        <SettingsRow
-          icon="information-outline"
-          iconColor="#8E8E93"
-          label={s.about}
-          onPress={() => router.push('/settings/about')}
-        />
-        <SettingsRow
-          icon="book-open-variant"
-          iconColor="#5856D6"
-          label={s.helpDocs}
-          onPress={() => void Linking.openURL('https://xopcai.github.io/xopc')}
-        />
-        <SettingsRow
-          icon="tag-outline"
-          iconColor="#8E8E93"
-          label={s.softwareVersion}
-          value={appVersion}
-          showChevron={false}
-          isLast
-        />
-      </SettingsSection>
-
-      <View style={styles.bottomSpacer} />
+        <View style={styles.bottomSpacer} />
       </ScrollView>
     </View>
   );
