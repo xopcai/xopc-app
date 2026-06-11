@@ -18,6 +18,7 @@ import { useMessages } from '../src/i18n/messages';
 import { openChat, useDismissOnHardwareBack } from '../src/lib/navigation';
 import { fetchChatAgents } from '../src/query/agents';
 import { queryKeys } from '../src/query/keys';
+import { invalidateSessionLists } from '../src/query/workspace-sync';
 import { createSession, useGatewayConfigured } from '../src/query/sessions';
 import { usePreferencesStore } from '../src/stores/preferences-store';
 
@@ -42,7 +43,7 @@ export default function AgentsScreen() {
   const createMut = useMutation({
     mutationFn: (agentId: string) => createSession(agentId),
     onSuccess: (key) => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
+      invalidateSessionLists(queryClient);
       openChat(router, key, { replace: true });
     },
   });

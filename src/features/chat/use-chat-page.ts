@@ -25,6 +25,7 @@ import { useMessages, t } from '../../i18n/messages';
 import { fetchChatAgents, readPlaceholderAgents, resolveEffectiveDefaultAgentId } from '../../query/agents';
 import { fetchChatModels, resolveEffectiveModelId, setSessionModelRef, fetchSessionAgentConfig } from '../../query/models';
 import { queryKeys } from '../../query/keys';
+import { invalidateSessionLists } from '../../query/workspace-sync';
 import { createSession } from '../../query/sessions';
 import { getColors } from '../../theme';
 
@@ -238,7 +239,7 @@ export function useChatPage(options: UseChatPageOptions = {}) {
         .then((key) => {
           chatSession.activeSessionKeyRef.current = key;
           bootstrap.setPendingBootstrapKey(key);
-          void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
+          invalidateSessionLists(queryClient);
           if (!embedded) {
             openChat(router, key, { replace: true });
           }
@@ -260,7 +261,7 @@ export function useChatPage(options: UseChatPageOptions = {}) {
       .then((key) => {
         chatSession.activeSessionKeyRef.current = key;
         bootstrap.setPendingBootstrapKey(key);
-        void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
+        invalidateSessionLists(queryClient);
         if (!embedded) {
           openChat(router, key, { replace: true });
         }
@@ -387,7 +388,7 @@ export function useChatPage(options: UseChatPageOptions = {}) {
         const key = await createSession(agentId, { forceNew: true });
         chatSession.activeSessionKeyRef.current = key;
         bootstrap.setPendingBootstrapKey(key);
-        void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
+        invalidateSessionLists(queryClient);
         setGatewaySheetVisible(false);
         if (!embedded) {
           openChat(router, key, { replace: true });

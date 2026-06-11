@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { gatewaySettingsSchema } from '../../config/schema';
 import { useMessages } from '../../i18n/messages';
 import { queryKeys } from '../../query/keys';
+import { invalidateSessionLists } from '../../query/workspace-sync';
 import { DEFAULT_GATEWAY_BASE_URL, useGatewayStore } from '../../stores/gateway-store';
 import {
   gatewayUrlValidationMessage,
@@ -225,7 +226,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
         setSaveError(nav.message || l.connectFailed);
         return;
       }
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
+      invalidateSessionLists(queryClient);
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents });
     } finally {
       setSaving(false);

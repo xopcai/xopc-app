@@ -15,7 +15,7 @@ import { useGatewayStore } from '../../stores/gateway-store';
 import { createSession } from '../../query/sessions';
 import { resolveEffectiveDefaultAgentId } from '../../query/agents';
 import { consumePrefetchedSession } from './session-prefetch';
-import { queryKeys } from '../../query/keys';
+import { invalidateSessionLists } from '../../query/workspace-sync';
 import type { useMessages } from '../../i18n/messages';
 
 export type ChatBootstrapDeps = {
@@ -92,7 +92,7 @@ export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResu
         const key = await resolveNewSessionKey(agentId);
         activeSessionKeyRef.current = key;
         setPendingBootstrapKey(key);
-        void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
+        invalidateSessionLists(queryClient);
         if (shouldNavigateToRoute) {
           openChat(router, key, { replace: true });
         }

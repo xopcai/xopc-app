@@ -38,6 +38,7 @@ import {
   type NoteStatus,
 } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
+import { invalidateNoteLists } from '../../query/workspace-sync';
 import { useGatewayConfigured } from '../../query/sessions';
 import { useTheme, FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
 
@@ -95,7 +96,7 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
   const captureMutation = useMutation({
     mutationFn: (text: string) => quickCaptureNote(text),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.notesAll });
+      await invalidateNoteLists(queryClient);
     },
     onError: (_err, text) => {
       queueNote(text);
@@ -168,7 +169,7 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
         else if (action === 'unpin') await updateNote(note.id, { pinned: false });
         else if (action === 'archive') await updateNote(note.id, { status: 'archived' });
         else if (action === 'delete') await deleteNote(note.id);
-        await queryClient.invalidateQueries({ queryKey: queryKeys.notesAll });
+        await invalidateNoteLists(queryClient);
         setSnackMsg(action === 'delete' ? pm.deleted : pm.updated);
       } catch (err) {
         setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
@@ -190,7 +191,7 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
 
   const onRefresh = useCallback(async () => {
     await flushPendingNotes();
-    await queryClient.invalidateQueries({ queryKey: queryKeys.notesAll });
+    await invalidateNoteLists(queryClient);
   }, [queryClient]);
 
   const notes = notesQuery.data?.items ?? [];

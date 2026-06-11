@@ -1,5 +1,6 @@
 import { queryKeys } from '../../query/keys';
 import { queryClient } from '../../query/query-client';
+import { invalidateSessionLists } from '../../query/workspace-sync';
 import { useGatewayStore } from '../../stores/gateway-store';
 
 import { getSharedGatewaySseConnection } from './use-gateway-sse';
@@ -24,7 +25,7 @@ function runGatewaySync(options: GatewaySyncOptions): void {
   lastSyncAt = Date.now();
 
   if (invalidateQueries) {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
+    invalidateSessionLists(queryClient);
     void queryClient.invalidateQueries({ queryKey: queryKeys.agents });
   }
   if (reconnectSse) {

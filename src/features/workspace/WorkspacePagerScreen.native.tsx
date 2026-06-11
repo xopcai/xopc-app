@@ -1,7 +1,10 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { BackHandler, StyleSheet, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import { useFocusEffect } from '@react-navigation/native';
+
+import { invalidateHomeFeed } from '../../query/workspace-sync';
 
 import { ChatScreen } from '../chat/ChatScreen';
 import { NotesScreen } from '../notes/NotesScreen';
@@ -13,13 +16,19 @@ const CHAT_PAGE_INDEX = 0;
 const HOME_PAGE_INDEX = 1;
 
 export function WorkspacePagerScreen() {
+  const queryClient = useQueryClient();
   const pagerRef = useRef<PagerView>(null);
   const [pageIndex, setPageIndex] = useState(HOME_PAGE_INDEX);
+
+  const refreshHomeFeed = useCallback(() => {
+    invalidateHomeFeed(queryClient);
+  }, [queryClient]);
 
   const navigateToHome = useCallback(() => {
     pagerRef.current?.setPage(HOME_PAGE_INDEX);
     setPageIndex(HOME_PAGE_INDEX);
-  }, []);
+    refreshHomeFeed();
+  }, [refreshHomeFeed]);
 
   const openAskAiNative = useCallback(() => {
     pagerRef.current?.setPage(CHAT_PAGE_INDEX);
@@ -45,7 +54,11 @@ export function WorkspacePagerScreen() {
           ref={pagerRef}
           style={styles.pager}
           initialPage={HOME_PAGE_INDEX}
-          onPageSelected={(event) => setPageIndex(event.nativeEvent.position)}
+          onPageSelected={(event) => {
+            const index = event.nativeEvent.position;
+            setPageIndex(index);
+            if (index === HOME_PAGE_INDEX) refreshHomeFeed();
+          }}
         >
           <View key="chat" style={styles.page}>
             <ChatScreen embedded onRequestHome={navigateToHome} />

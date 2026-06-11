@@ -9,6 +9,7 @@ import { FloatingHeader } from '../../components/FloatingHeader';
 
 import { fetchNotes, quickCaptureNote, updateNote, type NoteIndexEntry } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
+import { invalidateHomeFeed } from '../../query/workspace-sync';
 import { useTheme, FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
 
 export function InboxScreen() {
@@ -29,7 +30,7 @@ export function InboxScreen() {
     onSuccess: async () => {
       setCaptureText('');
       await queryClient.invalidateQueries({ queryKey: queryKeys.notes('inbox') });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.home });
+      invalidateHomeFeed(queryClient);
     },
     onError: (err) => setSnackMsg(err instanceof Error ? err.message : '保存失败'),
   });
@@ -38,7 +39,7 @@ export function InboxScreen() {
     mutationFn: (noteId: string) => updateNote(noteId, { status: 'archived' }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.notes('inbox') });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.home });
+      invalidateHomeFeed(queryClient);
     },
     onError: (err) => setSnackMsg(err instanceof Error ? err.message : '归档失败'),
   });

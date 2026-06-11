@@ -12,6 +12,7 @@ import { useMessages } from '../../i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
 import { fetchNote, type Note } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
+import { invalidateNoteLists } from '../../query/workspace-sync';
 import { useTheme } from '../../theme';
 
 import { NoteAiPanel } from './ai/NoteAiPanel';
@@ -95,7 +96,7 @@ export function NoteDetailScreen() {
     if (id) {
       await queryClient.invalidateQueries({ queryKey: queryKeys.note(id) });
     }
-    await queryClient.invalidateQueries({ queryKey: queryKeys.notesAll });
+    await invalidateNoteLists(queryClient);
     setLocalNote(id ? readLocalNote(id) : null);
     setSnackMsg(flushed > 0 ? pm.updated : pm.savedOffline);
   }, [id, pm.savedOffline, pm.updated, queryClient]);

@@ -16,6 +16,7 @@ import type { InfiniteData } from '@tanstack/react-query';
 
 import { AgentMessageSender, submitClarifyResponse, type MessagingCallbacks } from '../../api/agent-client';
 import { queryKeys } from '../../query/keys';
+import { invalidateSessionLists } from '../../query/workspace-sync';
 import { fetchSessionMessagePage, type SessionMessagePage } from '../../query/sessions';
 import {
   useAgentStreamResume,
@@ -205,7 +206,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
   // ── Session invalidation ─────────────────────────────────
   const invalidateSessionByKey = useCallback((targetSessionKey: string) => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.sessionHistory(targetSessionKey) });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
+    invalidateSessionLists(queryClient);
     void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoal(targetSessionKey) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoalRuns(targetSessionKey, 1) });
   }, [queryClient]);
@@ -224,7 +225,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       queryKeys.sessionHistory(targetSessionKey),
       (oldData) => mergeLatestSessionHistoryPage(oldData, latestPage),
     );
-    void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
+    invalidateSessionLists(queryClient);
     void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoal(targetSessionKey) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.webchatGoalRuns(targetSessionKey, 1) });
   }, [invalidateSessionByKey, queryClient]);

@@ -9,6 +9,7 @@ import { FloatingHeader } from '../../components/FloatingHeader';
 
 import { useMessages } from '../../i18n/messages';
 import { queryKeys } from '../../query/keys';
+import { invalidateNoteLists } from '../../query/workspace-sync';
 import {
   fetchNote,
   recordNoteOpen,
@@ -107,7 +108,7 @@ export function PageScreen() {
     if (id) {
       await queryClient.invalidateQueries({ queryKey: queryKeys.note(id) });
     }
-    await queryClient.invalidateQueries({ queryKey: queryKeys.notesAll });
+    await invalidateNoteLists(queryClient);
     setLocalNote(id ? readLocalNote(id) : null);
     setSnackMsg(pm.updated);
   }, [id, pm.updated, queryClient]);
