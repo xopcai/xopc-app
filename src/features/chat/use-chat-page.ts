@@ -30,6 +30,7 @@ import { getColors } from '../../theme';
 
 import { EMPTY_CHAT_GOAL_PREFILL } from './chat-empty-shortcuts';
 import { buildUserResendPayload, findPrecedingUserMessage } from './composer-send-helpers';
+import type { WireAttachment } from './composer.types';
 import type { Message } from './messages.types';
 import { MAX_PENDING_FOLLOW_UPS } from './pending-follow-up.types';
 import { sendOrQueueMessage } from './send-or-queue';
@@ -37,6 +38,7 @@ import { parseSessionMessages, dedupeWireMessages } from './session-message-pars
 import { useChatPageBootstrap } from './use-chat-page-bootstrap';
 import { useChatSession } from './use-chat-session';
 import { useSessionHistory } from './use-session-history';
+import { useWorkspaceNavigation } from '../workspace/workspace-navigation-context';
 
 export type UseChatPageOptions = {
   embedded?: boolean;
@@ -181,10 +183,37 @@ export function useChatPage(options: UseChatPageOptions = {}) {
   const isEmptyChat = displayMessages.length === 0 && !chatSession.streaming && !sessionHistoryQuery.isLoading;
 
   const composerDisabled =
-    !sessionKey ||
-    bootstrap.creatingInitialSession ||
-    sessionHistoryQuery.isLoading ||
-    Boolean(chatSession.clarifyPrompt);
+    Boolean(chatSession.clarifyPrompt) ||
+    (!sessionKey && Boolean(bootstrap.bootstrapError));
+
+  const pendingSendRef = useRef<{ text: string; attachments?: WireAttachment[] } | null>(null);
+
+  const flushPendingSend = useCallback(() => {
+    const pending = pendingSendRef.current;
+    if (!pending || !sessionKey || chatSession.streaming || chatSession.clarifyPrompt) return;
+    pendingSendRef.current = null;
+    void chatSession.send(pending.text, pending.attachments);
+  }, [sessionKey, chatSession]);
+
+  useEffect(() => {
+    flushPendingSend();
+  }, [flushPendingSend]);
+
+  const handleComposerSend = useCallback(
+    async (text: string, attachments?: WireAttachment[]) => {
+      if (bootstrap.bootstrapError && !sessionKey) return false;
+      const trimmed = text.trim();
+      const hasContent = Boolean(trimmed) || Boolean(attachments?.length);
+      if (!hasContent) return false;
+
+      if (!sessionKey || bootstrap.creatingInitialSession) {
+        pendingSendRef.current = { text: trimmed, attachments };
+        return true;
+      }
+      return chatSession.send(text, attachments);
+    },
+    [bootstrap.bootstrapError, bootstrap.creatingInitialSession, chatSession, sessionKey],
+  );
 
   // ── Handlers ─────────────────────────────────────────────
   const handleBack = useCallback(() => {
@@ -244,8 +273,16 @@ export function useChatPage(options: UseChatPageOptions = {}) {
 
   const queueFollowUpOrSend = useCallback(
     (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+
+      if (!sessionKey || bootstrap.creatingInitialSession) {
+        pendingSendRef.current = { text: trimmed };
+        return;
+      }
+
       sendOrQueueMessage({
-        text,
+        text: trimmed,
         runBusy: chatSession.runningRef.current,
         pendingCount: chatSession.followUp.pendingFollowUps.length,
         send: chatSession.send,
@@ -255,7 +292,7 @@ export function useChatPage(options: UseChatPageOptions = {}) {
         },
       });
     },
-    [chatSession, m.chat.followUpQueueMaxReached],
+    [bootstrap.creatingInitialSession, chatSession, m.chat.followUpQueueMaxReached, sessionKey],
   );
 
   const handleStarterSend = useCallback((text: string) => queueFollowUpOrSend(text), [queueFollowUpOrSend]);
@@ -270,9 +307,26 @@ export function useChatPage(options: UseChatPageOptions = {}) {
   }, [urlPrefillMessage]);
 
   const handleGoalShortcutPress = useCallback(() => {
-    if (composerDisabled) return;
+    if (bootstrap.bootstrapError && !sessionKey) return;
     setComposerSuggestion(EMPTY_CHAT_GOAL_PREFILL);
-  }, [composerDisabled]);
+  }, [bootstrap.bootstrapError, sessionKey]);
+
+  const { registerEmbeddedAskAiHandler } = useWorkspaceNavigation();
+
+  const prepareAskAiFromHome = useCallback(() => {
+    pendingSendRef.current = null;
+    chatSession.streamRecoveryRef.current.cancelRecovery();
+    chatSession.clearAllState();
+    chatSession.activeSessionKeyRef.current = '';
+    bootstrap.setPendingBootstrapKey('');
+    bootstrap.startFreshSession();
+  }, [bootstrap, chatSession]);
+
+  useEffect(() => {
+    if (!embedded) return;
+    registerEmbeddedAskAiHandler(prepareAskAiFromHome);
+    return () => registerEmbeddedAskAiHandler(null);
+  }, [embedded, prepareAskAiFromHome, registerEmbeddedAskAiHandler]);
 
   const handleUserMessageCopy = useCallback(
     (text: string) => {
@@ -417,6 +471,7 @@ export function useChatPage(options: UseChatPageOptions = {}) {
     handleNewChat,
     handleStarterSend,
     handleGoalShortcutPress,
+    handleComposerSend,
     handleUserMessageCopy,
     handleUserMessageEdit,
     handleAssistantCopy,

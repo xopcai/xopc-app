@@ -18,7 +18,7 @@ import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
 import { queryKeys } from '../../query/keys';
 import { fetchNotes, type NoteIndexEntry } from '../../query/notes';
 import { fetchSessionsList, type SessionListItem, useGatewayConfigured } from '../../query/sessions';
-import { useTheme } from '../../theme';
+import { useTheme, FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
 
 type SearchResult =
   | { id: string; type: 'note'; note: NoteIndexEntry }
@@ -151,8 +151,11 @@ export function WorkspaceSearchScreen() {
         )}
       </View>
 
-      <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
-        <View style={[styles.searchWrap, { paddingBottom: Math.max(insets.bottom, 12) }]}> 
+      <KeyboardStickyView
+        offset={{ closed: 0, opened: 0 }}
+        style={{ marginBottom: FLOATING_BOTTOM_OFFSET }}
+      >
+        <View style={[styles.searchWrap, { paddingBottom: floatingBottomPadding(insets.bottom) }]}> 
           <View style={[styles.searchShell, { backgroundColor: colors.surface.input, borderColor: colors.border.default }]}> 
             <Icon source="magnify" size={20} color={colors.text.tertiary} />
             <TextInput

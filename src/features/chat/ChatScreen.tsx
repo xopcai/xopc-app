@@ -17,6 +17,7 @@ import { GlobalConnectionStatusBar } from '../gateway/GlobalConnectionStatusBar'
 import { RouteOverrideToastView } from '../gateway/RouteOverrideToastView';
 import { t } from '../../i18n/messages';
 import { queryKeys } from '../../query/keys';
+import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
 
 import { AgentPickerSheet } from './AgentPickerSheet';
 import { ChatComposer } from './ChatComposer';
@@ -79,6 +80,7 @@ export function ChatScreen({ embedded = false, onRequestHome }: ChatScreenProps)
     handleNewChat,
     handleStarterSend,
     handleGoalShortcutPress,
+    handleComposerSend,
     handleUserMessageCopy,
     handleUserMessageEdit,
     handleAssistantCopy,
@@ -195,7 +197,11 @@ export function ChatScreen({ embedded = false, onRequestHome }: ChatScreenProps)
 
         <KeyboardStickyView
           offset={{ closed: 0, opened: 0 }}
-          style={{ backgroundColor: canvasBg, paddingBottom: Math.max(insets.bottom, 12) }}
+          style={{
+            backgroundColor: canvasBg,
+            marginBottom: FLOATING_BOTTOM_OFFSET,
+            paddingBottom: floatingBottomPadding(insets.bottom),
+          }}
         >
           <ClarifyPrompt
             prompt={chat.clarifyPrompt}
@@ -209,7 +215,7 @@ export function ChatScreen({ embedded = false, onRequestHome }: ChatScreenProps)
             disabled={composerDisabled}
             streaming={chat.streaming}
             onPressGoalShortcut={isEmptyChat ? handleGoalShortcutPress : undefined}
-            onSend={chat.send}
+            onSend={handleComposerSend}
             keyboardVisible={keyboardVisible}
             onSendVoice={(payload) => void chat.sendVoice(payload)}
             onAbort={chat.abort}

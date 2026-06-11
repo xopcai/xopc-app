@@ -9,7 +9,7 @@ import { FloatingHeader } from '../../components/FloatingHeader';
 
 import { fetchNotes, quickCaptureNote, updateNote, type NoteIndexEntry } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
-import { useTheme } from '../../theme';
+import { useTheme, FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
 
 export function InboxScreen() {
   const router = useRouter();
@@ -90,7 +90,7 @@ export function InboxScreen() {
         }
       />
 
-      <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[styles.bottomBar, { paddingBottom: floatingBottomPadding(insets.bottom) }]}>
         <TextInput
           value={captureText}
           onChangeText={setCaptureText}
@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 0,
+    bottom: FLOATING_BOTTOM_OFFSET,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,

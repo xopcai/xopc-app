@@ -14,6 +14,7 @@ import { openChat } from '../../lib/navigation';
 import { useGatewayStore } from '../../stores/gateway-store';
 import { createSession } from '../../query/sessions';
 import { resolveEffectiveDefaultAgentId } from '../../query/agents';
+import { consumePrefetchedSession } from './session-prefetch';
 import { queryKeys } from '../../query/keys';
 import type { useMessages } from '../../i18n/messages';
 
@@ -34,6 +35,8 @@ export type ChatBootstrapResult = {
   creatingInitialSession: boolean;
   bootstrapError: string | null;
   retryBootstrapSession: () => void;
+  /** Force a fresh session (embedded pager "问 AI" from home). */
+  startFreshSession: () => void;
 };
 
 export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResult {
@@ -61,8 +64,23 @@ export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResu
     if (urlSessionKey) setPendingBootstrapKey('');
   }, [urlSessionKey]);
 
-  const startAutoSession = useCallback(() => {
-    if (urlSessionKey || !gatewayOnline || autoSessionInFlightRef.current) return;
+  const resolveNewSessionKey = useCallback(async (agentId: string) => {
+    await useGatewayStore.getState().refreshActiveBaseUrl();
+    const prefetched = consumePrefetchedSession(agentId, { forceNew: true });
+    return prefetched ?? createSession(agentId, { forceNew: true });
+  }, []);
+
+  const startAutoSession = useCallback((options?: { force?: boolean }) => {
+    if (urlSessionKey || !gatewayOnline) return;
+    if (autoSessionInFlightRef.current && !options?.force) return;
+    if (autoSessionAttemptedRef.current && !options?.force) return;
+
+    if (options?.force) {
+      autoSessionAttemptedRef.current = false;
+      autoSessionInFlightRef.current = false;
+      setPendingBootstrapKey('');
+      activeSessionKeyRef.current = '';
+    }
 
     autoSessionAttemptedRef.current = true;
     autoSessionInFlightRef.current = true;
@@ -71,8 +89,7 @@ export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResu
     const agentId = resolveEffectiveDefaultAgentId(agentsData, localDefaultAgentId);
     void (async () => {
       try {
-        await useGatewayStore.getState().refreshActiveBaseUrl();
-        const key = await createSession(agentId);
+        const key = await resolveNewSessionKey(agentId);
         activeSessionKeyRef.current = key;
         setPendingBootstrapKey(key);
         void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
@@ -87,7 +104,7 @@ export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResu
         setCreatingInitialSession(false);
       }
     })();
-  }, [urlSessionKey, gatewayOnline, agentsData, localDefaultAgentId, router, queryClient, m.sessions.bootstrapFailed, activeSessionKeyRef, shouldNavigateToRoute]);
+  }, [urlSessionKey, gatewayOnline, agentsData, localDefaultAgentId, router, queryClient, m.sessions.bootstrapFailed, activeSessionKeyRef, shouldNavigateToRoute, resolveNewSessionKey]);
 
   // Auto-start on first mount when gateway is online
   useEffect(() => {
@@ -112,11 +129,17 @@ export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResu
     startAutoSession();
   }, [urlSessionKey, gatewayOnline, startAutoSession]);
 
+  const startFreshSession = useCallback(() => {
+    if (urlSessionKey || !gatewayOnline) return;
+    startAutoSession({ force: true });
+  }, [urlSessionKey, gatewayOnline, startAutoSession]);
+
   return {
     pendingBootstrapKey,
     setPendingBootstrapKey,
     creatingInitialSession,
     bootstrapError,
     retryBootstrapSession,
+    startFreshSession,
   };
 }

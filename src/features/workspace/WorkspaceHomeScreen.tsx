@@ -10,7 +10,7 @@ import { FloatingHeader } from '../../components/FloatingHeader';
 import { queryKeys } from '../../query/keys';
 import { fetchHome } from '../../query/home';
 import { createBlankNote, type NoteIndexEntry } from '../../query/notes';
-import { createSession, useGatewayConfigured } from '../../query/sessions';
+import { useGatewayConfigured } from '../../query/sessions';
 import { useTheme } from '../../theme';
 
 import { BottomCommandBar } from './BottomCommandBar';
@@ -18,12 +18,17 @@ import { ContinueRail } from './ContinueRail';
 import { InboxPreview } from './InboxPreview';
 import { SpaceList } from './SpaceList';
 import { TodayBrief } from './TodayBrief';
+import { useHomeChatPrefetch } from './use-home-chat-prefetch';
+import { useWorkspaceNavigation } from './workspace-navigation-context';
 
 export function WorkspaceHomeScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const configured = useGatewayConfigured();
+  const { openAskAi, prefetchAskAiSession } = useWorkspaceNavigation();
+
+  useHomeChatPrefetch(configured);
 
   const homeQuery = useQuery({
     queryKey: queryKeys.home,
@@ -42,6 +47,12 @@ export function WorkspaceHomeScreen() {
   const handleSessionPress = useCallback((sessionKey: string) => {
     router.push(`/chat/${sessionKey}`);
   }, [router]);
+
+  const handleRefresh = useCallback(() => {
+    void homeQuery.refetch().then(() => {
+      prefetchAskAiSession();
+    });
+  }, [homeQuery, prefetchAskAiSession]);
 
   if (!configured) {
     return (
@@ -64,7 +75,7 @@ export function WorkspaceHomeScreen() {
       <FloatingHeader title="工作空间" rightIcon="cog-outline" onRightPress={() => router.push('/settings')} />
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 112 }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void homeQuery.refetch()} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
         {homeQuery.isLoading ? (
           <View style={styles.loadingCard}>
@@ -91,14 +102,8 @@ export function WorkspaceHomeScreen() {
       <BottomCommandBar
         bottomInset={insets.bottom}
         onSearch={() => router.push('/search')}
-        onAskAi={async () => {
-          try {
-            const sessionKey = await createSession();
-            router.push(`/chat/${sessionKey}`);
-          } catch {
-            router.push('/chat');
-          }
-        }}
+        onAskAi={openAskAi}
+        onAskAiPressIn={prefetchAskAiSession}
         onCreate={async () => {
           try {
             const { note } = await createBlankNote();

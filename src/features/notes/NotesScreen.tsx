@@ -39,7 +39,7 @@ import {
 } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
 import { useGatewayConfigured } from '../../query/sessions';
-import { useTheme } from '../../theme';
+import { useTheme, FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
 
 import { NoteCard } from './NoteCard';
 import { SwipeableNoteCard, type SwipeAction } from './SwipeableNoteCard';
@@ -282,8 +282,11 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
       </View>
 
       {/* Bottom composer — multiline with smart intent detection */}
-      <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
-        <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <KeyboardStickyView
+        offset={{ closed: 0, opened: 0 }}
+        style={{ marginBottom: FLOATING_BOTTOM_OFFSET }}
+      >
+        <View style={[styles.composerWrap, { paddingBottom: floatingBottomPadding(insets.bottom) }]}>
           {/* Intent badge */}
           {captureText.trim().length > 0 && (() => {
             const intent = parseCaptureIntent(captureText);

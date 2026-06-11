@@ -7,8 +7,10 @@ import { ChatScreen } from '../chat/ChatScreen';
 import { NotesScreen } from '../notes/NotesScreen';
 
 import { WorkspaceHomeScreen } from './WorkspaceHomeScreen';
+import { WorkspaceNavigationProvider } from './workspace-navigation-context';
 
 const HOME_PAGE_INDEX = 1;
+const CHAT_PAGE_INDEX = 2;
 
 export function WorkspacePagerScreen() {
   const pagerRef = useRef<PagerView>(null);
@@ -17,6 +19,11 @@ export function WorkspacePagerScreen() {
   const navigateToHome = useCallback(() => {
     pagerRef.current?.setPage(HOME_PAGE_INDEX);
     setPageIndex(HOME_PAGE_INDEX);
+  }, []);
+
+  const openAskAiNative = useCallback(() => {
+    pagerRef.current?.setPage(CHAT_PAGE_INDEX);
+    setPageIndex(CHAT_PAGE_INDEX);
   }, []);
 
   useFocusEffect(
@@ -32,24 +39,26 @@ export function WorkspacePagerScreen() {
   );
 
   return (
-    <View style={styles.screen}>
-      <PagerView
-        ref={pagerRef}
-        style={styles.pager}
-        initialPage={HOME_PAGE_INDEX}
-        onPageSelected={(event) => setPageIndex(event.nativeEvent.position)}
-      >
-        <View key="notes" style={styles.page}>
-          <NotesScreen embedded onRequestHome={navigateToHome} />
-        </View>
-        <View key="home" style={styles.page}>
-          <WorkspaceHomeScreen />
-        </View>
-        <View key="chat" style={styles.page}>
-          <ChatScreen embedded onRequestHome={navigateToHome} />
-        </View>
-      </PagerView>
-    </View>
+    <WorkspaceNavigationProvider onOpenAskAiNative={openAskAiNative}>
+      <View style={styles.screen}>
+        <PagerView
+          ref={pagerRef}
+          style={styles.pager}
+          initialPage={HOME_PAGE_INDEX}
+          onPageSelected={(event) => setPageIndex(event.nativeEvent.position)}
+        >
+          <View key="notes" style={styles.page}>
+            <NotesScreen embedded onRequestHome={navigateToHome} />
+          </View>
+          <View key="home" style={styles.page}>
+            <WorkspaceHomeScreen />
+          </View>
+          <View key="chat" style={styles.page}>
+            <ChatScreen embedded onRequestHome={navigateToHome} />
+          </View>
+        </PagerView>
+      </View>
+    </WorkspaceNavigationProvider>
   );
 }
 
