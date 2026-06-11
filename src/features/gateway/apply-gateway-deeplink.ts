@@ -1,4 +1,4 @@
-import type { Router } from 'expo-router';
+import type { ImperativeRouter } from 'expo-router';
 
 import { openDefaultSessionAfterConnect } from './navigate-after-gateway-connect';
 import { hasPairableGatewayQr, parseGatewayQrPayload } from './parse-gateway-qr';
@@ -60,7 +60,7 @@ const inflightDeeplinks = new Map<string, Promise<boolean>>();
  */
 export async function tryConsumeGatewayDeeplink(
   rawUrl: string,
-  router: Router,
+  router: ImperativeRouter,
 ): Promise<boolean> {
   // On Web, Linking.getInitialURL() returns the current page URL (e.g. http://localhost:8082/).
   // This is NOT a gateway deep link — skip it to prevent writing the dev server origin as baseUrl.

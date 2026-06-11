@@ -37,7 +37,7 @@ export type PreferencesState = {
 /** Push preference to RN so `useColorScheme()` matches the user's choice (native only). */
 function syncAppearance(pref: ThemePreference): void {
   if (Platform.OS === 'web') return;
-  Appearance.setColorScheme(pref === 'system' ? null : pref);
+  Appearance.setColorScheme(pref === 'system' ? 'unspecified' : pref);
 }
 
 function resolveTheme(pref: ThemePreference): 'light' | 'dark' {

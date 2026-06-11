@@ -1,51 +1,54 @@
 /**
- * expo-av microphone recording for hold-to-speak UX (native + web where supported).
+ * expo-audio microphone recording for hold-to-speak UX (native + web where supported).
  */
-import { Audio } from 'expo-av';
+import {
+  AudioModule,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+} from 'expo-audio';
+import type { AudioRecorder } from 'expo-audio';
 
-export type ExpoRecording = InstanceType<typeof Audio.Recording>;
+export type ExpoRecording = AudioRecorder;
 
 export async function requestMicPermission(): Promise<boolean> {
-  const { status } = await Audio.requestPermissionsAsync();
-  return status === 'granted';
+  const { granted } = await requestRecordingPermissionsAsync();
+  return granted;
 }
 
 export async function beginRecording(
   onStatus: (metering: number | undefined, durationMillis: number) => void,
 ): Promise<ExpoRecording> {
-  await Audio.setAudioModeAsync({
-    allowsRecordingIOS: true,
-    playsInSilentModeIOS: true,
-    staysActiveInBackground: false,
-    shouldDuckAndroid: true,
-    playThroughEarpieceAndroid: false,
+  await setAudioModeAsync({
+    allowsRecording: true,
+    playsInSilentMode: true,
   });
 
-  const { recording } = await Audio.Recording.createAsync(
-    Audio.RecordingOptionsPresets.HIGH_QUALITY,
-    (status) => {
-      if (status.isRecording) {
-        onStatus(status.metering, status.durationMillis ?? 0);
-      }
-    },
-    80,
-  );
+  const recorder = new AudioModule.AudioRecorder(RecordingPresets.HIGH_QUALITY);
+  await recorder.prepareToRecordAsync();
 
-  return recording;
+  recorder.addListener('recordingStatusUpdate', () => {
+    if (!recorder.isRecording) return;
+    const status = recorder.getStatus();
+    onStatus(status.metering, status.durationMillis ?? 0);
+  });
+
+  recorder.record();
+  return recorder;
 }
 
 export async function discardRecording(rec: ExpoRecording): Promise<void> {
   try {
-    await rec.stopAndUnloadAsync();
+    if (rec.isRecording) await rec.stop();
   } catch {
     /* already unloaded / too short on Android */
   }
 }
 
 export async function finishRecording(rec: ExpoRecording): Promise<{ uri: string | null; durationMillis: number }> {
-  const status = await rec.stopAndUnloadAsync();
-  const uri = rec.getURI();
-  return { uri, durationMillis: status.durationMillis ?? 0 };
+  await rec.stop();
+  const status = rec.getStatus();
+  return { uri: rec.uri, durationMillis: status.durationMillis ?? 0 };
 }
 
 export function inferRecordingMimeType(uri: string | null): string {

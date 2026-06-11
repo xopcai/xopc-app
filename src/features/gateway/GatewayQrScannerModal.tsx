@@ -96,7 +96,7 @@ export async function requestGatewayQrCameraAccess(
 
 const styles = StyleSheet.create({
   webOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 1000,
     elevation: 1000,
   },

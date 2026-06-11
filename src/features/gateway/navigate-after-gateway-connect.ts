@@ -1,4 +1,4 @@
-import type { Router } from 'expo-router';
+import type { ImperativeRouter } from 'expo-router';
 
 import { chatRoute } from '../../lib/navigation';
 import { createSession } from '../../query/sessions';
@@ -7,7 +7,7 @@ import { createSession } from '../../query/sessions';
  * After gateway credentials are saved, open a fresh chat session.
  */
 export async function openDefaultSessionAfterConnect(
-  replace: Router['replace'],
+  replace: ImperativeRouter['replace'],
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   try {
     const key = await createSession(undefined);
