@@ -1,6 +1,5 @@
 /**
- * Swipeable wrapper for NoteCard — left swipe reveals pin/unpin,
- * right swipe reveals archive/delete.
+ * Swipeable wrapper for NoteCard — left swipe reveals pin/unpin, archive, delete.
  *
  * Uses react-native-gesture-handler's Swipeable for native-driven animation.
  */
@@ -40,43 +39,27 @@ export function SwipeableNoteCard({ note, isDark, onAction, children }: Swipeabl
     [close, note, onAction],
   );
 
-  const renderLeftActions = useCallback(
+  const renderRightActions = useCallback(
     (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+      const totalWidth = ACTION_WIDTH * 3;
       const translateX = dragX.interpolate({
-        inputRange: [0, ACTION_WIDTH],
-        outputRange: [-ACTION_WIDTH, 0],
+        inputRange: [-totalWidth, 0],
+        outputRange: [0, totalWidth],
         extrapolate: 'clamp',
       });
 
       const pinAction: SwipeAction = note.pinned ? 'unpin' : 'pin';
       const pinIcon = note.pinned ? 'pin-off' : 'pin';
       const pinColor = isDark ? '#60A5FA' : '#2563EB';
-
-      return (
-        <Animated.View style={[styles.leftActions, { transform: [{ translateX }] }]}>
-          <Pressable style={[styles.actionButton, { backgroundColor: `${pinColor}18` }]} onPress={() => handleAction(pinAction)}>
-            <Icon source={pinIcon} size={20} color={pinColor} />
-            <Text style={[styles.actionLabel, { color: pinColor }]}>{note.pinned ? pm.unpin : pm.pin}</Text>
-          </Pressable>
-        </Animated.View>
-      );
-    },
-    [handleAction, isDark, note.pinned, pm.pin, pm.unpin],
-  );
-
-  const renderRightActions = useCallback(
-    (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
-      const translateX = dragX.interpolate({
-        inputRange: [-ACTION_WIDTH * 2, 0],
-        outputRange: [0, ACTION_WIDTH * 2],
-        extrapolate: 'clamp',
-      });
-
       const archiveColor = isDark ? '#FBBF24' : '#D97706';
       const deleteColor = '#EF4444';
 
       return (
         <Animated.View style={[styles.rightActions, { transform: [{ translateX }] }]}>
+          <Pressable style={[styles.actionButton, { backgroundColor: `${pinColor}18` }]} onPress={() => handleAction(pinAction)}>
+            <Icon source={pinIcon} size={20} color={pinColor} />
+            <Text style={[styles.actionLabel, { color: pinColor }]}>{note.pinned ? pm.unpin : pm.pin}</Text>
+          </Pressable>
           <Pressable style={[styles.actionButton, { backgroundColor: `${archiveColor}18` }]} onPress={() => handleAction('archive')}>
             <Icon source="archive-outline" size={20} color={archiveColor} />
             <Text style={[styles.actionLabel, { color: archiveColor }]}>{pm.archive}</Text>
@@ -88,17 +71,14 @@ export function SwipeableNoteCard({ note, isDark, onAction, children }: Swipeabl
         </Animated.View>
       );
     },
-    [handleAction, isDark, pm.archive, pm.delete],
+    [handleAction, isDark, note.pinned, pm.archive, pm.delete, pm.pin, pm.unpin],
   );
 
   return (
     <Swipeable
       ref={swipeableRef}
-      renderLeftActions={renderLeftActions}
       renderRightActions={renderRightActions}
-      leftThreshold={ACTION_WIDTH}
       rightThreshold={ACTION_WIDTH}
-      overshootLeft={false}
       overshootRight={false}
       friction={2}
     >
@@ -108,13 +88,8 @@ export function SwipeableNoteCard({ note, isDark, onAction, children }: Swipeabl
 }
 
 const styles = StyleSheet.create({
-  leftActions: {
-    width: ACTION_WIDTH,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   rightActions: {
-    width: ACTION_WIDTH * 2,
+    width: ACTION_WIDTH * 3,
     flexDirection: 'row',
   },
   actionButton: {
