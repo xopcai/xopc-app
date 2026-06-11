@@ -264,7 +264,6 @@ export function ChatScreen({ embedded = false, overlay = false, onRequestHome }:
             steeringFollowUpId={chat.followUp.steeringFollowUpId}
             onQueueFull={() => chat.setSnackMsg(t(m.chat.followUpQueueMaxReached, { max: MAX_PENDING_FOLLOW_UPS }))}
             overlayShell={overlay}
-            focusRequestToken={overlay ? transition?.focusComposerToken : undefined}
           />
         </KeyboardStickyView>
         </AnimatedView>

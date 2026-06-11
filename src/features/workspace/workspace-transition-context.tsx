@@ -35,7 +35,6 @@ export type WorkspaceTransitionContextValue = {
   progress: SharedValue<number>;
   dismissDrag: SharedValue<number>;
   isChatWarm: boolean;
-  focusComposerToken: number;
   pillAnchor: LayoutRect | null;
   composerAnchor: LayoutRect | null;
   registerPillMeasurer: (measurer: LayoutMeasurer | null) => void;
@@ -63,7 +62,6 @@ export function WorkspaceTransitionProvider({ children, onClosed }: WorkspaceTra
 
   const [phase, setPhase] = useState<WorkspaceTransitionPhase>('closed');
   const [isChatWarm, setIsChatWarm] = useState(false);
-  const [focusComposerToken, setFocusComposerToken] = useState(0);
   const [pillAnchor, setPillAnchor] = useState<LayoutRect | null>(null);
   const [composerAnchor, setComposerAnchor] = useState<LayoutRect | null>(null);
 
@@ -87,7 +85,6 @@ export function WorkspaceTransitionProvider({ children, onClosed }: WorkspaceTra
   const runFinalize = useCallback(() => {
     InteractionManager.runAfterInteractions(() => {
       finalizeHandlerRef.current?.();
-      setFocusComposerToken((token) => token + 1);
     });
   }, []);
 
@@ -192,7 +189,6 @@ export function WorkspaceTransitionProvider({ children, onClosed }: WorkspaceTra
       progress,
       dismissDrag,
       isChatWarm,
-      focusComposerToken,
       pillAnchor,
       composerAnchor,
       registerPillMeasurer,
@@ -210,7 +206,6 @@ export function WorkspaceTransitionProvider({ children, onClosed }: WorkspaceTra
       closeAskAi,
       completeInteractiveDismiss,
       composerAnchor,
-      focusComposerToken,
       isChatWarm,
       notifyComposerAnchor,
       openAskAi,

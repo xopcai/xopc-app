@@ -9,7 +9,6 @@ export const motion = {
     staggerHeader: 120,
     staggerBody: 200,
     staggerComposer: 280,
-    keyboardFocusDelay: 120,
   },
   spring: {
     open: { damping: 22, stiffness: 240, mass: 0.9 },

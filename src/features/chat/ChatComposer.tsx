@@ -96,7 +96,6 @@ export const ChatComposer = memo(function ChatComposer({
   onQueueFull,
   onPressGoalShortcut,
   overlayShell = false,
-  focusRequestToken,
 }: {
   sessionKey: string;
   disabled: boolean;
@@ -125,7 +124,6 @@ export const ChatComposer = memo(function ChatComposer({
   onQueueFull?: () => void;
   onPressGoalShortcut?: () => void;
   overlayShell?: boolean;
-  focusRequestToken?: number;
 }) {
   const m = useMessages();
   const cm = m.chat;
@@ -158,14 +156,6 @@ export const ChatComposer = memo(function ChatComposer({
     transition.registerComposerMeasurer(measureShell);
     return () => transition.registerComposerMeasurer(null);
   }, [measureShell, overlayShell, transition]);
-
-  useEffect(() => {
-    if (!overlayShell || focusRequestToken == null || focusRequestToken <= 0) return;
-    const timer = setTimeout(() => {
-      inputRef.current?.focus();
-    }, motion.duration.keyboardFocusDelay);
-    return () => clearTimeout(timer);
-  }, [focusRequestToken, overlayShell]);
 
   const shellRevealStyle = useAnimatedStyle(() => {
     if (!overlayShell || !transition) return { opacity: 1 };
