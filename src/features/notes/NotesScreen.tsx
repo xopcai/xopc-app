@@ -49,16 +49,29 @@ import { captureIntentBadgeKey, parseCaptureIntent } from './capture-parser';
 type StatusFilter = 'all' | NoteStatus;
 type KindFilter = 'all' | NoteKind;
 
-export function NotesScreen() {
+export type NotesScreenProps = {
+  embedded?: boolean;
+  onRequestHome?: () => void;
+};
+
+export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProps) {
   const router = useRouter();
   const params = useLocalSearchParams<{ kind?: string }>();
-  useDismissOnHardwareBack(router);
+  useDismissOnHardwareBack(router, { enabled: !embedded });
   const queryClient = useQueryClient();
   const { colors, isDark } = useTheme();
   const configured = useGatewayConfigured();
   const m = useMessages();
   const pm = m.notesPage;
   const insets = useSafeAreaInsets();
+
+  const handleBack = useCallback(() => {
+    if (onRequestHome) {
+      onRequestHome();
+      return;
+    }
+    dismissOrHome(router);
+  }, [onRequestHome, router]);
 
   const initialKind = (params.kind as KindFilter) || 'all';
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -209,7 +222,7 @@ export function NotesScreen() {
   if (!configured) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
-        <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
+        <FloatingHeader title={pm.title} onBack={handleBack} />
         <View style={styles.center}>
           <Text style={{ opacity: 0.6 }}>{m.sessions.gatewayNotConfigured}</Text>
         </View>
@@ -219,7 +232,7 @@ export function NotesScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
-      <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
+      <FloatingHeader title={pm.title} onBack={handleBack} />
 
       {/* Filters — single row, horizontally scrollable */}
       <ScrollView
@@ -277,7 +290,7 @@ export function NotesScreen() {
             const badgeKey = captureIntentBadgeKey(intent);
             if (!badgeKey) return null;
             return (
-              <View style={[styles.intentBadge, { backgroundColor: colors.accent.selectionBg, borderColor: colors.border.subtle }]}>
+              <View style={[styles.intentBadge, { backgroundColor: colors.accent.selectionBg }]}>
                 <Icon source={intent.kind === 'todo' ? 'checkbox-marked-outline' : 'link'} size={14} color={colors.accent.primary} />
                 <Text style={{ fontSize: 11, color: colors.accent.primary }}>
                   {pm[badgeKey]}
@@ -285,12 +298,20 @@ export function NotesScreen() {
               </View>
             );
           })()}
-          <View style={[styles.composerShell, { backgroundColor: colors.surface.input, borderColor: colors.border.default }]}>
+          <View
+            style={[
+              styles.composerShell,
+              {
+                backgroundColor: isDark ? colors.surface.input : colors.surface.panel,
+                borderColor: colors.border.default,
+              },
+            ]}
+          >
             <View style={styles.composerRow}>
-              <Pressable style={styles.toolBtn} onPress={() => void handlePickImage('photos')}>
+              <Pressable style={[styles.toolBtn, { backgroundColor: colors.surface.input }]} onPress={() => void handlePickImage('photos')}>
                 <Icon source="image-outline" size={20} color={colors.text.tertiary} />
               </Pressable>
-              <Pressable style={styles.toolBtn} onPress={() => void handlePickImage('camera')}>
+              <Pressable style={[styles.toolBtn, { backgroundColor: colors.surface.input }]} onPress={() => void handlePickImage('camera')}>
                 <Icon source="camera-outline" size={20} color={colors.text.tertiary} />
               </Pressable>
               <TextInput
@@ -316,7 +337,11 @@ export function NotesScreen() {
                 </Pressable>
               ) : (
                 <Pressable
-                  style={[styles.toolBtn, recording && styles.recordingBtn]}
+                  style={[
+                    styles.toolBtn,
+                    { backgroundColor: colors.surface.input },
+                    recording && styles.recordingBtn,
+                  ]}
                   onPressIn={() => void handleVoiceStart()}
                   onPressOut={() => void handleVoiceEnd()}
                   hitSlop={8}
@@ -332,7 +357,7 @@ export function NotesScreen() {
       {/* Action sheet for long-press */}
       {actionNote && (
         <Pressable style={styles.actionBackdrop} onPress={dismissAction}>
-          <View style={[styles.actionSheet, { backgroundColor: colors.surface.panel, borderColor: colors.border.default }]}>
+          <View style={[styles.actionSheet, { backgroundColor: colors.surface.panel }]}>
             <Pressable style={styles.actionItem} onPress={() => { void handleAction(actionNote, actionNote.pinned ? 'unpin' : 'pin'); dismissAction(); }}>
               <Icon source={actionNote.pinned ? 'pin-off' : 'pin'} size={20} color={colors.text.primary} />
               <Text style={{ color: colors.text.primary }}>{actionNote.pinned ? pm.unpin : pm.pin}</Text>
@@ -395,12 +420,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 10,
-    borderWidth: 1,
     marginLeft: 6,
   },
   composerShell: {
-    borderWidth: 1,
     borderRadius: 22,
+    borderWidth: 1,
     overflow: 'hidden',
   },
   composerRow: {

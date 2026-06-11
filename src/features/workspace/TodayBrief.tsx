@@ -13,11 +13,10 @@ interface TodayBriefProps {
 export function TodayBrief({ inboxCount, pendingTaskCount, onInboxPress, onTasksPress }: TodayBriefProps) {
   const { colors, isDark } = useTheme();
   const backgroundColor = isDark ? '#151B2B' : '#EEF4FF';
-  const borderColor = isDark ? 'rgba(109,93,251,0.25)' : 'rgba(109,93,251,0.14)';
-  const metricBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.42)';
+  const metricBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.46)';
 
   return (
-    <View style={[styles.card, { backgroundColor, borderColor }]}> 
+    <View style={[styles.card, { backgroundColor }]}> 
       <View style={styles.headerRow}>
         <View style={styles.iconBubble}>
           <Icon source="weather-sunny" size={18} color="#FFFFFF" />
@@ -47,7 +46,7 @@ function Metric({ label, value, onPress, metricBg }: { label: string; value: num
 }
 
 const styles = StyleSheet.create({
-  card: { borderWidth: 1, borderRadius: 24, padding: 16, gap: 16 },
+  card: { borderRadius: 24, padding: 16, gap: 16 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   iconBubble: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#6D5DFB' },
   titleWrap: { flex: 1, gap: 2 },

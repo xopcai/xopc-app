@@ -16,12 +16,12 @@ interface SpaceListProps {
 }
 
 export function SpaceList({ sessions, onSessionPress }: SpaceListProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
 
   return (
     <View style={styles.section}>
       <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>最近对话</Text>
-      <View style={[styles.card, { backgroundColor: colors.surface.panel, borderColor: colors.border.subtle }]}>
+      <View style={[styles.card, { backgroundColor: colors.surface.panel }]}>
         {sessions.length === 0 ? (
           <View style={styles.emptyRow}>
             <Icon source="message-processing-outline" size={20} color={colors.text.tertiary} />
@@ -29,7 +29,7 @@ export function SpaceList({ sessions, onSessionPress }: SpaceListProps) {
           </View>
         ) : (
           sessions.map((session) => (
-            <Pressable key={session.key} style={[styles.itemRow, { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border.subtle }]} onPress={() => onSessionPress(session.key)}>
+            <Pressable key={session.key} style={styles.itemRow} onPress={() => onSessionPress(session.key)}>
               <View style={styles.iconBubble}>
                 <Icon source="message-processing-outline" size={16} color="#6D5DFB" />
               </View>
@@ -48,7 +48,7 @@ export function SpaceList({ sessions, onSessionPress }: SpaceListProps) {
 const styles = StyleSheet.create({
   section: { gap: 10 },
   sectionTitle: { fontSize: 17, fontWeight: '600' },
-  card: { borderWidth: 1, borderRadius: 20, overflow: 'hidden' },
+  card: { borderRadius: 20, overflow: 'hidden' },
   emptyRow: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16 },
   emptyText: { flex: 1, fontSize: 13, fontWeight: '500' },
   itemRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14 },

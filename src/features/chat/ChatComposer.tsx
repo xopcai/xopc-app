@@ -645,7 +645,12 @@ export const ChatComposer = memo(function ChatComposer({
   );
 
   const renderAbortButton = () => (
-    <Pressable style={styles.sendCircle} onPress={handleAbort} hitSlop={8} accessibilityLabel={cm.stop}>
+    <Pressable
+      style={[styles.sendCircle, { backgroundColor: colors.text.primary }]}
+      onPress={handleAbort}
+      hitSlop={8}
+      accessibilityLabel={cm.stop}
+    >
       <Icon source="stop" size={20} color={colors.text.inverse} />
     </Pressable>
   );

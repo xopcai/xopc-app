@@ -9,7 +9,7 @@ interface InboxPreviewProps {
 }
 
 export function InboxPreview({ count, onOpenInbox }: InboxPreviewProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
 
   return (
     <View style={styles.section}>
@@ -22,7 +22,7 @@ export function InboxPreview({ count, onOpenInbox }: InboxPreviewProps) {
         )}
       </View>
 
-      <Pressable style={[styles.card, { backgroundColor: colors.surface.panel, borderColor: colors.border.subtle }]} onPress={onOpenInbox}>
+      <Pressable style={[styles.card, { backgroundColor: colors.surface.panel }]} onPress={onOpenInbox}>
         {count === 0 ? (
           <View style={styles.emptyRow}>
             <Icon source="inbox-check-outline" size={20} color={colors.text.tertiary} />
@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sectionTitle: { fontSize: 17, fontWeight: '600' },
   openText: { fontSize: 13, fontWeight: '600' },
-  card: { borderWidth: 1, borderRadius: 20, overflow: 'hidden' },
+  card: { borderRadius: 20, overflow: 'hidden' },
   emptyRow: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16 },
   emptyText: { fontSize: 13, fontWeight: '500' },
   countRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16 },

@@ -68,7 +68,6 @@ export default function SchedulesScreen() {
   const jobs = jobsQuery.data ?? [];
 
   const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
-  const cardBorder = isDark ? '#38383A' : '#E5E5EA';
   const textPrimary = isDark ? '#E5E7EB' : '#1F2937';
   const textSecondary = isDark ? '#9CA3AF' : '#6B7280';
   const enabledColor = isDark ? '#86EFAC' : '#16A34A';
@@ -89,7 +88,7 @@ export default function SchedulesScreen() {
       const isRunningThisJob = runMutation.isPending && runMutation.variables === item.id;
 
       return (
-        <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+        <View style={[styles.card, { backgroundColor: cardBg }]}>
           <View style={styles.cardHeader}>
             <Icon source="clock-outline" size={24} color={textSecondary} />
             <View style={styles.cardTitleArea}>
@@ -150,7 +149,7 @@ export default function SchedulesScreen() {
         </View>
       );
     },
-    [cardBg, cardBorder, disabledColor, enabledColor, pm, runMutation, textPrimary, textSecondary, toggleMutation],
+    [cardBg, disabledColor, enabledColor, pm, runMutation, textPrimary, textSecondary, toggleMutation],
   );
 
   const listHeader = (
@@ -243,7 +242,6 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 13, lineHeight: 18 },
   card: {
     borderRadius: 14,
-    borderWidth: 1,
     padding: 14,
     gap: 8,
   },

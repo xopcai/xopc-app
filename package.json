@@ -61,6 +61,7 @@
     "react-native-keyboard-controller": "1.18.5",
     "react-native-mmkv": "^4.3.1",
     "react-native-nitro-modules": "^0.35.9",
+    "react-native-pager-view": "6.9.1",
     "react-native-paper": "^5.15.1",
     "react-native-qrcode-svg": "^6.3.21",
     "react-native-reanimated": "~4.1.1",

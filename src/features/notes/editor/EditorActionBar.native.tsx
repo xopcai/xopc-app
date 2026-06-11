@@ -2,12 +2,12 @@ import { memo, useCallback, useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 
-import { useMessages } from '../../../i18n/messages';
 import { useTheme } from '../../../theme';
 import type { UnifiedEditor } from './types';
 
 export interface EditorActionBarProps {
   editor: UnifiedEditor | null;
+  onAiPress?: () => void;
 }
 
 interface ActionItem {
@@ -18,10 +18,9 @@ interface ActionItem {
 
 export const EditorActionBar = memo(function EditorActionBar({
   editor,
+  onAiPress,
 }: EditorActionBarProps) {
   const { colors } = useTheme();
-  const m = useMessages();
-  const pm = m.notesPage;
 
   const actions = useMemo<ActionItem[]>(() => [
     { id: 'bold', icon: 'format-bold', action: (e) => e.toggleBold() },
@@ -53,6 +52,11 @@ export const EditorActionBar = memo(function EditorActionBar({
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="always"
       >
+        {onAiPress && (
+          <Pressable style={styles.actionBtn} onPress={onAiPress}>
+            <Icon source="creation-outline" size={20} color={colors.accent.primary} />
+          </Pressable>
+        )}
         {actions.map((item) => (
           <Pressable
             key={item.id}

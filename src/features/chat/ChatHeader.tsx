@@ -14,7 +14,6 @@ export const ChatHeader = memo(function ChatHeader({
   currentModelId,
   paddingTop,
   headerBg,
-  headerBorder,
   pillText,
   pillMuted,
   onBackPress,
@@ -28,7 +27,6 @@ export const ChatHeader = memo(function ChatHeader({
   currentModelId: string;
   paddingTop: number;
   headerBg: string;
-  headerBorder: string;
   pillText: string;
   pillMuted: string;
   onBackPress: () => void;
@@ -51,11 +49,11 @@ export const ChatHeader = memo(function ChatHeader({
   return (
     <>
       <View style={[styles.header, { paddingTop }]}> 
-        <Pressable style={[styles.iconButton, { backgroundColor: headerBg, borderColor: headerBorder }]} onPress={onBackPress}>
+        <Pressable style={[styles.iconButton, { backgroundColor: headerBg }]} onPress={onBackPress}>
           <Icon source="chevron-left" size={24} color={pillMuted} />
         </Pressable>
 
-        <View style={[styles.headerCenter, { backgroundColor: headerBg, borderColor: headerBorder }]}> 
+        <View style={[styles.headerCenter, { backgroundColor: headerBg }]}> 
           <Pressable
             style={styles.titlePressable}
             onPress={onAgentPress}
@@ -79,7 +77,7 @@ export const ChatHeader = memo(function ChatHeader({
           </Pressable>
         </View>
 
-        <Pressable style={[styles.iconButton, { backgroundColor: headerBg, borderColor: headerBorder }]} onPress={onNewChat}>
+        <Pressable style={[styles.iconButton, { backgroundColor: headerBg }]} onPress={onNewChat}>
           <Icon source="plus" size={22} color={pillMuted} />
         </Pressable>
       </View>
@@ -108,29 +106,17 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   headerCenter: {
     flex: 1,
     minWidth: 0,
     height: 44,
     borderRadius: 22,
-    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   titlePressable: {
     maxWidth: '100%',

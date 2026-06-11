@@ -50,12 +50,11 @@ export function SettingsRow({
   label,
   value,
   showChevron = true,
-  isLast = false,
   onPress,
 }: SettingsRowProps) {
   const colors = useSettingsColors();
   const content = (
-    <View style={[styles.row, !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}>
+    <View style={styles.row}>
       <View style={[styles.iconWrap, { backgroundColor: `${iconColor}18` }]}>
         <Icon source={icon} size={18} color={iconColor} />
       </View>
@@ -92,7 +91,6 @@ export function SettingsOptionRow({
   label,
   description,
   selected,
-  isLast,
   onPress,
 }: SettingsOptionRowProps) {
   const colors = useSettingsColors();
@@ -101,7 +99,6 @@ export function SettingsOptionRow({
       onPress={onPress}
       style={({ pressed }) => [
         styles.optionRow,
-        !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
         pressed && styles.rowPressed,
       ]}
     >
@@ -134,19 +131,13 @@ export function SettingsAgentRow({
   agentId,
   description,
   selected,
-  isLast,
   chatLoading,
   onSelect,
   onChat,
 }: SettingsAgentRowProps) {
   const colors = useSettingsColors();
   return (
-    <View
-      style={[
-        styles.agentRow,
-        !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-      ]}
-    >
+    <View style={styles.agentRow}>
       <Pressable
         onPress={onSelect}
         style={({ pressed }) => [styles.agentRowMain, pressed && styles.rowPressed]}

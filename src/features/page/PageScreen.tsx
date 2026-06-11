@@ -1,38 +1,62 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import * as Clipboard from 'expo-clipboard';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { KeyboardAvoidingView, Modal, Platform, Share, StyleSheet, View } from 'react-native';
 import { Icon, Snackbar, Text } from 'react-native-paper';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingHeader } from '../../components/FloatingHeader';
 
-import { openChat } from '../../lib/navigation';
+import { useMessages } from '../../i18n/messages';
 import { queryKeys } from '../../query/keys';
 import {
   fetchNote,
-  updateNote,
   recordNoteOpen,
   type Note,
-  type NoteBlock,
 } from '../../query/notes';
-import { createSession } from '../../query/sessions';
 import { useTheme } from '../../theme';
 
-import { PageAiActions } from './PageAiActions';
+import { NoteAiPanel } from '../notes/ai/NoteAiPanel';
+import { NoteBlockEditor } from '../notes/editor/NoteBlockEditor';
+import { EditorActionBar } from '../notes/editor/EditorActionBar';
+import type { UnifiedEditor } from '../notes/editor/types';
+import {
+  blocksToMarkdown,
+  noteToBlocks,
+  type NoteAiPatch,
+  type NoteBlock,
+} from '../notes/note-blocks';
+import {
+  flushPendingNoteOperations,
+  readLocalNote,
+  saveLocalNoteEdit,
+  writeLocalNote,
+  type LocalNoteSnapshot,
+} from '../notes/notes-local';
 
-function blockToText(block: NoteBlock): string {
-  if ('text' in block) return block.text || '';
-  return '';
+function mergeRemoteWithLocal(
+  remoteNote?: Note,
+  localNote?: LocalNoteSnapshot | null,
+): Note | undefined {
+  if (!remoteNote) return localNote ?? undefined;
+  if (!localNote) return remoteNote;
+  if (localNote.updatedAt >= remoteNote.updatedAt) return localNote;
+  return remoteNote;
 }
 
 export function PageScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { colors, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const m = useMessages();
+  const pm = m.notesPage;
+
+  const [localNote, setLocalNote] = useState<LocalNoteSnapshot | null>(null);
+  const [blocks, setBlocks] = useState<NoteBlock[]>([]);
   const [snackMsg, setSnackMsg] = useState('');
+  const [showAiPanel, setShowAiPanel] = useState(false);
+  const editorRef = useRef<UnifiedEditor | null>(null);
 
   const noteQuery = useQuery({
     queryKey: id ? queryKeys.note(id) : ['note', 'missing'],
@@ -44,99 +68,185 @@ export function PageScreen() {
     enabled: Boolean(id),
   });
 
-  const note = noteQuery.data;
-  const blocks = note?.blocks ?? [];
-
-  const plainText = useMemo(
-    () => blocks.map(blockToText).filter(Boolean).join('\n'),
-    [blocks],
+  const note = useMemo(
+    () => mergeRemoteWithLocal(noteQuery.data, localNote),
+    [localNote, noteQuery.data],
   );
 
-  const renameMutation = useMutation({
-    mutationFn: (text: string) => updateNote(id!, { text }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.note(id!) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.home });
+  useEffect(() => {
+    if (!id) return;
+    setLocalNote(readLocalNote(id));
+  }, [id]);
+
+  useEffect(() => {
+    if (!note) return;
+    setBlocks(noteToBlocks(note));
+    if (id && !localNote) {
+      writeLocalNote({
+        ...note,
+        blocks: noteToBlocks(note),
+        localVersion: note.localVersion ?? 0,
+        syncState: 'synced',
+      });
+    }
+  }, [id, localNote, note]);
+
+  const persistBlocks = useCallback(
+    (nextBlocks: NoteBlock[]) => {
+      if (!note) return;
+      setBlocks(nextBlocks);
+      const snapshot = saveLocalNoteEdit(note, nextBlocks);
+      setLocalNote(snapshot);
+      queryClient.setQueryData(queryKeys.note(note.id), snapshot);
     },
-    onError: (err) => setSnackMsg(err instanceof Error ? err.message : '保存失败'),
-  });
+    [note, queryClient],
+  );
 
-  const startThreadMutation = useMutation({
-    mutationFn: async (message: string) => {
-      const sessionKey = await createSession();
-      return { sessionKey, message };
+  const handleFlush = useCallback(async () => {
+    await flushPendingNoteOperations();
+    if (id) {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.note(id) });
+    }
+    await queryClient.invalidateQueries({ queryKey: queryKeys.notesAll });
+    setLocalNote(id ? readLocalNote(id) : null);
+    setSnackMsg(pm.updated);
+  }, [id, pm.updated, queryClient]);
+
+  const handleApplyAiBlocks = useCallback(
+    (nextBlocks: NoteBlock[], patch: NoteAiPatch) => {
+      persistBlocks(nextBlocks);
+      setSnackMsg(patch.summary || pm.updated);
     },
-    onSuccess: ({ sessionKey, message }) => openChat(router, sessionKey, { msg: message }),
-    onError: (err) => setSnackMsg(err instanceof Error ? err.message : '创建 AI 会话失败'),
-  });
+    [persistBlocks, pm.updated],
+  );
 
-  const handleAiAction = useCallback((prompt: string) => {
-    const title = note?.text ? `${prompt}：${note.text.slice(0, 40)}` : prompt;
-    startThreadMutation.mutate(plainText ? `${title}\n\n${plainText}` : title);
-  }, [note?.text, plainText, startThreadMutation]);
+  const handleShare = useCallback(async () => {
+    const markdown = blocksToMarkdown(blocks);
+    if (Platform.OS === 'web') {
+      await Clipboard.setStringAsync(markdown);
+      setSnackMsg(pm.shareNotesCopied);
+      return;
+    }
+    try {
+      await Share.share({ message: markdown });
+    } catch {
+      await Clipboard.setStringAsync(markdown);
+      setSnackMsg(pm.shareNotesCopied);
+    }
+  }, [blocks, pm.shareNotesCopied]);
 
-  const snippet = note?.text || blocks.map(blockToText).filter(Boolean).join('\n') || '';
+  const handleEditorReady = useCallback((editor: UnifiedEditor) => {
+    editorRef.current = editor;
+  }, []);
+
+  const title = note
+    ? new Date(note.createdAt).toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.surface.base }]}> 
+    <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
       <FloatingHeader
-        title="笔记"
+        title={title || '笔记'}
         onBack={() => router.back()}
-        rightIcon="message-processing-outline"
-        onRightPress={() => handleAiAction('基于这个笔记发起 AI 会话')}
+        rightActions={[
+          { icon: 'share-variant-outline', onPress: () => void handleShare() },
+          { icon: 'cloud-sync-outline', onPress: () => void handleFlush() },
+        ]}
       />
 
-      {!noteQuery.isLoading && !note ? (
-        <View style={styles.center}>
-          <Icon source="file-question-outline" size={42} color={colors.text.tertiary} />
-          <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>内容不存在</Text>
-        </View>
-      ) : (
-        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}> 
-          <TextInput
-            value={snippet}
-            onChangeText={(text) => {
-              queryClient.setQueryData(queryKeys.note(id!), (prev: Note | undefined) => {
-                if (!prev) return prev;
-                return { ...prev, text };
-              });
-            }}
-            onBlur={() => {
-              const currentNote = queryClient.getQueryData<Note>(queryKeys.note(id!));
-              if (currentNote?.text) renameMutation.mutate(currentNote.text);
-            }}
-            style={[styles.titleInput, { color: colors.text.primary }]}
-            multiline
-          />
-          <PageAiActions
-            onSummarize={() => handleAiAction('总结这个笔记')}
-            onContinueWriting={() => handleAiAction('继续写这个笔记')}
-            onExtractTasks={() => handleAiAction('从这个笔记提取任务')}
-            onStartThread={() => handleAiAction('基于这个笔记发起 AI 会话')}
-          />
-          {blocks.length > 0 && (
-            <View style={styles.blocks}>
-              {blocks.map((block) => (
-                <View key={block.id} style={[styles.blockCard, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)' }]}> 
-                  <Text style={[styles.blockText, { color: colors.text.primary }]}>{blockToText(block)}</Text>
-                </View>
-              ))}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        {noteQuery.isLoading && !note ? (
+          <View style={styles.center}>
+            <Text style={{ color: colors.text.tertiary }}>Loading…</Text>
+          </View>
+        ) : note && id ? (
+          <>
+            <View style={styles.editorWrap}>
+              <NoteBlockEditor
+                blocks={blocks}
+                onChange={persistBlocks}
+                onEditorReady={handleEditorReady}
+              />
             </View>
-          )}
-        </ScrollView>
-      )}
-      <Snackbar visible={!!snackMsg} onDismiss={() => setSnackMsg('')} duration={2200}>{snackMsg}</Snackbar>
+            <EditorActionBar
+              editor={editorRef.current}
+              onAiPress={() => setShowAiPanel(true)}
+            />
+            <Modal
+              visible={showAiPanel}
+              animationType="slide"
+              transparent
+              onRequestClose={() => setShowAiPanel(false)}
+            >
+              <View style={styles.modalOverlay}>
+                <View
+                  style={[
+                    styles.modalContent,
+                    { backgroundColor: colors.surface.base },
+                  ]}
+                >
+                  <NoteAiPanel
+                    noteId={id}
+                    blocks={blocks}
+                    isDark={colors.surface.base === '#000000'}
+                    onApplyBlocks={(nextBlocks, patch) => {
+                      handleApplyAiBlocks(nextBlocks, patch);
+                      setShowAiPanel(false);
+                    }}
+                    onMessage={setSnackMsg}
+                  />
+                </View>
+              </View>
+            </Modal>
+          </>
+        ) : (
+          <View style={styles.center}>
+            <Icon
+              source="file-question-outline"
+              size={42}
+              color={colors.text.tertiary}
+            />
+            <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>
+              内容不存在
+            </Text>
+          </View>
+        )}
+      </KeyboardAvoidingView>
+
+      <Snackbar
+        visible={Boolean(snackMsg)}
+        onDismiss={() => setSnackMsg('')}
+        duration={2200}
+      >
+        {snackMsg}
+      </Snackbar>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { paddingHorizontal: 18, gap: 16 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  titleInput: { fontSize: 22, fontWeight: '900', lineHeight: 30, paddingVertical: 8 },
-  blocks: { gap: 10 },
-  blockCard: { borderWidth: 1, borderRadius: 18, padding: 14 },
-  blockText: { fontSize: 16, fontWeight: '600', lineHeight: 23 },
+  keyboardAvoid: { flex: 1 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
+  editorWrap: { flex: 1, paddingHorizontal: 16 },
   emptyTitle: { fontSize: 18, fontWeight: '800' },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  modalContent: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+    maxHeight: '60%',
+  },
 });

@@ -38,12 +38,18 @@ import { useChatPageBootstrap } from './use-chat-page-bootstrap';
 import { useChatSession } from './use-chat-session';
 import { useSessionHistory } from './use-session-history';
 
-export function useChatPage() {
+export type UseChatPageOptions = {
+  embedded?: boolean;
+  onBack?: () => void;
+};
+
+export function useChatPage(options: UseChatPageOptions = {}) {
+  const { embedded = false, onBack } = options;
   const { k: rawKey, msg: rawMsg } = useLocalSearchParams<{ k?: string; msg?: string }>();
   const urlSessionKey = typeof rawKey === 'string' ? rawKey : Array.isArray(rawKey) ? rawKey[0] : '';
   const urlPrefillMessage = typeof rawMsg === 'string' ? rawMsg : Array.isArray(rawMsg) ? rawMsg[0] : '';
   const router = useRouter();
-  useDismissOnHardwareBack(router);
+  useDismissOnHardwareBack(router, { enabled: !embedded });
   const queryClient = useQueryClient();
   const { gatewayOnline } = useGatewayHealth();
   const routeSwitchToast = useRouteSwitchToast();
@@ -78,6 +84,7 @@ export function useChatPage() {
     localDefaultAgentId,
     messages: m,
     activeSessionKeyRef,
+    shouldNavigateToRoute: !embedded,
   });
 
   const sessionKey = urlSessionKey || bootstrap.pendingBootstrapKey;
@@ -181,8 +188,12 @@ export function useChatPage() {
 
   // ── Handlers ─────────────────────────────────────────────
   const handleBack = useCallback(() => {
+    if (onBack) {
+      onBack();
+      return;
+    }
     dismissOrHome(router);
-  }, [router]);
+  }, [onBack, router]);
 
   const handleModelSelect = useCallback(
     (modelId: string) => {
@@ -199,13 +210,15 @@ export function useChatPage() {
           chatSession.activeSessionKeyRef.current = key;
           bootstrap.setPendingBootstrapKey(key);
           void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
-          openChat(router, key, { replace: true });
+          if (!embedded) {
+            openChat(router, key, { replace: true });
+          }
         })
         .catch((e) => {
           chatSession.setSnackMsg(e instanceof Error ? e.message : String(e));
         });
     },
-    [queryClient, router, chatSession, bootstrap],
+    [embedded, queryClient, router, chatSession, bootstrap],
   );
 
   const handleNewChat = useCallback(() => {
@@ -219,13 +232,15 @@ export function useChatPage() {
         chatSession.activeSessionKeyRef.current = key;
         bootstrap.setPendingBootstrapKey(key);
         void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
-        openChat(router, key, { replace: true });
+        if (!embedded) {
+          openChat(router, key, { replace: true });
+        }
       })
       .catch((e) => {
         chatSession.activeSessionKeyRef.current = sessionKey;
         chatSession.setSnackMsg(e instanceof Error ? e.message : String(e));
       });
-  }, [agentsQuery.data, localDefaultAgentId, queryClient, router, sessionKey, chatSession, bootstrap]);
+  }, [agentsQuery.data, embedded, localDefaultAgentId, queryClient, router, sessionKey, chatSession, bootstrap]);
 
   const queueFollowUpOrSend = useCallback(
     (text: string) => {
@@ -320,14 +335,16 @@ export function useChatPage() {
         bootstrap.setPendingBootstrapKey(key);
         void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
         setGatewaySheetVisible(false);
-        openChat(router, key, { replace: true });
+        if (!embedded) {
+          openChat(router, key, { replace: true });
+        }
       } catch (e) {
         chatSession.setSnackMsg(e instanceof Error ? e.message : String(e));
       } finally {
         setSwitchingGatewayId(null);
       }
     },
-    [activeGatewayId, agentsQuery.data, localDefaultAgentId, queryClient, router, switchGateway, chatSession, bootstrap],
+    [activeGatewayId, agentsQuery.data, embedded, localDefaultAgentId, queryClient, router, switchGateway, chatSession, bootstrap],
   );
 
   const { openGatewayConnectLanding } = useGatewayConnectLanding();

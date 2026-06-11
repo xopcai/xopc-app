@@ -2,17 +2,16 @@ import * as Clipboard from 'expo-clipboard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Share, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Share, StyleSheet, View } from 'react-native';
 import { Snackbar, Text } from 'react-native-paper';
 import type { UnifiedEditor } from './editor/types';
 
 import { FloatingHeader } from '../../components/FloatingHeader';
 
 import { useMessages } from '../../i18n/messages';
-import { dismissOrHome, openChat, useDismissOnHardwareBack } from '../../lib/navigation';
+import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
 import { fetchNote, type Note } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
-import { createSession } from '../../query/sessions';
 import { useTheme } from '../../theme';
 
 import { NoteAiPanel } from './ai/NoteAiPanel';
@@ -20,7 +19,6 @@ import { NoteBlockEditor } from './editor/NoteBlockEditor';
 import { EditorActionBar } from './editor/EditorActionBar';
 import {
   blocksToMarkdown,
-  blocksToPlainText,
   noteToBlocks,
   type NoteAiPatch,
   type NoteBlock,
@@ -52,6 +50,7 @@ export function NoteDetailScreen() {
   const [localNote, setLocalNote] = useState<LocalNoteSnapshot | null>(null);
   const [blocks, setBlocks] = useState<NoteBlock[]>([]);
   const [snackMsg, setSnackMsg] = useState('');
+  const [showAiPanel, setShowAiPanel] = useState(false);
   const editorRef = useRef<UnifiedEditor | null>(null);
 
   const noteQuery = useQuery({
@@ -128,9 +127,6 @@ export function NoteDetailScreen() {
   const title = note
     ? new Date(note.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
     : '';
-  const syncText = localNote?.syncState === 'pending' || localNote?.syncState === 'failed'
-    ? pm.savedOffline
-    : `${blocksToPlainText(blocks).length} chars`;
 
   return (
         <View style={[styles.screen, { backgroundColor: colors.surface.base }]}> 
@@ -154,23 +150,34 @@ export function NoteDetailScreen() {
         ) : note && id ? (
           <>
             <View style={styles.editorWrap}>
-              <Text style={[styles.syncText, { color: colors.text.tertiary }]}>{syncText}</Text>
               <NoteBlockEditor
                 blocks={blocks}
                 onChange={persistBlocks}
                 onEditorReady={handleEditorReady}
               />
             </View>
-            <EditorActionBar editor={editorRef.current} />
-            <View style={styles.aiPanelWrap}>
-              <NoteAiPanel
-                noteId={id}
-                blocks={blocks}
-                isDark={colors.surface.base === '#000000'}
-                onApplyBlocks={handleApplyAiBlocks}
-                onMessage={setSnackMsg}
-              />
-            </View>
+            <EditorActionBar editor={editorRef.current} onAiPress={() => setShowAiPanel(true)} />
+            <Modal
+              visible={showAiPanel}
+              animationType="slide"
+              transparent
+              onRequestClose={() => setShowAiPanel(false)}
+            >
+              <View style={styles.modalOverlay}>
+                <View style={[styles.modalContent, { backgroundColor: colors.surface.base }]}>
+                  <NoteAiPanel
+                    noteId={id}
+                    blocks={blocks}
+                    isDark={colors.surface.base === '#000000'}
+                    onApplyBlocks={(nextBlocks, patch) => {
+                      handleApplyAiBlocks(nextBlocks, patch);
+                      setShowAiPanel(false);
+                    }}
+                    onMessage={setSnackMsg}
+                  />
+                </View>
+              </View>
+            </Modal>
           </>
         ) : (
           <View style={styles.center}>
@@ -190,7 +197,16 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   keyboardAvoid: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  editorWrap: { flex: 1, padding: 16, paddingBottom: 0 },
-  syncText: { fontSize: 12, marginBottom: 10 },
-  aiPanelWrap: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 },
+  editorWrap: { flex: 1, paddingHorizontal: 16 },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  modalContent: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+    maxHeight: '60%',
+  },
 });

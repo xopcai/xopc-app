@@ -1,8 +1,8 @@
 /**
- * Workspace Home — AI 原生工作空间单入口。
+ * Workspace root — horizontal workspace pager.
  */
-import { WorkspaceHomeScreen } from '../../src/features/workspace/WorkspaceHomeScreen';
+import { WorkspacePagerScreen } from '../../src/features/workspace/WorkspacePagerScreen';
 
 export default function HomeRoute() {
-  return <WorkspaceHomeScreen />;
+  return <WorkspacePagerScreen />;
 }

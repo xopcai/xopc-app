@@ -4,6 +4,7 @@ import type { UnifiedEditor } from './types';
 
 export interface EditorActionBarProps {
   editor: UnifiedEditor | null;
+  onAiPress?: () => void;
 }
 
 interface ActionItem {
@@ -31,6 +32,7 @@ const ICON_MAP: Record<string, string> = {
 
 export const EditorActionBar = memo(function EditorActionBar({
   editor,
+  onAiPress,
 }: EditorActionBarProps) {
   const { colors } = useTheme();
 
@@ -64,6 +66,28 @@ export const EditorActionBar = memo(function EditorActionBar({
       gap: 2,
       overflowX: 'auto',
     }}>
+      {onAiPress && (
+        <button
+          title="AI"
+          onClick={onAiPress}
+          style={{
+            width: 38,
+            height: 34,
+            borderRadius: 8,
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 16,
+            color: colors.accent.primary,
+            flexShrink: 0,
+          }}
+        >
+          ✦
+        </button>
+      )}
       {actions.map((item) => (
         <button
           key={item.id}

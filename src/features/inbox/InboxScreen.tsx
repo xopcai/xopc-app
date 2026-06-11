@@ -96,7 +96,14 @@ export function InboxScreen() {
           onChangeText={setCaptureText}
           placeholder="快速记录一条想法..."
           placeholderTextColor={colors.text.tertiary}
-          style={[styles.captureInput, { color: colors.text.primary, backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.10)' }]}
+          style={[
+            styles.captureInput,
+            {
+              color: colors.text.primary,
+              backgroundColor: isDark ? colors.surface.input : colors.surface.panel,
+              borderColor: colors.border.default,
+            },
+          ]}
           returnKeyType="send"
           onSubmitEditing={handleCapture}
         />

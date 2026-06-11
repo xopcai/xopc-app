@@ -41,7 +41,6 @@ export function NoteCard({ note, onPress, onLongPress }: NoteCardProps) {
         styles.card,
         {
           backgroundColor: pressed ? colors.surface.hover : colors.surface.panel,
-          borderColor: colors.border.subtle,
         },
       ]}
       onPress={handlePress}
@@ -79,7 +78,6 @@ export function NoteCard({ note, onPress, onLongPress }: NoteCardProps) {
 const styles = StyleSheet.create({
   card: {
     borderRadius: 14,
-    borderWidth: 1,
     padding: 14,
     gap: 10,
   },

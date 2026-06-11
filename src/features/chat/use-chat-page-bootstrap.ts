@@ -25,6 +25,7 @@ export type ChatBootstrapDeps = {
   messages: ReturnType<typeof useMessages>;
   /** Shared mutable ref — bootstrap writes the new session key here so callers stay in sync. */
   activeSessionKeyRef: React.MutableRefObject<string>;
+  shouldNavigateToRoute?: boolean;
 };
 
 export type ChatBootstrapResult = {
@@ -43,6 +44,7 @@ export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResu
     localDefaultAgentId,
     messages: m,
     activeSessionKeyRef,
+    shouldNavigateToRoute = true,
   } = deps;
 
   const router = useRouter();
@@ -74,7 +76,9 @@ export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResu
         activeSessionKeyRef.current = key;
         setPendingBootstrapKey(key);
         void queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
-        openChat(router, key, { replace: true });
+        if (shouldNavigateToRoute) {
+          openChat(router, key, { replace: true });
+        }
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         setBootstrapError(message.trim() || m.sessions.bootstrapFailed);
@@ -83,7 +87,7 @@ export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResu
         setCreatingInitialSession(false);
       }
     })();
-  }, [urlSessionKey, gatewayOnline, agentsData, localDefaultAgentId, router, queryClient, m.sessions.bootstrapFailed, activeSessionKeyRef]);
+  }, [urlSessionKey, gatewayOnline, agentsData, localDefaultAgentId, router, queryClient, m.sessions.bootstrapFailed, activeSessionKeyRef, shouldNavigateToRoute]);
 
   // Auto-start on first mount when gateway is online
   useEffect(() => {

@@ -47,7 +47,6 @@ export default function TasksScreen() {
   );
 
   const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
-  const cardBorder = isDark ? '#38383A' : '#E5E5EA';
   const textPrimary = isDark ? '#E5E7EB' : '#1F2937';
   const textSecondary = isDark ? '#9CA3AF' : '#6B7280';
 
@@ -76,7 +75,7 @@ export default function TasksScreen() {
       const jobTitle = item.jobName?.trim() || item.jobId;
       const color = statusColor(item.status);
       return (
-        <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+        <View style={[styles.card, { backgroundColor: cardBg }]}>
           <View style={styles.cardHeader}>
             <Icon source="play-circle-outline" size={24} color={textSecondary} />
             <View style={styles.cardTitleArea}>
@@ -87,7 +86,7 @@ export default function TasksScreen() {
                 {item.id}
               </Text>
             </View>
-            <View style={[styles.statusPill, { borderColor: color }]}>
+            <View style={[styles.statusPill, { backgroundColor: `${color}18` }]}>
               <Text style={{ color, fontSize: 11, fontWeight: '700' }}>{statusLabel[item.status]}</Text>
             </View>
           </View>
@@ -121,7 +120,7 @@ export default function TasksScreen() {
         </View>
       );
     },
-    [cardBg, cardBorder, isDark, pm.started, statusColor, statusLabel, textPrimary, textSecondary],
+    [cardBg, isDark, pm.started, statusColor, statusLabel, textPrimary, textSecondary],
   );
 
   const listHeader = (
@@ -210,7 +209,6 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 13, lineHeight: 18 },
   card: {
     borderRadius: 14,
-    borderWidth: 1,
     padding: 14,
     gap: 6,
   },
@@ -223,7 +221,6 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 15, fontWeight: '600' },
   mono: { fontSize: 11, fontFamily: 'monospace', marginTop: 2 },
   statusPill: {
-    borderWidth: 1,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,

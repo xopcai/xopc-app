@@ -34,14 +34,20 @@ export function dismissOrHome(router: Router): void {
 }
 
 /** Android hardware back when this screen is the only stack entry must not dispatch unhandled GO_BACK. */
-export function useDismissOnHardwareBack(router: Router): void {
+export function useDismissOnHardwareBack(
+  router: Router,
+  options: { enabled?: boolean } = {},
+): void {
+  const enabled = options.enabled ?? true;
+
   useFocusEffect(
     useCallback(() => {
+      if (!enabled) return undefined;
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
         dismissOrHome(router);
         return true;
       });
       return () => sub.remove();
-    }, [router]),
+    }, [enabled, router]),
   );
 }

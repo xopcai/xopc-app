@@ -18,13 +18,13 @@ function iconForKind(kind: NoteIndexEntry['kind']): string {
 }
 
 export function ContinueRail({ items, onItemPress }: ContinueRailProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
 
   return (
     <View style={styles.section}>
       <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>继续</Text>
       {items.length === 0 ? (
-        <View style={[styles.emptyCard, { backgroundColor: colors.surface.panel, borderColor: colors.border.subtle }]}> 
+        <View style={[styles.emptyCard, { backgroundColor: colors.surface.panel }]}> 
           <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>还没有最近打开的笔记</Text>
         </View>
       ) : (
@@ -32,7 +32,7 @@ export function ContinueRail({ items, onItemPress }: ContinueRailProps) {
           {items.map((item) => (
             <Pressable
               key={item.id}
-              style={[styles.card, { backgroundColor: colors.surface.panel, borderColor: colors.border.subtle }]}
+              style={[styles.card, { backgroundColor: colors.surface.panel }]}
               onPress={() => onItemPress(item)}
             >
               <Icon source={iconForKind(item.kind)} size={20} color="#6D5DFB" />
@@ -54,9 +54,9 @@ const styles = StyleSheet.create({
   section: { gap: 10 },
   sectionTitle: { fontSize: 17, fontWeight: '600' },
   rail: { gap: 12, paddingRight: 16 },
-  card: { width: 164, minHeight: 112, borderRadius: 20, borderWidth: 1, padding: 14, gap: 8 },
+  card: { width: 164, minHeight: 112, borderRadius: 20, padding: 14, gap: 8 },
   cardTitle: { fontSize: 15, fontWeight: '600' },
   cardSummary: { fontSize: 12, lineHeight: 17 },
-  emptyCard: { borderWidth: 1, borderRadius: 18, padding: 16 },
+  emptyCard: { borderRadius: 18, padding: 16 },
   emptyText: { fontSize: 13, fontWeight: '500' },
 });
