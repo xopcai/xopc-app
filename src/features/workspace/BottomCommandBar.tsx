@@ -1,7 +1,11 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useRef } from 'react';
+import { Pressable, StyleSheet, View, type View as RNView } from 'react-native';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { Icon, Text } from 'react-native-paper';
 
 import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding, useTheme } from '../../theme';
+
+import { useOptionalWorkspaceTransition } from './workspace-transition-context';
 
 interface BottomCommandBarProps {
   bottomInset: number;
@@ -11,29 +15,70 @@ interface BottomCommandBarProps {
   onCreate: () => void;
 }
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 export function BottomCommandBar({ bottomInset, onSearch, onAskAi, onAskAiPressIn, onCreate }: BottomCommandBarProps) {
   const { colors, isDark } = useTheme();
+  const transition = useOptionalWorkspaceTransition();
   const controlBg = isDark ? colors.surface.input : colors.surface.panel;
+  const pillRef = useRef<RNView>(null);
+
+  const measurePill = useCallback(async () => {
+    return new Promise<{ x: number; y: number; width: number; height: number } | null>((resolve) => {
+      pillRef.current?.measureInWindow((x, y, width, height) => {
+        if (width <= 0 || height <= 0) {
+          resolve(null);
+          return;
+        }
+        resolve({ x, y, width, height });
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!transition) return;
+    transition.registerPillMeasurer(measurePill);
+    return () => transition.registerPillMeasurer(null);
+  }, [measurePill, transition]);
+
+  const pillHiddenStyle = useAnimatedStyle(() => {
+    if (!transition) return { opacity: 1 };
+    const hidden = transition.progress.value > 0.02;
+    return { opacity: hidden ? 0 : 1 };
+  }, [transition]);
+
+  const barHiddenStyle = useAnimatedStyle(() => {
+    if (!transition) return { opacity: 1, transform: [{ translateY: 0 }] };
+    const openAmount = transition.progress.value;
+    return {
+      opacity: 1 - openAmount * 0.85,
+      transform: [{ translateY: openAmount * 40 }],
+    };
+  }, [transition]);
 
   return (
-    <View style={[styles.wrap, { paddingBottom: floatingBottomPadding(bottomInset) }]}>
+    <Animated.View style={[styles.wrap, { paddingBottom: floatingBottomPadding(bottomInset) }, barHiddenStyle]}>
       <Pressable style={[styles.iconButton, { backgroundColor: controlBg }]} onPress={onSearch}>
         <Icon source="magnify" size={22} color={colors.text.secondary} />
       </Pressable>
 
-      <Pressable
-        style={[styles.aiPill, { backgroundColor: controlBg }]}
-        onPress={onAskAi}
-        onPressIn={onAskAiPressIn}
-      >
-        <Icon source="creation-outline" size={18} color="#6D5DFB" />
-        <Text style={[styles.aiText, { color: colors.text.tertiary }]} numberOfLines={1}>问 AI</Text>
-      </Pressable>
+      <View ref={pillRef} collapsable={false} style={styles.aiPillWrap}>
+        <AnimatedPressable
+          style={[styles.aiPill, { backgroundColor: controlBg }, pillHiddenStyle]}
+          onPress={onAskAi}
+          onPressIn={onAskAiPressIn}
+          accessibilityRole="button"
+          accessibilityLabel="问 AI"
+        >
+          <Icon source="creation-outline" size={18} color="#6D5DFB" />
+          <Text style={[styles.aiText, { color: colors.text.tertiary }]} numberOfLines={1}>问 AI</Text>
+        </AnimatedPressable>
+      </View>
 
       <Pressable style={[styles.iconButton, { backgroundColor: controlBg }]} onPress={onCreate}>
         <Icon source="square-edit-outline" size={21} color={colors.text.secondary} />
       </Pressable>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -55,6 +100,9 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  aiPillWrap: {
+    flex: 1,
   },
   aiPill: {
     flex: 1,

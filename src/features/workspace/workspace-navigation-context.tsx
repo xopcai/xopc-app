@@ -3,7 +3,6 @@ import {
   useCallback,
   useContext,
   useMemo,
-  useRef,
   type ReactNode,
 } from 'react';
 import { useRouter } from 'expo-router';
@@ -11,51 +10,50 @@ import { useRouter } from 'expo-router';
 import { prefetchNewChatSession } from '../chat/session-prefetch';
 import { useEffectiveDefaultAgentId } from '../../query/agents';
 
-type EmbeddedAskAiHandler = () => void;
+import { useOptionalWorkspaceTransition } from './workspace-transition-context';
+
+import type { FinalizeAskAiHandler } from './workspace-transition.types';
 
 export type WorkspaceNavigationValue = {
   openAskAi: () => void;
   prefetchAskAiSession: () => void;
-  registerEmbeddedAskAiHandler: (handler: EmbeddedAskAiHandler | null) => void;
+  registerFinalizeHandler: (handler: FinalizeAskAiHandler | null) => void;
 };
 
 const WorkspaceNavigationContext = createContext<WorkspaceNavigationValue | null>(null);
 
 type WorkspaceNavigationProviderProps = {
   children: ReactNode;
-  /** Native pager: switch to the embedded chat page after preparing a session. */
-  onOpenAskAiNative?: () => void;
 };
 
-export function WorkspaceNavigationProvider({
-  children,
-  onOpenAskAiNative,
-}: WorkspaceNavigationProviderProps) {
+export function WorkspaceNavigationProvider({ children }: WorkspaceNavigationProviderProps) {
   const router = useRouter();
-  const embeddedHandlerRef = useRef<EmbeddedAskAiHandler | null>(null);
+  const transition = useOptionalWorkspaceTransition();
   const defaultAgentId = useEffectiveDefaultAgentId();
 
   const prefetchAskAiSession = useCallback(() => {
     prefetchNewChatSession(defaultAgentId, { forceNew: true });
   }, [defaultAgentId]);
 
-  const registerEmbeddedAskAiHandler = useCallback((handler: EmbeddedAskAiHandler | null) => {
-    embeddedHandlerRef.current = handler;
-  }, []);
+  const registerFinalizeHandler = useCallback(
+    (handler: FinalizeAskAiHandler | null) => {
+      transition?.registerFinalizeHandler(handler);
+    },
+    [transition],
+  );
 
   const openAskAi = useCallback(() => {
     prefetchAskAiSession();
-    if (onOpenAskAiNative) {
-      embeddedHandlerRef.current?.();
-      onOpenAskAiNative();
+    if (transition) {
+      void transition.openAskAi();
       return;
     }
     router.push('/chat');
-  }, [onOpenAskAiNative, prefetchAskAiSession, router]);
+  }, [prefetchAskAiSession, router, transition]);
 
   const value = useMemo(
-    () => ({ openAskAi, prefetchAskAiSession, registerEmbeddedAskAiHandler }),
-    [openAskAi, prefetchAskAiSession, registerEmbeddedAskAiHandler],
+    () => ({ openAskAi, prefetchAskAiSession, registerFinalizeHandler }),
+    [openAskAi, prefetchAskAiSession, registerFinalizeHandler],
   );
 
   return (
@@ -75,7 +73,7 @@ export function useWorkspaceNavigation(): WorkspaceNavigationValue {
       ctx ?? {
         openAskAi: () => router.push('/chat'),
         prefetchAskAiSession: () => prefetchNewChatSession(defaultAgentId, { forceNew: true }),
-        registerEmbeddedAskAiHandler: () => {},
+        registerFinalizeHandler: () => {},
       },
     [ctx, defaultAgentId, router],
   );

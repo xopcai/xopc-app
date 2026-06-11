@@ -9,6 +9,7 @@
  */
 import { useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import Animated, { Extrapolation, interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { Banner, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,6 +23,7 @@ import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
 import { AgentPickerSheet } from './AgentPickerSheet';
 import { ChatComposer } from './ChatComposer';
 import { ChatHeader } from './ChatHeader';
+import { ChatOverlayDismissHandle } from './ChatOverlayDismissHandle';
 import { ChatStreamNotice } from './ChatStreamNotice';
 import { ClarifyPrompt } from './ClarifyPrompt';
 import { GatewayPickerSheet } from './GatewayPickerSheet';
@@ -30,16 +32,22 @@ import { MessageList } from './MessageList';
 import { MAX_PENDING_FOLLOW_UPS } from './pending-follow-up.types';
 import { appendOlderSessionHistoryPage } from './session-message-parser';
 import { useChatPage } from './use-chat-page';
+import { useOptionalWorkspaceTransition } from '../workspace/workspace-transition-context';
+
+const AnimatedView = Animated.createAnimatedComponent(View);
 
 export type ChatScreenProps = {
   embedded?: boolean;
+  overlay?: boolean;
   onRequestHome?: () => void;
 };
 
-export function ChatScreen({ embedded = false, onRequestHome }: ChatScreenProps) {
+export function ChatScreen({ embedded = false, overlay = false, onRequestHome }: ChatScreenProps) {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const page = useChatPage({ embedded, onBack: onRequestHome });
+  const transition = useOptionalWorkspaceTransition();
+  const isShellEmbedded = embedded || overlay;
+  const page = useChatPage({ embedded: isShellEmbedded, onBack: onRequestHome });
   const {
     sessionKey,
     urlSessionKey,
@@ -90,25 +98,46 @@ export function ChatScreen({ embedded = false, onRequestHome }: ChatScreenProps)
     handleGatewayAdd,
   } = page;
 
-  const headerPaddingTop = insets.top + 8;
+  const headerPaddingTop = insets.top + (overlay ? 0 : 8);
   const canvasBg = colors.surface.base;
+
+  const headerRevealStyle = useAnimatedStyle(() => {
+    if (!overlay || !transition) return { opacity: 1, transform: [{ translateY: 0 }] };
+    const t = transition.progress.value;
+    return {
+      opacity: interpolate(t, [0.45, 0.85], [0, 1], Extrapolation.CLAMP),
+      transform: [{ translateY: interpolate(t, [0.45, 0.85], [10, 0], Extrapolation.CLAMP) }],
+    };
+  }, [overlay, transition]);
+
+  const bodyRevealStyle = useAnimatedStyle(() => {
+    if (!overlay || !transition) return { opacity: 1, transform: [{ translateY: 0 }] };
+    const t = transition.progress.value;
+    return {
+      opacity: interpolate(t, [0.55, 0.92], [0, 1], Extrapolation.CLAMP),
+      transform: [{ translateY: interpolate(t, [0.55, 0.92], [14, 0], Extrapolation.CLAMP) }],
+    };
+  }, [overlay, transition]);
 
   return (
     <View style={[styles.screen, { backgroundColor: canvasBg }]}>
-      <ChatHeader
-        agentName={agentName}
-        modelName={modelName}
-        models={modelsQuery.data?.items ?? []}
-        currentModelId={effectiveModelId}
-        paddingTop={headerPaddingTop}
-        headerBg={isDark ? '#000000' : '#FFFFFF'}
-        pillText={colors.text.primary}
-        pillMuted={colors.text.tertiary}
-        onBackPress={embedded ? undefined : handleBack}
-        onAgentPress={openAgentsPicker}
-        onModelSelect={handleModelSelect}
-        onNewChat={handleNewChat}
-      />
+      {overlay ? <ChatOverlayDismissHandle /> : null}
+      <AnimatedView style={headerRevealStyle}>
+        <ChatHeader
+          agentName={agentName}
+          modelName={modelName}
+          models={modelsQuery.data?.items ?? []}
+          currentModelId={effectiveModelId}
+          paddingTop={headerPaddingTop}
+          headerBg={isDark ? '#000000' : '#FFFFFF'}
+          pillText={colors.text.primary}
+          pillMuted={colors.text.tertiary}
+          onBackPress={overlay ? onRequestHome : isShellEmbedded ? undefined : handleBack}
+          onAgentPress={openAgentsPicker}
+          onModelSelect={handleModelSelect}
+          onNewChat={handleNewChat}
+        />
+      </AnimatedView>
 
       <GlobalConnectionStatusBar
         onOpenSettings={handleGatewayManageSettings}
@@ -116,6 +145,7 @@ export function ChatScreen({ embedded = false, onRequestHome }: ChatScreenProps)
       />
 
       <View style={[styles.chatBody, { backgroundColor: canvasBg }]}>
+        <AnimatedView style={[styles.chatBodyInner, bodyRevealStyle]}>
         {!urlSessionKey && bootstrap.bootstrapError ? (
           <Banner
             visible
@@ -233,8 +263,11 @@ export function ChatScreen({ embedded = false, onRequestHome }: ChatScreenProps)
             onPendingFollowUpSteer={(id) => void chat.followUp.steerPendingFollowUp(id)}
             steeringFollowUpId={chat.followUp.steeringFollowUpId}
             onQueueFull={() => chat.setSnackMsg(t(m.chat.followUpQueueMaxReached, { max: MAX_PENDING_FOLLOW_UPS }))}
+            overlayShell={overlay}
+            focusRequestToken={overlay ? transition?.focusComposerToken : undefined}
           />
         </KeyboardStickyView>
+        </AnimatedView>
       </View>
 
       <Snackbar visible={Boolean(chat.snackMsg)} onDismiss={() => chat.setSnackMsg('')} duration={2500}>
@@ -280,6 +313,7 @@ export function ChatScreen({ embedded = false, onRequestHome }: ChatScreenProps)
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   chatBody: { flex: 1, minHeight: 0 },
+  chatBodyInner: { flex: 1, minHeight: 0 },
   bootstrapRow: {
     flexDirection: 'row',
     alignItems: 'center',

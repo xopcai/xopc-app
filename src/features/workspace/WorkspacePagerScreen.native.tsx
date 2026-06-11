@@ -1,82 +1,80 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback } from 'react';
 import { BackHandler, StyleSheet, View } from 'react-native';
-import PagerView from 'react-native-pager-view';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
 
+import { motion } from '../../motion';
 import { invalidateHomeFeed } from '../../query/workspace-sync';
 
-import { ChatScreen } from '../chat/ChatScreen';
-import { NotesScreen } from '../notes/NotesScreen';
-
+import { AskAiHeroGhost } from './AskAiHeroGhost';
+import { WorkspaceChatOverlay } from './WorkspaceChatOverlay';
 import { WorkspaceHomeScreen } from './WorkspaceHomeScreen';
 import { WorkspaceNavigationProvider } from './workspace-navigation-context';
+import {
+  useWorkspaceTransition,
+  WorkspaceTransitionProvider,
+} from './workspace-transition-context';
 
-const CHAT_PAGE_INDEX = 0;
-const HOME_PAGE_INDEX = 1;
+const AnimatedView = Animated.createAnimatedComponent(View);
+
+function WorkspaceShellContent() {
+  const { phase, progress, dismissDrag, closeAskAi } = useWorkspaceTransition();
+
+  const handleRequestHome = useCallback(() => {
+    closeAskAi();
+  }, [closeAskAi]);
+
+  const homeLayerStyle = useAnimatedStyle(() => {
+    const openAmount = progress.value * (1 - dismissDrag.value / motion.dismiss.maxDragFraction);
+    const scale = 1 - (1 - motion.home.scaleOpen) * openAmount;
+    const opacity = 1 - (1 - motion.home.opacityOpen) * openAmount;
+    return {
+      opacity,
+      transform: [{ scale }],
+    };
+  });
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (phase === 'closed' || phase === 'closing') return false;
+        closeAskAi();
+        return true;
+      });
+
+      return () => subscription.remove();
+    }, [closeAskAi, phase]),
+  );
+
+  return (
+    <View style={styles.screen}>
+      <AnimatedView style={[styles.homeLayer, homeLayerStyle]}>
+        <WorkspaceHomeScreen />
+      </AnimatedView>
+      <WorkspaceChatOverlay onRequestHome={handleRequestHome} />
+      <AskAiHeroGhost />
+    </View>
+  );
+}
 
 export function WorkspacePagerScreen() {
   const queryClient = useQueryClient();
-  const pagerRef = useRef<PagerView>(null);
-  const [pageIndex, setPageIndex] = useState(HOME_PAGE_INDEX);
 
   const refreshHomeFeed = useCallback(() => {
     invalidateHomeFeed(queryClient);
   }, [queryClient]);
 
-  const navigateToHome = useCallback(() => {
-    pagerRef.current?.setPage(HOME_PAGE_INDEX);
-    setPageIndex(HOME_PAGE_INDEX);
-    refreshHomeFeed();
-  }, [refreshHomeFeed]);
-
-  const openAskAiNative = useCallback(() => {
-    pagerRef.current?.setPage(CHAT_PAGE_INDEX);
-    setPageIndex(CHAT_PAGE_INDEX);
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-        if (pageIndex === HOME_PAGE_INDEX) return false;
-        navigateToHome();
-        return true;
-      });
-
-      return () => subscription.remove();
-    }, [navigateToHome, pageIndex]),
-  );
-
   return (
-    <WorkspaceNavigationProvider onOpenAskAiNative={openAskAiNative}>
-      <View style={styles.screen}>
-        <PagerView
-          ref={pagerRef}
-          style={styles.pager}
-          initialPage={HOME_PAGE_INDEX}
-          onPageSelected={(event) => {
-            const index = event.nativeEvent.position;
-            setPageIndex(index);
-            if (index === HOME_PAGE_INDEX) refreshHomeFeed();
-          }}
-        >
-          <View key="chat" style={styles.page}>
-            <ChatScreen embedded onRequestHome={navigateToHome} />
-          </View>
-          <View key="home" style={styles.page}>
-            <WorkspaceHomeScreen />
-          </View>
-          <View key="notes" style={styles.page}>
-            <NotesScreen embedded onRequestHome={navigateToHome} />
-          </View>
-        </PagerView>
-      </View>
-    </WorkspaceNavigationProvider>
+    <WorkspaceTransitionProvider onClosed={refreshHomeFeed}>
+      <WorkspaceNavigationProvider>
+        <WorkspaceShellContent />
+      </WorkspaceNavigationProvider>
+    </WorkspaceTransitionProvider>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  pager: { flex: 1 },
-  page: { flex: 1 },
+  homeLayer: { flex: 1 },
 });

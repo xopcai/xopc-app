@@ -312,7 +312,7 @@ export function useChatPage(options: UseChatPageOptions = {}) {
     setComposerSuggestion(EMPTY_CHAT_GOAL_PREFILL);
   }, [bootstrap.bootstrapError, sessionKey]);
 
-  const { registerEmbeddedAskAiHandler } = useWorkspaceNavigation();
+  const { registerFinalizeHandler } = useWorkspaceNavigation();
 
   const prepareAskAiFromHome = useCallback(() => {
     pendingSendRef.current = null;
@@ -325,9 +325,9 @@ export function useChatPage(options: UseChatPageOptions = {}) {
 
   useEffect(() => {
     if (!embedded) return;
-    registerEmbeddedAskAiHandler(prepareAskAiFromHome);
-    return () => registerEmbeddedAskAiHandler(null);
-  }, [embedded, prepareAskAiFromHome, registerEmbeddedAskAiHandler]);
+    registerFinalizeHandler(prepareAskAiFromHome);
+    return () => registerFinalizeHandler(null);
+  }, [embedded, prepareAskAiFromHome, registerFinalizeHandler]);
 
   const handleUserMessageCopy = useCallback(
     (text: string) => {

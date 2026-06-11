@@ -35,7 +35,7 @@ export type ChatBootstrapResult = {
   creatingInitialSession: boolean;
   bootstrapError: string | null;
   retryBootstrapSession: () => void;
-  /** Force a fresh session (embedded pager "问 AI" from home). */
+  /** Force a fresh session when the workspace Ask AI overlay settles open. */
   startFreshSession: () => void;
 };
 

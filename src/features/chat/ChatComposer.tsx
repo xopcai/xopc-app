@@ -11,12 +11,16 @@ import {
   Text,
   TextInput,
   View,
+  type View as RNView,
 } from 'react-native';
+import Animated, { Extrapolation, interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { Icon, Snackbar } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
+import { motion } from '../../motion';
 import { transcribeVoice } from '../../api/agent-client';
 import { useTheme } from '../../theme';
+import { useOptionalWorkspaceTransition } from '../workspace/workspace-transition-context';
 import { ChatPendingFollowUpStack } from './ChatPendingFollowUpStack';
 import { canSendComposerDraft } from './composer-send-helpers';
 import type { WireAttachment } from './composer.types';
@@ -91,6 +95,8 @@ export const ChatComposer = memo(function ChatComposer({
   steeringFollowUpId = null,
   onQueueFull,
   onPressGoalShortcut,
+  overlayShell = false,
+  focusRequestToken,
 }: {
   sessionKey: string;
   disabled: boolean;
@@ -118,10 +124,14 @@ export const ChatComposer = memo(function ChatComposer({
   steeringFollowUpId?: string | null;
   onQueueFull?: () => void;
   onPressGoalShortcut?: () => void;
+  overlayShell?: boolean;
+  focusRequestToken?: number;
 }) {
   const m = useMessages();
   const cm = m.chat;
   const { colors, isDark } = useTheme();
+  const transition = useOptionalWorkspaceTransition();
+  const shellRef = useRef<RNView>(null);
 
   const [mode, setMode] = useState<InputMode>('text');
   const [draft, setDraft] = useState('');
@@ -130,6 +140,45 @@ export const ChatComposer = memo(function ChatComposer({
   const [cursorPos, setCursorPos] = useState(0);
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
+
+  const measureShell = useCallback(async () => {
+    return new Promise<{ x: number; y: number; width: number; height: number } | null>((resolve) => {
+      shellRef.current?.measureInWindow((x, y, width, height) => {
+        if (width <= 0 || height <= 0) {
+          resolve(null);
+          return;
+        }
+        resolve({ x, y, width, height });
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!overlayShell || !transition) return;
+    transition.registerComposerMeasurer(measureShell);
+    return () => transition.registerComposerMeasurer(null);
+  }, [measureShell, overlayShell, transition]);
+
+  useEffect(() => {
+    if (!overlayShell || focusRequestToken == null || focusRequestToken <= 0) return;
+    const timer = setTimeout(() => {
+      inputRef.current?.focus();
+    }, motion.duration.keyboardFocusDelay);
+    return () => clearTimeout(timer);
+  }, [focusRequestToken, overlayShell]);
+
+  const shellRevealStyle = useAnimatedStyle(() => {
+    if (!overlayShell || !transition) return { opacity: 1 };
+    const t = transition.progress.value;
+    return {
+      opacity: interpolate(
+        t,
+        [0, motion.hero.revealComposerAt, 1],
+        [0, 0, 1],
+        Extrapolation.CLAMP,
+      ),
+    };
+  }, [overlayShell, transition]);
 
   const att = useComposerAttachments({
     maxAttachmentsReached: cm.maxAttachmentsReached,
@@ -768,7 +817,16 @@ export const ChatComposer = memo(function ChatComposer({
 
       {renderCaptureRail()}
 
-      <View style={[styles.shell, { backgroundColor: surface, borderColor: border }]}>
+      <Animated.View
+        ref={shellRef}
+        onLayout={() => {
+          if (!overlayShell) return;
+          void measureShell().then((rect) => {
+            if (rect) transition?.notifyComposerAnchor(rect);
+          });
+        }}
+        style={[styles.shell, { backgroundColor: surface, borderColor: border }, shellRevealStyle]}
+      >
         {mode === 'text' ? (
           <>
             <View style={isExpanded ? undefined : styles.compactRow}>
@@ -848,7 +906,7 @@ export const ChatComposer = memo(function ChatComposer({
             {streaming ? renderStreamingRightActions() : renderAttachButton()}
           </View>
         )}
-      </View>
+      </Animated.View>
 
       <AttachmentSourceSheet
         visible={att.sheetOpen}
