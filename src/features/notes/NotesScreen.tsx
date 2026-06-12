@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
@@ -82,15 +82,21 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
   const [recording, setRecording] = useState(false);
   const recordingRef = useRef<ExpoRecording | null>(null);
 
-  const notesQuery = useQuery({
+  const notesQuery = useInfiniteQuery({
     queryKey: [...queryKeys.notesAll, statusFilter, kindFilter],
-    queryFn: () =>
+    queryFn: ({ pageParam }) =>
       fetchNotes({
         status: statusFilter === 'all' ? undefined : statusFilter,
         kind: kindFilter === 'all' ? undefined : kindFilter,
-        limit: 100,
+        limit: 20,
+        offset: pageParam,
       }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.offset + lastPage.limit : undefined,
     enabled: configured,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const captureMutation = useMutation({
@@ -189,12 +195,19 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
   const handleLongPress = useCallback((note: NoteIndexEntry) => setActionNote(note), []);
   const dismissAction = useCallback(() => setActionNote(null), []);
 
+  const notes = notesQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const hasMore = notesQuery.data?.pages[notesQuery.data.pages.length - 1]?.hasMore ?? false;
+
+  const handleLoadMore = useCallback(() => {
+    if (hasMore && !notesQuery.isFetching && !notesQuery.isFetchingNextPage) {
+      notesQuery.fetchNextPage();
+    }
+  }, [hasMore, notesQuery]);
+
   const onRefresh = useCallback(async () => {
     await flushPendingNotes();
     await invalidateNoteLists(queryClient);
   }, [queryClient]);
-
-  const notes = notesQuery.data?.items ?? [];
 
   const statusFilters: { key: StatusFilter; label: string }[] = useMemo(() => [
     { key: 'all', label: pm.filterAll },
@@ -265,9 +278,12 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
             data={notes}
             keyExtractor={(item) => item.id}
             renderItem={renderNote}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={notesQuery.isFetchingNextPage ? <View style={styles.footerLoader}><ActivityIndicator size="small" /></View> : null}
             contentContainerStyle={styles.list}
             refreshControl={
-              <RefreshControl refreshing={notesQuery.isFetching && !notesQuery.isLoading} onRefresh={onRefresh} />
+              <RefreshControl refreshing={notesQuery.isFetching && !notesQuery.isLoading && !notesQuery.isFetchingNextPage} onRefresh={onRefresh} />
             }
             ListEmptyComponent={
               <View style={styles.empty}>
@@ -402,6 +418,7 @@ const styles = StyleSheet.create({
   },
   listArea: { flex: 1, minHeight: 0 },
   list: { padding: 16, paddingTop: 8, gap: 10, flexGrow: 1 },
+  footerLoader: { paddingVertical: 16, alignItems: 'center' },
   empty: { alignItems: 'center', paddingVertical: 48, gap: 6 },
   emptyIconWrap: {
     width: 72,

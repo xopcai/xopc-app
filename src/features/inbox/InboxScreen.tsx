@@ -1,12 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { Icon, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingHeader } from '../../components/FloatingHeader';
 
+import { pickAttachmentFromSource } from '../chat/attachment-file-io';
+import {
+  beginRecording,
+  finishRecording,
+  requestMicPermission,
+  type ExpoRecording,
+} from '../chat/voiceRecording';
 import { fetchNotes, quickCaptureNote, updateNote, type NoteIndexEntry } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
 import { invalidateHomeFeed } from '../../query/workspace-sync';
@@ -19,6 +27,8 @@ export function InboxScreen() {
   const insets = useSafeAreaInsets();
   const [captureText, setCaptureText] = useState('');
   const [snackMsg, setSnackMsg] = useState('');
+  const [recording, setRecording] = useState(false);
+  const recordingRef = useRef<ExpoRecording | null>(null);
 
   const inboxQuery = useQuery({
     queryKey: queryKeys.notes('inbox'),
@@ -50,6 +60,49 @@ export function InboxScreen() {
     captureMutation.mutate(text);
   }, [captureMutation, captureText]);
 
+  const handlePickImage = useCallback(async (source: 'camera' | 'photos') => {
+    try {
+      const attachment = await pickAttachmentFromSource(source);
+      if (!attachment) return;
+      captureMutation.mutate(`[image: ${attachment.name}]`);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('permission')) {
+        setSnackMsg('需要相册或相机权限');
+        return;
+      }
+      setSnackMsg('图片记录失败');
+    }
+  }, [captureMutation]);
+
+  const handleVoiceStart = useCallback(async () => {
+    const granted = await requestMicPermission();
+    if (!granted) {
+      setSnackMsg('需要麦克风权限');
+      return;
+    }
+    setRecording(true);
+    try {
+      recordingRef.current = await beginRecording(() => {});
+    } catch {
+      setRecording(false);
+      setSnackMsg('语音录制失败');
+    }
+  }, []);
+
+  const handleVoiceEnd = useCallback(async () => {
+    setRecording(false);
+    const recordingSession = recordingRef.current;
+    if (!recordingSession) return;
+    recordingRef.current = null;
+    try {
+      const { uri, durationMillis } = await finishRecording(recordingSession);
+      if (!uri || durationMillis < 500) return;
+      captureMutation.mutate(`[voice memo: ${Math.round(durationMillis / 1000)}s]`);
+    } catch {
+      setSnackMsg('语音记录失败');
+    }
+  }, [captureMutation]);
+
   const handleItemPress = useCallback((item: NoteIndexEntry) => {
     router.push(`/items/${item.id}`);
   }, [router]);
@@ -60,7 +113,7 @@ export function InboxScreen() {
       onPress={() => handleItemPress(item)}
     >
       <View style={styles.itemIcon}>
-        <Icon source="tray-full" size={18} color="#6D5DFB" />
+        <Icon source="lightbulb-outline" size={20} color="#6D5DFB" />
       </View>
       <View style={styles.itemCopy}>
         <Text numberOfLines={1} style={[styles.itemTitle, { color: colors.text.primary }]}>{item.snippet || '无标题'}</Text>
@@ -91,27 +144,64 @@ export function InboxScreen() {
         }
       />
 
-      <View style={[styles.bottomBar, { paddingBottom: floatingBottomPadding(insets.bottom) }]}>
-        <TextInput
-          value={captureText}
-          onChangeText={setCaptureText}
-          placeholder="快速记录一条想法..."
-          placeholderTextColor={colors.text.tertiary}
-          style={[
-            styles.captureInput,
-            {
-              color: colors.text.primary,
-              backgroundColor: isDark ? colors.surface.input : colors.surface.panel,
-              borderColor: colors.border.default,
-            },
-          ]}
-          returnKeyType="send"
-          onSubmitEditing={handleCapture}
-        />
-        <Pressable style={styles.captureButton} onPress={handleCapture}>
-          <Icon source="send" size={18} color="#FFFFFF" />
-        </Pressable>
-      </View>
+      <KeyboardStickyView
+        offset={{ closed: 0, opened: 0 }}
+        style={{ marginBottom: FLOATING_BOTTOM_OFFSET }}
+      >
+        <View style={[styles.bottomBar, { paddingBottom: floatingBottomPadding(insets.bottom) }]}> 
+          <View
+            style={[
+              styles.captureShell,
+              {
+                backgroundColor: isDark ? colors.surface.input : colors.surface.panel,
+                borderColor: colors.border.default,
+              },
+            ]}
+          >
+            <Pressable style={[styles.toolButton, { backgroundColor: colors.surface.input }]} onPress={() => void handlePickImage('photos')}>
+              <Icon source="image-outline" size={20} color={colors.text.tertiary} />
+            </Pressable>
+            <Pressable style={[styles.toolButton, { backgroundColor: colors.surface.input }]} onPress={() => void handlePickImage('camera')}>
+              <Icon source="camera-outline" size={20} color={colors.text.tertiary} />
+            </Pressable>
+            <TextInput
+              value={captureText}
+              onChangeText={setCaptureText}
+              placeholder="快速记录一条想法..."
+              placeholderTextColor={colors.text.tertiary}
+              style={[styles.captureInput, { color: colors.text.primary }]}
+              returnKeyType="send"
+              onSubmitEditing={handleCapture}
+              multiline
+              blurOnSubmit
+              textAlignVertical="center"
+            />
+            {captureText.trim() ? (
+              <Pressable
+                style={[styles.sendButton, { backgroundColor: colors.text.primary }]}
+                onPress={handleCapture}
+                disabled={captureMutation.isPending}
+                hitSlop={8}
+              >
+                <Icon source="arrow-up" size={20} color={colors.text.inverse} />
+              </Pressable>
+            ) : (
+              <Pressable
+                style={[
+                  styles.toolButton,
+                  { backgroundColor: colors.surface.input },
+                  recording && styles.recordingButton,
+                ]}
+                onPressIn={() => void handleVoiceStart()}
+                onPressOut={() => void handleVoiceEnd()}
+                hitSlop={8}
+              >
+                <Icon source="microphone" size={20} color={recording ? '#FFFFFF' : colors.text.tertiary} />
+              </Pressable>
+            )}
+          </View>
+        </View>
+      </KeyboardStickyView>
 
       <Snackbar visible={!!snackMsg} onDismiss={() => setSnackMsg('')} duration={2200}>{snackMsg}</Snackbar>
     </View>
@@ -121,42 +211,45 @@ export function InboxScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   bottomBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: FLOATING_BOTTOM_OFFSET,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
     paddingHorizontal: 14,
     paddingTop: 8,
   },
-  captureInput: {
-    flex: 1,
-    height: 44,
+  captureShell: {
     borderRadius: 22,
     borderWidth: 1,
-    paddingHorizontal: 14,
-    fontSize: 15,
-    fontWeight: '500',
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    gap: 2,
   },
-  captureButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  toolButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#6D5DFB',
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+  },
+  captureInput: {
+    flex: 1,
+    maxHeight: 100,
+    borderWidth: 0,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '500',
+  },
+  sendButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordingButton: {
+    backgroundColor: '#EF4444',
   },
   listContent: { padding: 16, gap: 10 },
   itemCard: { borderWidth: 1, borderRadius: 20, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },

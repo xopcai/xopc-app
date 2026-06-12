@@ -728,25 +728,30 @@ export function PageScreen() {
               transparent
               onRequestClose={() => setShowAiPanel(false)}
             >
-              <View style={styles.modalOverlay}>
-                <View
-                  style={[
-                    styles.modalContent,
-                    { backgroundColor: colors.surface.base },
-                  ]}
-                >
-                  <NoteAiPanel
-                    noteId={id!}
-                    blocks={blocks}
-                    isDark={colors.surface.base === '#000000'}
-                    onApplyBlocks={(nextBlocks, patch) => {
-                      handleApplyAiBlocks(nextBlocks, patch);
-                      setShowAiPanel(false);
-                    }}
-                    onMessage={setSnackMsg}
-                  />
+              <KeyboardAvoidingView
+                style={styles.modalKeyboardAvoid}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              >
+                <View style={styles.modalOverlay}>
+                  <View
+                    style={[
+                      styles.modalContent,
+                      { backgroundColor: colors.surface.base },
+                    ]}
+                  >
+                    <NoteAiPanel
+                      noteId={id!}
+                      blocks={blocks}
+                      isDark={colors.surface.base === '#000000'}
+                      onApplyBlocks={(nextBlocks, patch) => {
+                        handleApplyAiBlocks(nextBlocks, patch);
+                        setShowAiPanel(false);
+                      }}
+                      onMessage={setSnackMsg}
+                    />
+                  </View>
                 </View>
-              </View>
+              </KeyboardAvoidingView>
             </Modal>
           </>
         ) : (
@@ -765,24 +770,17 @@ export function PageScreen() {
 
       {!isEditing && showEditor && !showAiPanel ? (
         <NoteViewActionBar
-          pinned={note?.pinned}
           labels={{
             catalyst: pm.catalystTitle,
-            saveTask: pm.catalystSaveTask,
             openChat: pm.catalystOpenChat,
-            pin: pm.pin,
-            unpin: pm.unpin,
             more: pm.viewMore,
           }}
           loading={{
             catalyst: catalystLoading,
-            saveTask: catalystTaskLoading,
             openChat: catalystChatLoading,
           }}
           onCatalyst={() => void handleGenerateCatalyst()}
-          onSaveTask={() => void handleCreateCatalystTask()}
           onOpenChat={() => void handleOpenCatalystChat()}
-          onPin={() => void handleTogglePin()}
           onMore={() => setShowMoreMenu(true)}
         />
       ) : null}
@@ -809,6 +807,26 @@ export function PageScreen() {
             >
               <Icon source="share-variant-outline" size={20} color={colors.text.primary} />
               <Text style={{ color: colors.text.primary }}>{pm.viewShare}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.actionItem}
+              onPress={() => {
+                setShowMoreMenu(false);
+                void handleCreateCatalystTask();
+              }}
+            >
+              <Icon source="checkbox-marked-circle-plus-outline" size={20} color={colors.text.primary} />
+              <Text style={{ color: colors.text.primary }}>{pm.catalystSaveTask}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.actionItem}
+              onPress={() => {
+                setShowMoreMenu(false);
+                void handleTogglePin();
+              }}
+            >
+              <Icon source={note?.pinned ? 'pin-off-outline' : 'pin-outline'} size={20} color={colors.text.primary} />
+              <Text style={{ color: colors.text.primary }}>{note?.pinned ? pm.unpin : pm.pin}</Text>
             </Pressable>
             <Pressable
               style={styles.actionItem}
@@ -869,6 +887,7 @@ export function PageScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   keyboardAvoid: { flex: 1 },
+  modalKeyboardAvoid: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 24 },
   editorWrap: { flex: 1, paddingHorizontal: 16, paddingTop: 4 },
   editorPressable: { flex: 1, minHeight: 120, position: 'relative' },

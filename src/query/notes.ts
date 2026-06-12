@@ -66,6 +66,9 @@ export interface Note {
 export interface NotesListResult {
   items: NoteIndexEntry[];
   total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
 }
 
 export interface NotesListQuery {

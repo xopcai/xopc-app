@@ -5,35 +5,25 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding, useTheme } from '../../theme';
 
 interface NoteViewActionBarProps {
-  pinned?: boolean;
   labels: {
     catalyst: string;
-    saveTask: string;
     openChat: string;
-    pin: string;
-    unpin: string;
     more: string;
   };
   loading?: {
     catalyst?: boolean;
-    saveTask?: boolean;
     openChat?: boolean;
   };
   onCatalyst: () => void;
-  onSaveTask: () => void;
   onOpenChat: () => void;
-  onPin: () => void;
   onMore: () => void;
 }
 
 export function NoteViewActionBar({
-  pinned = false,
   labels,
   loading,
   onCatalyst,
-  onSaveTask,
   onOpenChat,
-  onPin,
   onMore,
 }: NoteViewActionBarProps) {
   const { colors, isDark } = useTheme();
@@ -50,22 +40,10 @@ export function NoteViewActionBar({
       onPress: onCatalyst,
     },
     {
-      key: 'task',
-      icon: loading?.saveTask ? 'loading' : 'checkbox-marked-circle-plus-outline',
-      label: labels.saveTask,
-      onPress: onSaveTask,
-    },
-    {
       key: 'chat',
       icon: loading?.openChat ? 'loading' : 'chat-processing-outline',
       label: labels.openChat,
       onPress: onOpenChat,
-    },
-    {
-      key: 'pin',
-      icon: pinned ? 'pin-off-outline' : 'pin-outline',
-      label: pinned ? labels.unpin : labels.pin,
-      onPress: onPin,
     },
     { key: 'more', icon: 'dots-grid', label: labels.more, onPress: onMore },
   ] as const;

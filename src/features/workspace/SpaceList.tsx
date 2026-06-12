@@ -8,14 +8,20 @@ import { useTheme } from '../../theme';
 interface SpaceListProps {
   sessions: SessionListItem[];
   onSessionPress: (sessionKey: string) => void;
+  onViewAll: () => void;
 }
 
-export function SpaceList({ sessions, onSessionPress }: SpaceListProps) {
+export function SpaceList({ sessions, onSessionPress, onViewAll }: SpaceListProps) {
   const { colors } = useTheme();
 
   return (
     <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>最近对话</Text>
+      <View style={styles.headerRow}>
+        <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>对话</Text>
+        <Pressable onPress={onViewAll}>
+          <Text style={[styles.openText, { color: '#6D5DFB' }]}>查看更多</Text>
+        </Pressable>
+      </View>
       <View style={[styles.card, { backgroundColor: colors.surface.panel }]}>
         {sessions.length === 0 ? (
           <View style={styles.emptyRow}>
@@ -42,7 +48,9 @@ export function SpaceList({ sessions, onSessionPress }: SpaceListProps) {
 
 const styles = StyleSheet.create({
   section: { gap: 10 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sectionTitle: { fontSize: 17, fontWeight: '600' },
+  openText: { fontSize: 13, fontWeight: '600' },
   card: { borderRadius: 20, overflow: 'hidden' },
   emptyRow: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16 },
   emptyText: { flex: 1, fontSize: 13, fontWeight: '500' },

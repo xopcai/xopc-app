@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -14,7 +14,6 @@ import { useGatewayConfigured } from '../../query/sessions';
 import { useTheme } from '../../theme';
 
 import { BottomCommandBar } from './BottomCommandBar';
-import { ContinueRail } from './ContinueRail';
 import { InboxPreview } from './InboxPreview';
 import { SpaceList } from './SpaceList';
 import { TodayBrief } from './TodayBrief';
@@ -89,11 +88,16 @@ export function WorkspaceHomeScreen() {
               onInboxPress={() => router.push('/inbox')}
               onTasksPress={() => router.push('/notes?kind=task')}
             />
-            <ContinueRail items={home?.recentlyOpened ?? []} onItemPress={handleNotePress} />
             <InboxPreview count={home?.inboxCount ?? 0} onOpenInbox={() => router.push('/inbox')} />
+            <RecentNotesCard
+              notes={(home?.recentlyOpened ?? []).slice(0, 5)}
+              onNotePress={handleNotePress}
+              onViewAll={() => router.push('/notes')}
+            />
             <SpaceList
-              sessions={home?.recentSessions ?? []}
+              sessions={(home?.recentSessions ?? []).slice(0, 5)}
               onSessionPress={handleSessionPress}
+              onViewAll={() => router.push('/sessions')}
             />
           </>
         )}
@@ -117,6 +121,64 @@ export function WorkspaceHomeScreen() {
   );
 }
 
+function iconForNoteKind(kind: NoteIndexEntry['kind']): string {
+  if (kind === 'task') return 'checkbox-marked-circle-outline';
+  if (kind === 'voice') return 'microphone-outline';
+  if (kind === 'media') return 'image-outline';
+  if (kind === 'bookmark') return 'bookmark-outline';
+  return 'note-text-outline';
+}
+
+function RecentNotesCard({
+  notes,
+  onNotePress,
+  onViewAll,
+}: {
+  notes: NoteIndexEntry[];
+  onNotePress: (note: NoteIndexEntry) => void;
+  onViewAll: () => void;
+}) {
+  const { colors } = useTheme();
+
+  return (
+    <View style={styles.section}>
+      <View style={styles.headerRow}>
+        <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>笔记</Text>
+        <Pressable onPress={onViewAll}>
+          <Text style={[styles.openText, { color: '#6D5DFB' }]}>查看更多</Text>
+        </Pressable>
+      </View>
+      <View style={[styles.listCard, { backgroundColor: colors.surface.panel }]}> 
+        {notes.length === 0 ? (
+          <View style={styles.emptyRow}>
+            <Icon source="note-text-outline" size={20} color={colors.text.tertiary} />
+            <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>还没有最近笔记</Text>
+          </View>
+        ) : (
+          notes.map((note) => (
+            <Pressable key={note.id} style={styles.itemRow} onPress={() => onNotePress(note)}>
+              <View style={styles.iconBubble}>
+                <Icon source={iconForNoteKind(note.kind)} size={16} color="#6D5DFB" />
+              </View>
+              <View style={styles.itemCopy}>
+                <Text numberOfLines={1} style={[styles.itemTitle, { color: colors.text.primary }]}>
+                  {note.title?.trim() || note.snippet || '无标题'}
+                </Text>
+                {!!note.snippet && (
+                  <Text numberOfLines={1} style={[styles.itemSubtitle, { color: colors.text.tertiary }]}>
+                    {note.snippet}
+                  </Text>
+                )}
+              </View>
+              <Icon source="chevron-right" size={18} color={colors.text.tertiary} />
+            </Pressable>
+          ))
+        )}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { paddingHorizontal: 16, paddingTop: 8, gap: 16 },
@@ -124,4 +186,22 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 18, fontWeight: '600' },
   emptyText: { fontSize: 14, textAlign: 'center' },
   loadingCard: { minHeight: 180, alignItems: 'center', justifyContent: 'center' },
+  section: { gap: 10 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sectionTitle: { fontSize: 17, fontWeight: '700' },
+  openText: { fontSize: 13, fontWeight: '600' },
+  listCard: { borderRadius: 20, padding: 8, gap: 2 },
+  emptyRow: { minHeight: 72, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  itemRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8, paddingVertical: 10 },
+  iconBubble: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(109,93,251,0.14)',
+  },
+  itemCopy: { flex: 1, gap: 2 },
+  itemTitle: { fontSize: 14, fontWeight: '600' },
+  itemSubtitle: { fontSize: 12, fontWeight: '400' },
 });
