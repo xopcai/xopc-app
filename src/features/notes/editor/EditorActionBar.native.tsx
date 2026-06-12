@@ -9,6 +9,10 @@ export interface EditorActionBarProps {
   editor: UnifiedEditor | null;
   onAiPress?: () => void;
   onSlashPress?: () => void;
+  onVoicePress?: () => void;
+  voiceActive?: boolean;
+  voiceDisabled?: boolean;
+  voiceLabel?: string;
 }
 
 interface ActionItem {
@@ -21,6 +25,10 @@ export const EditorActionBar = memo(function EditorActionBar({
   editor,
   onAiPress,
   onSlashPress,
+  onVoicePress,
+  voiceActive = false,
+  voiceDisabled = false,
+  voiceLabel,
 }: EditorActionBarProps) {
   const { colors } = useTheme();
   const disabled = !editor;
@@ -60,6 +68,21 @@ export const EditorActionBar = memo(function EditorActionBar({
         {onSlashPress && (
           <Pressable style={styles.actionBtn} onPress={onSlashPress}>
             <Icon source="slash-forward" size={20} color={colors.accent.primary} />
+          </Pressable>
+        )}
+        {onVoicePress && (
+          <Pressable
+            style={[styles.actionBtn, voiceDisabled && styles.disabled]}
+            onPress={onVoicePress}
+            disabled={voiceDisabled}
+            accessibilityRole="button"
+            accessibilityLabel={voiceLabel}
+          >
+            <Icon
+              source={voiceActive ? 'stop' : 'microphone-outline'}
+              size={20}
+              color={voiceActive ? '#FF3B30' : voiceDisabled ? colors.text.tertiary : colors.accent.primary}
+            />
           </Pressable>
         )}
         {onAiPress && (

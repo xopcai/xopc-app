@@ -20,6 +20,8 @@ import { useTheme } from '../../theme';
 import { NoteAiPanel } from '../notes/ai/NoteAiPanel';
 import { NoteBlockEditor } from '../notes/editor/NoteBlockEditor';
 import { EditorActionBar } from '../notes/editor/EditorActionBar';
+import { NoteVoiceInputBar } from '../notes/editor/NoteVoiceInputBar';
+import { useNoteVoiceInput } from '../notes/editor/useNoteVoiceInput';
 import { useDebouncedCallback } from '../notes/editor/useDebouncedCallback';
 import type { UnifiedEditor } from '../notes/editor/types';
 import { mergeRemoteWithLocal } from '../notes/merge-remote-local';
@@ -169,9 +171,37 @@ export function PageScreen() {
     }, [flushPendingSave]),
   );
 
+  const handleEditorReady = useCallback((nextEditor: UnifiedEditor) => {
+    editorRef.current = nextEditor;
+    setEditor(nextEditor);
+  }, []);
+
+  const handleVoiceTranscription = useCallback((text: string) => {
+    const liveEditor = editorRef.current;
+    if (!liveEditor) return;
+    liveEditor.insertText(text);
+    liveEditor.focus();
+  }, []);
+
+  const voiceInput = useNoteVoiceInput({
+    onTranscription: handleVoiceTranscription,
+    onMessage: setSnackMsg,
+    messages: {
+      voiceNotSupported: pm.editorVoiceNotSupported,
+      micRequired: pm.editorVoiceMicRequired,
+      recordingFailed: pm.editorVoiceRecordingFailed,
+      voiceTooShort: pm.editorVoiceTooShort,
+      voiceFailed: pm.editorVoiceFailed,
+      noVoiceContent: pm.editorVoiceNoContent,
+    },
+  });
+
   const handleBack = useCallback(() => {
+    if (voiceInput.isActive) {
+      void voiceInput.cancelRecording();
+    }
     void flushPendingSave().finally(() => router.back());
-  }, [flushPendingSave, router]);
+  }, [flushPendingSave, router, voiceInput]);
 
   const handleFlush = useCallback(async () => {
     await flushPendingSave();
@@ -214,11 +244,6 @@ export function PageScreen() {
       setSnackMsg(pm.shareNotesCopied);
     }
   }, [flushPendingSave, pm.shareNotesCopied]);
-
-  const handleEditorReady = useCallback((nextEditor: UnifiedEditor) => {
-    editorRef.current = nextEditor;
-    setEditor(nextEditor);
-  }, []);
 
   const title = note
     ? new Date(note.createdAt).toLocaleString(undefined, {
@@ -266,6 +291,14 @@ export function PageScreen() {
         ) : showEditor ? (
           <>
             <View style={styles.editorWrap}>
+              <NoteVoiceInputBar
+                phase={voiceInput.phase}
+                durationMillis={voiceInput.durationMillis}
+                meterSamples={voiceInput.meterSamples}
+                onStop={voiceInput.stopRecording}
+                stopLabel={pm.editorVoiceStop}
+                transcribingLabel={pm.editorVoiceTranscribing}
+              />
               <NoteBlockEditor
                 key={editorSeed!.key}
                 contentKey={editorSeed!.key}
@@ -280,6 +313,10 @@ export function PageScreen() {
               editor={editor}
               onAiPress={() => setShowAiPanel(true)}
               onSlashPress={() => setShowSlashMenu(true)}
+              onVoicePress={voiceInput.toggleVoiceInput}
+              voiceActive={voiceInput.phase === 'recording'}
+              voiceDisabled={!editor || voiceInput.phase === 'transcribing'}
+              voiceLabel={voiceInput.phase === 'recording' ? pm.editorVoiceStop : pm.editorVoiceStart}
             />
             <Modal
               visible={showAiPanel}

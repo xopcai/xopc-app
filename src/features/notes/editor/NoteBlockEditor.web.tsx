@@ -128,6 +128,7 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
       undo: () => { editor.chain().focus().undo().run(); },
       redo: () => { editor.chain().focus().redo().run(); },
       focus: () => { editor.chain().focus().run(); },
+      insertText: (text) => { editor.chain().focus().insertContent(text).run(); },
       getHTML: () => editor.getHTML(),
       setContent: (html) => { editor.commands.setContent(html); },
     };

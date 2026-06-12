@@ -647,6 +647,15 @@ export const zh: MessageBundle = {
     shareNotesTitle: '分享笔记',
     editorSendToChat: '让 AI 帮忙拆解',
     editorSendToChatPrefix: '帮我拆解这个任务：',
+    editorVoiceStart: '语音输入',
+    editorVoiceStop: '停止录音',
+    editorVoiceTranscribing: '识别中…',
+    editorVoiceTooShort: '说话时间太短了',
+    editorVoiceFailed: '语音转文字失败',
+    editorVoiceNoContent: '没有识别到语音内容',
+    editorVoiceNotSupported: '当前环境暂不支持语音输入',
+    editorVoiceMicRequired: '需要麦克风权限才能语音输入',
+    editorVoiceRecordingFailed: '语音录制失败',
   },
 
   // ── 命令面板 ──────────────────────────────────────────────

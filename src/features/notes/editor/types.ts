@@ -20,6 +20,8 @@ export interface UnifiedEditor {
   undo(): void;
   redo(): void;
   focus(): void;
+  /** Insert plain text at the current cursor position. */
+  insertText(text: string): void;
   getHTML(): Promise<string> | string;
   setContent(html: string): void;
   /** Delete slash token and run a block command (native slash menu). */

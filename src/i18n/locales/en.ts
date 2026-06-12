@@ -647,6 +647,15 @@ export const en = {
     shareNotesTitle: 'Share note',
     editorSendToChat: 'Ask AI about this task',
     editorSendToChatPrefix: 'Help me break down this task: ',
+    editorVoiceStart: 'Voice input',
+    editorVoiceStop: 'Stop recording',
+    editorVoiceTranscribing: 'Recognizing…',
+    editorVoiceTooShort: 'Recording was too short',
+    editorVoiceFailed: 'Voice transcription failed',
+    editorVoiceNoContent: 'No speech detected',
+    editorVoiceNotSupported: 'Voice input is not supported in this environment',
+    editorVoiceMicRequired: 'Microphone permission required for voice input',
+    editorVoiceRecordingFailed: 'Could not record voice',
   },
 
   // ── Command Palette ──────────────────────────────────────

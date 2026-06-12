@@ -176,6 +176,11 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     undo: () => editor.undo(),
     redo: () => editor.redo(),
     focus: () => editor.focus(),
+    insertText: (text: string) => {
+      editor.injectJS(
+        `(function(){var t=${JSON.stringify(text)};window.editor.chain().focus().insertContent(t).run();})()`,
+      );
+    },
     getHTML: () => editor.getHTML(),
     setContent: (html: string) => editor.setContent(html),
     applySlashCommand: (commandId, range) => {
