@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingHeader } from '../../components/FloatingHeader';
 import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
+import { sessionDisplayName } from '../../lib/session-helpers';
 import { queryKeys } from '../../query/keys';
 import { fetchNotes, type NoteIndexEntry } from '../../query/notes';
 import { fetchSessionsList, type SessionListItem, useGatewayConfigured } from '../../query/sessions';
@@ -76,7 +77,7 @@ export function WorkspaceSearchScreen() {
     const isNote = item.type === 'note';
     const title = isNote
       ? item.note.snippet || '无内容笔记'
-      : item.session.name || '新对话';
+      : sessionDisplayName(item.session);
     const meta = isNote
       ? '笔记'
       : `${item.session.messageCount} 条消息`;

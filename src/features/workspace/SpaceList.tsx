@@ -1,17 +1,12 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
+import { sessionDisplayName } from '../../lib/session-helpers';
+import type { SessionListItem } from '../../query/sessions';
 import { useTheme } from '../../theme';
 
-interface SessionEntry {
-  key: string;
-  name: string;
-  updatedAt: number;
-  status: string;
-}
-
 interface SpaceListProps {
-  sessions: SessionEntry[];
+  sessions: SessionListItem[];
   onSessionPress: (sessionKey: string) => void;
 }
 
@@ -34,7 +29,7 @@ export function SpaceList({ sessions, onSessionPress }: SpaceListProps) {
                 <Icon source="message-processing-outline" size={16} color="#6D5DFB" />
               </View>
               <View style={styles.itemCopy}>
-                <Text numberOfLines={1} style={[styles.itemTitle, { color: colors.text.primary }]}>{session.name || '新对话'}</Text>
+                <Text numberOfLines={1} style={[styles.itemTitle, { color: colors.text.primary }]}>{sessionDisplayName(session)}</Text>
               </View>
               <Icon source="chevron-right" size={18} color={colors.text.tertiary} />
             </Pressable>

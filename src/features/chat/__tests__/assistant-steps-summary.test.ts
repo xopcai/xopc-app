@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildStepsRoundCompleteSummary, viewStepsLabel } from '../assistant-steps-summary';
+import { buildStepsRoundActiveSummary, buildStepsRoundCompleteSummary, viewStepsLabel } from '../assistant-steps-summary';
 import type { ThinkingContent, ToolUseContent } from '../messages.types';
 import { getFriendlyToolTitle } from '../tool-friendly-title';
 
@@ -32,6 +32,23 @@ describe('buildStepsRoundCompleteSummary', () => {
     expect(s).not.toContain('已完成');
     expect(s).toContain('搜索网页');
     expect(s).toContain('我的世界老玩家');
+  });
+
+  it('summarizes active running tool', () => {
+    const blocks: Array<ThinkingContent | ToolUseContent> = [
+      { type: 'thinking', text: '', streaming: true },
+      {
+        type: 'tool_use',
+        id: '1',
+        name: 'web_search',
+        status: 'running',
+        input: JSON.stringify({ query: 'top 命令' }),
+      },
+    ];
+
+    const s = buildStepsRoundActiveSummary(blocks, labels, 'zh', '查看 2 步');
+    expect(s).toContain('正在搜索网页');
+    expect(s).toContain('top 命令');
   });
 
   it('uses noToolFallback when no tools', () => {

@@ -7,24 +7,33 @@ import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding, useTheme } from '../../t
 interface NoteViewActionBarProps {
   pinned?: boolean;
   labels: {
-    share: string;
+    catalyst: string;
+    saveTask: string;
+    openChat: string;
     pin: string;
     unpin: string;
-    delete: string;
     more: string;
   };
-  onShare: () => void;
+  loading?: {
+    catalyst?: boolean;
+    saveTask?: boolean;
+    openChat?: boolean;
+  };
+  onCatalyst: () => void;
+  onSaveTask: () => void;
+  onOpenChat: () => void;
   onPin: () => void;
-  onDelete: () => void;
   onMore: () => void;
 }
 
 export function NoteViewActionBar({
   pinned = false,
   labels,
-  onShare,
+  loading,
+  onCatalyst,
+  onSaveTask,
+  onOpenChat,
   onPin,
-  onDelete,
   onMore,
 }: NoteViewActionBarProps) {
   const { colors, isDark } = useTheme();
@@ -34,14 +43,30 @@ export function NoteViewActionBar({
   const labelColor = isDark ? colors.text.tertiary : '#AEAEB2';
 
   const items = [
-    { key: 'share', icon: 'share-variant-outline', label: labels.share, onPress: onShare },
+    {
+      key: 'catalyst',
+      icon: loading?.catalyst ? 'loading' : 'creation-outline',
+      label: labels.catalyst,
+      onPress: onCatalyst,
+    },
+    {
+      key: 'task',
+      icon: loading?.saveTask ? 'loading' : 'checkbox-marked-circle-plus-outline',
+      label: labels.saveTask,
+      onPress: onSaveTask,
+    },
+    {
+      key: 'chat',
+      icon: loading?.openChat ? 'loading' : 'chat-processing-outline',
+      label: labels.openChat,
+      onPress: onOpenChat,
+    },
     {
       key: 'pin',
       icon: pinned ? 'pin-off-outline' : 'pin-outline',
       label: pinned ? labels.unpin : labels.pin,
       onPress: onPin,
     },
-    { key: 'delete', icon: 'delete-outline', label: labels.delete, onPress: onDelete },
     { key: 'more', icon: 'dots-grid', label: labels.more, onPress: onMore },
   ] as const;
 
@@ -65,7 +90,7 @@ export function NoteViewActionBar({
             accessibilityLabel={item.label}
           >
             <Icon source={item.icon} size={18} color={iconColor} />
-            <Text style={[styles.label, { color: labelColor }]}>{item.label}</Text>
+            <Text numberOfLines={1} style={[styles.label, { color: labelColor }]}>{item.label}</Text>
           </Pressable>
         ))}
       </View>
@@ -87,7 +112,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 28,
     paddingVertical: 7,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
+    maxWidth: '96%',
     shadowOpacity: 0.06,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
@@ -97,9 +123,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
-    paddingHorizontal: 14,
+    paddingHorizontal: 8,
     paddingVertical: 2,
-    minWidth: 52,
+    minWidth: 54,
+    flexShrink: 1,
   },
   actionPressed: {
     opacity: 0.55,

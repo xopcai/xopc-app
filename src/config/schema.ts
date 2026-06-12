@@ -33,6 +33,8 @@ export const sessionListItemSchema = z
   .object({
     key: z.string(),
     name: z.string().optional(),
+    title: z.string().optional(),
+    displayName: z.string().optional(),
     messageCount: z.number(),
     updatedAt: z.string(),
     sourceChannel: z.string().optional(),

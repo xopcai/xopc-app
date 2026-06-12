@@ -7,9 +7,47 @@ import {
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
 } from 'expo-audio';
-import type { AudioRecorder } from 'expo-audio';
+import type { AudioRecorder, RecordingOptions } from 'expo-audio';
+import { Platform } from 'react-native';
 
 export type ExpoRecording = AudioRecorder;
+
+type RecordingPlatform = typeof Platform.OS;
+
+export function nativeRecordingOptionsForPlatform(
+  platform: RecordingPlatform,
+): Partial<RecordingOptions> {
+  const preset = {
+    ...RecordingPresets.HIGH_QUALITY,
+    isMeteringEnabled: true,
+  };
+  const commonOptions = {
+    extension: preset.extension,
+    sampleRate: preset.sampleRate,
+    numberOfChannels: preset.numberOfChannels,
+    bitRate: preset.bitRate,
+    isMeteringEnabled: preset.isMeteringEnabled,
+  };
+
+  if (platform === 'ios') {
+    return {
+      ...commonOptions,
+      ...preset.ios,
+    } as Partial<RecordingOptions>;
+  }
+
+  if (platform === 'android') {
+    return {
+      ...commonOptions,
+      ...preset.android,
+    } as Partial<RecordingOptions>;
+  }
+
+  return {
+    ...commonOptions,
+    ...preset.web,
+  } as Partial<RecordingOptions>;
+}
 
 export async function requestMicPermission(): Promise<boolean> {
   const { granted } = await requestRecordingPermissionsAsync();
@@ -24,7 +62,7 @@ export async function beginRecording(
     playsInSilentMode: true,
   });
 
-  const recorder = new AudioModule.AudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = new AudioModule.AudioRecorder(nativeRecordingOptionsForPlatform(Platform.OS));
   await recorder.prepareToRecordAsync();
 
   recorder.addListener('recordingStatusUpdate', () => {

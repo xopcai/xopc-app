@@ -19,7 +19,7 @@ import { Icon, Snackbar } from 'react-native-paper';
 import { useMessages } from '../../i18n/messages';
 import { motion } from '../../motion';
 import { transcribeVoice } from '../../api/agent-client';
-import { useTheme } from '../../theme';
+import { typography, useTheme } from '../../theme';
 import { useOptionalWorkspaceTransition } from '../workspace/workspace-transition-context';
 import { ChatPendingFollowUpStack } from './ChatPendingFollowUpStack';
 import { canSendComposerDraft } from './composer-send-helpers';
@@ -945,7 +945,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   captureLabel: {
-    fontSize: 13,
+    ...typography.label,
     fontWeight: '600',
   },
   compactRow: {
@@ -997,8 +997,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   input: {
-    fontSize: 15,
-    lineHeight: 20,
+    ...typography.body,
     paddingHorizontal: 4,
     paddingVertical: Platform.select({ ios: 5, android: 4, web: 0, default: 4 }),
     maxHeight: MAX_COMPOSER_INPUT_HEIGHT,
@@ -1011,7 +1010,6 @@ const styles = StyleSheet.create({
   },
   inputCompact: {
     flex: 1,
-    lineHeight: 20,
     paddingVertical: 0,
     textAlignVertical: 'center',
   },
@@ -1035,7 +1033,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   holdLabel: {
-    fontSize: 15,
+    ...typography.body,
     fontWeight: '600',
   },
 });

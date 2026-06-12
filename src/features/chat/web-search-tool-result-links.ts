@@ -1,4 +1,4 @@
-export type WebSearchResultLink = { url: string; title: string };
+export type WebSearchResultLink = { url: string; title: string; host: string };
 
 function hostnameFromUrl(url: string): string {
   try {
@@ -58,7 +58,7 @@ export function extractWebSearchLinksFromToolResult(resultText: string): WebSear
     const rawTitle = row.title;
     const title =
       typeof rawTitle === 'string' && rawTitle.trim().length > 0 ? rawTitle.trim() : hostnameFromUrl(url);
-    out.push({ url, title });
+    out.push({ url, title, host: hostnameFromUrl(url) });
   }
   return out;
 }

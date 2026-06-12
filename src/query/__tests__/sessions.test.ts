@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createSession, fetchSessionsList } from '../sessions';
+import { sessionDisplayName } from '../../lib/session-helpers';
 import { apiFetch } from '../../api/client';
 
 vi.mock('../../api/client', () => ({
@@ -92,6 +93,40 @@ describe('fetchSessionsList', () => {
     const params = new URLSearchParams(url.split('?')[1]);
     expect(params.has('search')).toBe(false);
     expect(params.get('offset')).toBe('0');
+  });
+
+  it('normalizes title into name for list display', async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            key: 'agent:webchat:default:direct:chat_a',
+            title: '真实会话标题',
+            messageCount: 2,
+            updatedAt: '2026-01-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+        limit: 20,
+        offset: 0,
+        hasMore: false,
+      }),
+    } as Response);
+
+    const page = await fetchSessionsList({ limit: 20, offset: 0 });
+
+    expect(page.items[0].name).toBe('真实会话标题');
+  });
+
+  it('does not expose session key when title is missing', async () => {
+    const title = sessionDisplayName({
+      key: 'agent:webchat:default:direct:chat_1781231485063_5yf0uh',
+      messageCount: 0,
+      updatedAt: '2026-01-01T00:00:00Z',
+    });
+
+    expect(title).toBe('新对话');
   });
 
   it('returns the full pagination payload', async () => {

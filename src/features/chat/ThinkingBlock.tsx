@@ -63,21 +63,12 @@ export const ThinkingBlock = memo(function ThinkingBlock({
           )}
         </View>
         <View style={inlineStyles.content}>
-          <View
-            style={[
-              inlineStyles.labelPill,
-              {
-                backgroundColor: isDark ? chatColors.accentSoftDark : chatColors.accentSoft,
-              },
-            ]}
+          <Text
+            variant="labelSmall"
+            style={[inlineStyles.label, { color: isDark ? '#9CA3AF' : '#6B7280' }]}
           >
-            <Text
-              variant="labelSmall"
-              style={[inlineStyles.label, { color: isDark ? '#E5E7EB' : '#374151' }]}
-            >
-              {label}
-            </Text>
-          </View>
+            {label}
+          </Text>
           {showFullText ? (
             <Text
               variant="bodySmall"
@@ -181,12 +172,6 @@ const inlineStyles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: 4,
-  },
-  labelPill: {
-    alignSelf: 'flex-start',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
   },
   label: {
     fontWeight: '500',

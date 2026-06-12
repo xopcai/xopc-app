@@ -34,9 +34,8 @@ export function groupSessions(
   return out;
 }
 
-/** Display name for a session — falls back to truncated key. */
+/** Display name for a session — never exposes the internal session key. */
 export function sessionDisplayName(item: SessionListItem): string {
-  if (item.name?.trim()) return item.name.trim();
-  const key = item.key;
-  return key.length > 24 ? `…${key.slice(-24)}` : key;
+  const title = item.name?.trim() || item.title?.trim() || item.displayName?.trim();
+  return title || '新对话';
 }

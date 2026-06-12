@@ -10,21 +10,26 @@ import {
   Pressable,
   Share,
   StyleSheet,
+  TextInput,
   View,
 } from 'react-native';
 import { ActivityIndicator, Button, Icon, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMessages, t } from '../../i18n/messages';
+import { openChat } from '../../lib/navigation';
 import { queryKeys } from '../../query/keys';
-import { invalidateNoteLists } from '../../query/workspace-sync';
+import { invalidateNoteLists, invalidateSessionLists } from '../../query/workspace-sync';
 import {
+  createTask,
   deleteNote,
   fetchNote,
   recordNoteOpen,
+  requestNoteAiEdit,
   updateNote,
   type Note,
 } from '../../query/notes';
+import { createSession } from '../../query/sessions';
 import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding, useTheme } from '../../theme';
 
 import { NoteAiPanel } from '../notes/ai/NoteAiPanel';
@@ -44,6 +49,7 @@ import { mergeRemoteWithLocal } from '../notes/merge-remote-local';
 import {
   blocksToHtml,
   blocksToMarkdown,
+  blocksToPlainText,
   htmlToBlocks,
   noteToBlocks,
   type NoteAiPatch,
@@ -59,6 +65,29 @@ import {
 } from '../notes/notes-local';
 
 const VIEW_BOTTOM_BAR_HEIGHT = 64;
+
+function resolveDisplayTitle(note: Pick<Note, 'title'> | undefined, blocks: NoteBlock[], fallback: string): string {
+  const explicitTitle = note?.title?.trim();
+  return explicitTitle || deriveNoteTitle(blocks, 10, fallback);
+}
+
+function extractCatalystSuggestion(patch: NoteAiPatch): string {
+  for (const operation of patch.operations) {
+    if (operation.type === 'replaceBlocks' || operation.type === 'insertBlocksAfter') {
+      const text = blocksToPlainText(operation.blocks).trim();
+      if (text) return text;
+    }
+  }
+  return patch.summary.trim();
+}
+
+function firstSuggestionLine(text: string, fallback: string): string {
+  const line = text
+    .split('\n')
+    .map((part) => part.replace(/^[-*\d.\s[\]x]+/i, '').trim())
+    .find(Boolean);
+  return line || fallback;
+}
 
 export function PageScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -83,7 +112,13 @@ export function PageScreen() {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [screenMode, setScreenMode] = useState<NoteScreenMode>('view');
   const [viewTitle, setViewTitle] = useState('');
+  const [titleDraft, setTitleDraft] = useState('');
+  const [titleEditing, setTitleEditing] = useState(false);
   const [focusOnEnable, setFocusOnEnable] = useState(false);
+  const [catalystSuggestion, setCatalystSuggestion] = useState('');
+  const [catalystLoading, setCatalystLoading] = useState(false);
+  const [catalystTaskLoading, setCatalystTaskLoading] = useState(false);
+  const [catalystChatLoading, setCatalystChatLoading] = useState(false);
   const lastSeedKeyRef = useRef('');
 
   const blocksRef = useRef<NoteBlock[]>([]);
@@ -113,7 +148,9 @@ export function PageScreen() {
   const isEditing = screenMode === 'edit';
 
   const refreshViewTitle = useCallback(() => {
-    setViewTitle(deriveNoteTitle(blocksRef.current, 10, pm.untitledNote));
+    const nextTitle = resolveDisplayTitle(noteRef.current, blocksRef.current, pm.untitledNote);
+    setViewTitle(nextTitle);
+    setTitleDraft(nextTitle);
   }, [pm.untitledNote]);
 
   useEffect(() => {
@@ -130,8 +167,14 @@ export function PageScreen() {
     editorRef.current = null;
     setScreenMode('view');
     setViewTitle('');
+    setTitleDraft('');
+    setTitleEditing(false);
     setShowMoreMenu(false);
     setFocusOnEnable(false);
+    setCatalystSuggestion('');
+    setCatalystLoading(false);
+    setCatalystTaskLoading(false);
+    setCatalystChatLoading(false);
   }, [id]);
 
   useEffect(() => {
@@ -266,6 +309,68 @@ export function PageScreen() {
     setScreenMode('view');
   }, [flushPendingSave, refreshViewTitle, voiceInput]);
 
+  const handleSubmitTitle = useCallback(async () => {
+    const currentNote = noteRef.current;
+    if (!currentNote) return;
+
+    const nextTitle = titleDraft.trim();
+    const currentTitle = currentNote.title?.trim() ?? '';
+    setTitleEditing(false);
+
+    if (nextTitle === currentTitle) {
+      refreshViewTitle();
+      return;
+    }
+
+    const optimisticNote: Note = {
+      ...currentNote,
+      title: nextTitle,
+      updatedAt: Date.now(),
+    };
+    setViewTitle(resolveDisplayTitle(optimisticNote, blocksRef.current, pm.untitledNote));
+    setTitleDraft(resolveDisplayTitle(optimisticNote, blocksRef.current, pm.untitledNote));
+    noteRef.current = optimisticNote;
+    queryClient.setQueryData(queryKeys.note(currentNote.id), optimisticNote);
+    setLocalNote((previous) => {
+      if (!previous) return previous;
+      const nextSnapshot: LocalNoteSnapshot = {
+        ...previous,
+        title: nextTitle,
+        updatedAt: optimisticNote.updatedAt,
+      };
+      writeLocalNote(nextSnapshot);
+      return nextSnapshot;
+    });
+
+    try {
+      const updated = await updateNote(currentNote.id, { title: nextTitle });
+      const mergedNote: Note = {
+        ...updated,
+        ...noteRef.current,
+        title: updated.title ?? nextTitle,
+        updatedAt: updated.updatedAt,
+        remoteVersion: updated.remoteVersion,
+      };
+      noteRef.current = mergedNote;
+      queryClient.setQueryData(queryKeys.note(currentNote.id), mergedNote);
+      setLocalNote((previous) => {
+        if (!previous) return previous;
+        const nextSnapshot: LocalNoteSnapshot = {
+          ...previous,
+          title: mergedNote.title,
+          updatedAt: mergedNote.updatedAt,
+          remoteVersion: mergedNote.remoteVersion,
+        };
+        writeLocalNote(nextSnapshot);
+        return nextSnapshot;
+      });
+      await invalidateNoteLists(queryClient);
+    } catch (err) {
+      setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
+      refreshViewTitle();
+    }
+  }, [pm.actionFailed, pm.untitledNote, queryClient, refreshViewTitle, titleDraft]);
+
   const noteAttachments = useNoteAttachments(note, {
     maxAttachmentsReached: pm.editorAttachmentMaxReached,
     attachmentFileTooLarge: pm.editorAttachmentTooLarge,
@@ -336,7 +441,7 @@ export function PageScreen() {
       latestHtmlRef.current = blocksToHtml(nextBlocks);
       setContentRevision((revision) => revision + 1);
       if (screenMode === 'view') {
-        setViewTitle(deriveNoteTitle(nextBlocks, 10, pm.untitledNote));
+        setViewTitle(resolveDisplayTitle(note, nextBlocks, pm.untitledNote));
       }
       setSnackMsg(patch.summary || pm.updated);
     },
@@ -386,6 +491,68 @@ export function PageScreen() {
       setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
     }
   }, [flushPendingSave, note, pm.actionFailed, queryClient, router]);
+
+  const handleGenerateCatalyst = useCallback(async () => {
+    if (!note || catalystLoading) return;
+    setCatalystLoading(true);
+    try {
+      await flushPendingSave();
+      const result = await requestNoteAiEdit(note.id, {
+        instruction: pm.catalystInstruction,
+        blocks: blocksRef.current,
+      });
+      const suggestion = extractCatalystSuggestion(result.patch) || result.patch.summary;
+      setCatalystSuggestion(suggestion);
+      setSnackMsg(suggestion);
+    } catch (err) {
+      setSnackMsg(err instanceof Error ? err.message : pm.aiEditFailed);
+    } finally {
+      setCatalystLoading(false);
+    }
+  }, [catalystLoading, flushPendingSave, note, pm.aiEditFailed, pm.catalystInstruction]);
+
+  const handleCreateCatalystTask = useCallback(async () => {
+    if (!note || catalystTaskLoading) return;
+    setCatalystTaskLoading(true);
+    try {
+      await flushPendingSave();
+      const noteText = blocksToMarkdown(blocksRef.current).trim();
+      const sourceText = catalystSuggestion || noteText || viewTitle;
+      const taskTitle = firstSuggestionLine(sourceText, pm.catalystDefaultTaskTitle);
+      await createTask(taskTitle, { sourceNoteId: note.id });
+      await invalidateNoteLists(queryClient);
+      setSnackMsg(pm.catalystTaskCreated);
+    } catch (err) {
+      setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
+    } finally {
+      setCatalystTaskLoading(false);
+    }
+  }, [catalystSuggestion, catalystTaskLoading, flushPendingSave, note, pm.actionFailed, pm.catalystDefaultTaskTitle, pm.catalystTaskCreated, queryClient, viewTitle]);
+
+  const handleOpenCatalystChat = useCallback(async () => {
+    if (!note || catalystChatLoading) return;
+    setCatalystChatLoading(true);
+    try {
+      await flushPendingSave();
+      const noteText = blocksToMarkdown(blocksRef.current).trim();
+      const messageParts = [
+        pm.catalystChatPrompt,
+        '',
+        `${pm.catalystChatNoteTitle}: ${viewTitle || pm.untitledNote}`,
+        noteText,
+      ];
+      if (catalystSuggestion) {
+        messageParts.push('', `${pm.catalystChatSuggestionTitle}:`, catalystSuggestion);
+      }
+      const sessionKey = await createSession(undefined, { forceNew: true });
+      invalidateSessionLists(queryClient);
+      openChat(router, sessionKey, { msg: messageParts.filter(Boolean).join('\n') });
+    } catch (err) {
+      setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
+    } finally {
+      setCatalystChatLoading(false);
+    }
+  }, [catalystChatLoading, catalystSuggestion, flushPendingSave, note, pm.actionFailed, pm.catalystChatNoteTitle, pm.catalystChatPrompt, pm.catalystChatSuggestionTitle, pm.untitledNote, queryClient, router, viewTitle]);
 
   const formattedDate = note
     ? new Date(note.createdAt).toLocaleString(undefined, {
@@ -439,25 +606,48 @@ export function PageScreen() {
                 !isEditing && { paddingBottom: viewBottomPadding },
               ]}
             >
-              <Text
-                style={[styles.noteTitle, { color: colors.text.primary }]}
-                numberOfLines={2}
-              >
-                {viewTitle}
-              </Text>
+              {titleEditing ? (
+                <TextInput
+                  value={titleDraft}
+                  onChangeText={setTitleDraft}
+                  onBlur={() => void handleSubmitTitle()}
+                  onSubmitEditing={() => void handleSubmitTitle()}
+                  autoFocus
+                  selectTextOnFocus
+                  returnKeyType="done"
+                  style={[styles.noteTitle, styles.noteTitleInput, { color: colors.text.primary }]}
+                  placeholder={pm.untitledNote}
+                  placeholderTextColor={colors.text.tertiary}
+                />
+              ) : (
+                <Pressable
+                  onPress={() => {
+                    setTitleDraft(viewTitle);
+                    setTitleEditing(true);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={viewTitle}
+                >
+                  <Text
+                    style={[styles.noteTitle, { color: colors.text.primary }]}
+                    numberOfLines={2}
+                  >
+                    {viewTitle}
+                  </Text>
+                </Pressable>
+              )}
 
               <View style={styles.metaRow}>
-                <View style={[styles.tagChip, { backgroundColor: '#FDE68A' }]}>
-                  <Text style={[styles.tagText, { color: '#92400E' }]}>
+                <View style={[styles.tagChip, { backgroundColor: '#FDE68A' }]}> 
+                  <Text style={[styles.tagText, { color: '#92400E' }]}> 
                     {note?.tags?.[0] ?? pm.defaultTag}
                   </Text>
                   <Icon source="chevron-down" size={14} color="#92400E" />
                 </View>
-                <Text style={[styles.metaTime, { color: colors.text.tertiary }]}>
+                <Text style={[styles.metaTime, { color: colors.text.tertiary }]}> 
                   {formattedDate}
                 </Text>
               </View>
-
               {isEditing ? (
                 <NoteVoiceInputBar
                   phase={voiceInput.phase}
@@ -577,15 +767,22 @@ export function PageScreen() {
         <NoteViewActionBar
           pinned={note?.pinned}
           labels={{
-            share: pm.viewShare,
+            catalyst: pm.catalystTitle,
+            saveTask: pm.catalystSaveTask,
+            openChat: pm.catalystOpenChat,
             pin: pm.pin,
             unpin: pm.unpin,
-            delete: pm.delete,
             more: pm.viewMore,
           }}
-          onShare={() => void handleShare()}
+          loading={{
+            catalyst: catalystLoading,
+            saveTask: catalystTaskLoading,
+            openChat: catalystChatLoading,
+          }}
+          onCatalyst={() => void handleGenerateCatalyst()}
+          onSaveTask={() => void handleCreateCatalystTask()}
+          onOpenChat={() => void handleOpenCatalystChat()}
           onPin={() => void handleTogglePin()}
-          onDelete={() => void handleDelete()}
           onMore={() => setShowMoreMenu(true)}
         />
       ) : null}
@@ -602,6 +799,16 @@ export function PageScreen() {
             >
               <Icon source="cloud-sync-outline" size={20} color={colors.text.primary} />
               <Text style={{ color: colors.text.primary }}>{pm.syncNow}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.actionItem}
+              onPress={() => {
+                setShowMoreMenu(false);
+                void handleShare();
+              }}
+            >
+              <Icon source="share-variant-outline" size={20} color={colors.text.primary} />
+              <Text style={{ color: colors.text.primary }}>{pm.viewShare}</Text>
             </Pressable>
             <Pressable
               style={styles.actionItem}
@@ -630,6 +837,16 @@ export function PageScreen() {
             >
               <Icon source="archive" size={20} color={colors.text.primary} />
               <Text style={{ color: colors.text.primary }}>{pm.archive}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.actionItem}
+              onPress={() => {
+                setShowMoreMenu(false);
+                void handleDelete();
+              }}
+            >
+              <Icon source="delete-outline" size={20} color={colors.text.primary} />
+              <Text style={{ color: colors.text.primary }}>{pm.delete}</Text>
             </Pressable>
             <Pressable style={styles.actionItem} onPress={() => setShowMoreMenu(false)}>
               <Text style={{ color: colors.text.tertiary }}>{m.common.cancel}</Text>
@@ -663,6 +880,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 34,
     marginBottom: 10,
+  },
+  noteTitleInput: {
+    padding: 0,
   },
   metaRow: {
     flexDirection: 'row',

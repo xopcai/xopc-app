@@ -18,6 +18,7 @@ import {
 import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 
 import { useKeyboardListPadding } from '../../hooks/use-keyboard-list-padding';
+import { typography } from '../../theme';
 import { GatewayUnreachableTip } from '../gateway/GatewayUnreachableTip';
 import { MessageBubble } from './MessageBubble';
 import { isLastAssistantMessage } from './composer-send-helpers';
@@ -301,14 +302,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   emptyTitle: {
-    fontWeight: '600',
+    ...typography.heading,
     textAlign: 'center',
   },
   emptySubtitle: {
+    ...typography.label,
     textAlign: 'center',
     opacity: 0.58,
     maxWidth: 280,
-    lineHeight: 20,
   },
   chipColumn: {
     alignSelf: 'stretch',
@@ -324,8 +325,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   chipText: {
+    ...typography.ui,
     textAlign: 'left',
-    lineHeight: 20,
   },
   scrollToBottomButton: {
     position: 'absolute',

@@ -36,8 +36,8 @@ export function ContinueRail({ items, onItemPress }: ContinueRailProps) {
               onPress={() => onItemPress(item)}
             >
               <Icon source={iconForKind(item.kind)} size={20} color="#6D5DFB" />
-              <Text numberOfLines={2} style={[styles.cardTitle, { color: colors.text.primary }]}>
-                {item.snippet || '无标题'}
+              <Text numberOfLines={2} style={[styles.cardTitle, { color: colors.text.primary }]}> 
+                {item.title?.trim() || item.snippet || '无标题'}
               </Text>
               {!!item.snippet && (
                 <Text numberOfLines={2} style={[styles.cardSummary, { color: colors.text.tertiary }]}>{item.snippet}</Text>

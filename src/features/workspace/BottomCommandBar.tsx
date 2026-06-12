@@ -81,8 +81,8 @@ export function BottomCommandBar({ bottomInset, onSearch, onAskAi, onAskAiPressI
           accessibilityRole="button"
           accessibilityLabel="问 AI"
         >
-          <Icon source="creation-outline" size={18} color="#6D5DFB" />
-          <Text style={[styles.aiText, { color: colors.text.tertiary }]} numberOfLines={1}>问 AI</Text>
+          <Icon source="creation-outline" size={22} color="#6D5DFB" />
+          <Text style={[styles.aiText, { color: colors.text.secondary }]} numberOfLines={1}>问 AI</Text>
         </AnimatedPressable>
       </View>
 
@@ -121,11 +121,12 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 14,
     gap: 8,
   },
   aiText: {
-    fontSize: 15,
-    fontWeight: '500',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

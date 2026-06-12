@@ -13,6 +13,8 @@ export type SessionStatus = 'active' | 'pinned' | 'archived';
 export type SessionListItem = {
   key: string;
   name?: string;
+  title?: string;
+  displayName?: string;
   messageCount: number;
   updatedAt: string;
   sourceChannel?: string;
@@ -59,6 +61,17 @@ function encKey(key: string): string {
   return encodeURIComponent(key);
 }
 
+function normalizedSessionName(item: SessionListItem): string | undefined {
+  return item.name?.trim() || item.title?.trim() || item.displayName?.trim() || undefined;
+}
+
+function normalizeSessionListItem(item: SessionListItem): SessionListItem {
+  return {
+    ...item,
+    name: normalizedSessionName(item),
+  };
+}
+
 // ── List / Detail / Create ───────────────────────────────────────
 
 export type SessionsPage = {
@@ -93,7 +106,7 @@ export async function fetchSessionsList(
   const items: SessionListItem[] = [];
   for (const row of parsed.data.items) {
     const one = sessionListItemSchema.safeParse(row);
-    if (one.success) items.push(one.data);
+    if (one.success) items.push(normalizeSessionListItem(one.data));
   }
   // Persist only the unfiltered first page so cold-start hydration matches
   // the next live first request.

@@ -18,6 +18,7 @@ export interface NoteTaskMeta {
 
 export interface NoteIndexEntry {
   id: string;
+  title?: string;
   kind: NoteKind;
   status: NoteStatus;
   createdAt: number;
@@ -44,6 +45,7 @@ export interface NoteAttachment {
 
 export interface Note {
   id: string;
+  title?: string;
   kind: NoteKind;
   status: NoteStatus;
   text?: string;

@@ -10,6 +10,7 @@ import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { Icon, Menu, Text } from 'react-native-paper';
 
 import { t, useMessages } from '../../i18n/messages';
+import { sessionDisplayName } from '../../lib/session-helpers';
 import type { SessionListItem } from '../../query/sessions';
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -28,13 +29,6 @@ function relativeTime(dateStr: string): string {
   const weeks = Math.floor(days / 7);
   if (weeks < 5) return `${weeks}w ago`;
   return new Date(dateStr).toLocaleDateString();
-}
-
-function sessionDisplayName(item: SessionListItem): string {
-  if (item.name?.trim()) return item.name.trim();
-  // Show last 24 chars of key for unnamed sessions
-  const key = item.key;
-  return key.length > 24 ? `…${key.slice(-24)}` : key;
 }
 
 // ── Types ────────────────────────────────────────────────────────
