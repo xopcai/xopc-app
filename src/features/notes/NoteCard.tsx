@@ -77,6 +77,7 @@ export function NoteCard({ note, onPress, onLongPress }: NoteCardProps) {
 
 const styles = StyleSheet.create({
   card: {
+    width: '100%',
     borderRadius: 14,
     padding: 14,
     gap: 10,

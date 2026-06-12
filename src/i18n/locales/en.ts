@@ -656,6 +656,18 @@ export const en = {
     editorVoiceNotSupported: 'Voice input is not supported in this environment',
     editorVoiceMicRequired: 'Microphone permission required for voice input',
     editorVoiceRecordingFailed: 'Could not record voice',
+    editorInsertImage: 'Insert image',
+    editorInsertAttachment: 'Insert attachment',
+    editorInsertTakePhoto: 'Take photo',
+    editorInsertChoosePhoto: 'Choose image',
+    editorInsertDocScan: 'Scan document',
+    editorInsertIdCard: 'Scan ID card',
+    editorAttachmentAdded: 'Added to note',
+    editorAttachmentRemove: 'Remove attachment',
+    editorAttachmentMaxReached: 'Attachment limit reached',
+    editorAttachmentTooLarge: '{{name}} exceeds size limit ({{maxSize}})',
+    editorAttachmentLoadFailed: 'Could not load {{name}}',
+    editorAttachmentPermissionDenied: 'Camera or photo library permission required',
   },
 
   // ── Command Palette ──────────────────────────────────────

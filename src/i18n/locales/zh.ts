@@ -656,6 +656,18 @@ export const zh: MessageBundle = {
     editorVoiceNotSupported: '当前环境暂不支持语音输入',
     editorVoiceMicRequired: '需要麦克风权限才能语音输入',
     editorVoiceRecordingFailed: '语音录制失败',
+    editorInsertImage: '插入图片',
+    editorInsertAttachment: '插入附件',
+    editorInsertTakePhoto: '拍照',
+    editorInsertChoosePhoto: '选择图片',
+    editorInsertDocScan: '文档扫描',
+    editorInsertIdCard: '卡证收藏',
+    editorAttachmentAdded: '已添加到笔记',
+    editorAttachmentRemove: '移除附件',
+    editorAttachmentMaxReached: '附件数量已达上限',
+    editorAttachmentTooLarge: '{{name}} 超过大小限制（{{maxSize}}）',
+    editorAttachmentLoadFailed: '无法加载 {{name}}',
+    editorAttachmentPermissionDenied: '需要相机或相册权限',
   },
 
   // ── 命令面板 ──────────────────────────────────────────────

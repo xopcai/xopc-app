@@ -4,7 +4,7 @@
  * Uses react-native-gesture-handler's ReanimatedSwipeable for native-driven animation.
  */
 import { useCallback, useRef } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Reanimated, {
   Extrapolation,
@@ -12,32 +12,60 @@ import Reanimated, {
   type SharedValue,
   useAnimatedStyle,
 } from 'react-native-reanimated';
-import { Icon, Text } from 'react-native-paper';
+import { Icon } from 'react-native-paper';
 
 import type { NoteIndexEntry } from '../../query/notes';
 import { useMessages } from '../../i18n/messages';
+
+import { onSwipeableClose, onSwipeableWillOpen } from './swipe-open-registry';
 
 export type SwipeAction = 'pin' | 'unpin' | 'archive' | 'delete';
 
 export type SwipeableNoteCardProps = {
   note: NoteIndexEntry;
-  isDark: boolean;
   onAction: (note: NoteIndexEntry, action: SwipeAction) => void;
   children: React.ReactNode;
 };
 
-const ACTION_WIDTH = 72;
-const TOTAL_WIDTH = ACTION_WIDTH * 3;
+const BUTTON_SIZE = 44;
+const ACTION_GAP = 10;
+const ACTION_COUNT = 3;
+const TOTAL_WIDTH = ACTION_COUNT * BUTTON_SIZE + (ACTION_COUNT - 1) * ACTION_GAP;
+
+const ACTION_COLORS = {
+  pin: '#34C759',
+  archive: '#007AFF',
+  delete: '#FF3B30',
+} as const;
+
+type CircularActionProps = {
+  icon: string;
+  color: string;
+  label: string;
+  onPress: () => void;
+};
+
+function CircularAction({ icon, color, label, onPress }: CircularActionProps) {
+  return (
+    <Pressable
+      style={[styles.circleButton, { backgroundColor: color }]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Icon source={icon} size={20} color="#FFFFFF" />
+    </Pressable>
+  );
+}
 
 type RightActionsProps = {
   translation: SharedValue<number>;
   note: NoteIndexEntry;
-  isDark: boolean;
   onAction: (action: SwipeAction) => void;
   labels: { pin: string; unpin: string; archive: string; delete: string };
 };
 
-function RightActions({ translation, note, isDark, onAction, labels }: RightActionsProps) {
+function RightActions({ translation, note, onAction, labels }: RightActionsProps) {
   const style = useAnimatedStyle(() => ({
     transform: [
       {
@@ -53,29 +81,33 @@ function RightActions({ translation, note, isDark, onAction, labels }: RightActi
 
   const pinAction: SwipeAction = note.pinned ? 'unpin' : 'pin';
   const pinIcon = note.pinned ? 'pin-off' : 'pin';
-  const pinColor = isDark ? '#60A5FA' : '#2563EB';
-  const archiveColor = isDark ? '#FBBF24' : '#D97706';
-  const deleteColor = '#EF4444';
+  const pinLabel = note.pinned ? labels.unpin : labels.pin;
 
   return (
     <Reanimated.View style={[styles.rightActions, style]}>
-      <Pressable style={[styles.actionButton, { backgroundColor: `${pinColor}18` }]} onPress={() => onAction(pinAction)}>
-        <Icon source={pinIcon} size={20} color={pinColor} />
-        <Text style={[styles.actionLabel, { color: pinColor }]}>{note.pinned ? labels.unpin : labels.pin}</Text>
-      </Pressable>
-      <Pressable style={[styles.actionButton, { backgroundColor: `${archiveColor}18` }]} onPress={() => onAction('archive')}>
-        <Icon source="archive-outline" size={20} color={archiveColor} />
-        <Text style={[styles.actionLabel, { color: archiveColor }]}>{labels.archive}</Text>
-      </Pressable>
-      <Pressable style={[styles.actionButton, { backgroundColor: `${deleteColor}18` }]} onPress={() => onAction('delete')}>
-        <Icon source="delete-outline" size={20} color={deleteColor} />
-        <Text style={[styles.actionLabel, { color: deleteColor }]}>{labels.delete}</Text>
-      </Pressable>
+      <CircularAction
+        icon={pinIcon}
+        color={ACTION_COLORS.pin}
+        label={pinLabel}
+        onPress={() => onAction(pinAction)}
+      />
+      <CircularAction
+        icon="archive-arrow-down-outline"
+        color={ACTION_COLORS.archive}
+        label={labels.archive}
+        onPress={() => onAction('archive')}
+      />
+      <CircularAction
+        icon="trash-can-outline"
+        color={ACTION_COLORS.delete}
+        label={labels.delete}
+        onPress={() => onAction('delete')}
+      />
     </Reanimated.View>
   );
 }
 
-export function SwipeableNoteCard({ note, isDark, onAction, children }: SwipeableNoteCardProps) {
+export function SwipeableNoteCard({ note, onAction, children }: SwipeableNoteCardProps) {
   const swipeableRef = useRef<SwipeableMethods>(null);
   const m = useMessages();
   const pm = m.notesPage;
@@ -92,48 +124,68 @@ export function SwipeableNoteCard({ note, isDark, onAction, children }: Swipeabl
     [close, note, onAction],
   );
 
+  const handleWillOpen = useCallback(() => {
+    if (swipeableRef.current) {
+      onSwipeableWillOpen(swipeableRef.current);
+    }
+  }, []);
+
+  const handleClose = useCallback(() => {
+    if (swipeableRef.current) {
+      onSwipeableClose(swipeableRef.current);
+    }
+  }, []);
+
   const renderRightActions = useCallback(
     (_progress: SharedValue<number>, translation: SharedValue<number>) => (
       <RightActions
         translation={translation}
         note={note}
-        isDark={isDark}
         onAction={handleAction}
         labels={{ pin: pm.pin, unpin: pm.unpin, archive: pm.archive, delete: pm.delete }}
       />
     ),
-    [handleAction, isDark, note, pm.archive, pm.delete, pm.pin, pm.unpin],
+    [handleAction, note, pm.archive, pm.delete, pm.pin, pm.unpin],
   );
 
   return (
-    <ReanimatedSwipeable
-      ref={swipeableRef}
-      renderRightActions={renderRightActions}
-      rightThreshold={ACTION_WIDTH}
-      overshootRight={false}
-      friction={2}
-    >
-      {children}
-    </ReanimatedSwipeable>
+    <View style={styles.row}>
+      <ReanimatedSwipeable
+        ref={swipeableRef}
+        renderRightActions={renderRightActions}
+        rightThreshold={TOTAL_WIDTH * 0.45}
+        overshootRight={false}
+        friction={1.8}
+        onSwipeableWillOpen={handleWillOpen}
+        onSwipeableClose={handleClose}
+      >
+        <View style={styles.foreground}>{children}</View>
+      </ReanimatedSwipeable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  row: {
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  foreground: {
+    width: '100%',
+  },
   rightActions: {
     width: TOTAL_WIDTH,
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: ACTION_GAP,
+    paddingLeft: 4,
   },
-  actionButton: {
-    flex: 1,
+  circleButton: {
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
+    borderRadius: BUTTON_SIZE / 2,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 2,
-    borderRadius: 12,
-    marginHorizontal: 2,
-    marginVertical: 4,
-  },
-  actionLabel: {
-    fontSize: 10,
-    fontWeight: '600',
   },
 });

@@ -18,10 +18,14 @@ import {
 import { useTheme } from '../../theme';
 
 import { NoteAiPanel } from '../notes/ai/NoteAiPanel';
+import { ComposerAttachmentStrip } from '../chat/composer-attachment-strip';
 import { NoteBlockEditor } from '../notes/editor/NoteBlockEditor';
 import { EditorActionBar } from '../notes/editor/EditorActionBar';
+import { EditorInsertMenu } from '../notes/editor/EditorInsertMenu';
 import { NoteVoiceInputBar } from '../notes/editor/NoteVoiceInputBar';
+import { useNoteAttachments } from '../notes/editor/useNoteAttachments';
 import { useNoteVoiceInput } from '../notes/editor/useNoteVoiceInput';
+import type { NoteEditorAttachment } from '../notes/editor/note-attachment.types';
 import { useDebouncedCallback } from '../notes/editor/useDebouncedCallback';
 import type { UnifiedEditor } from '../notes/editor/types';
 import { mergeRemoteWithLocal } from '../notes/merge-remote-local';
@@ -59,10 +63,12 @@ export function PageScreen() {
   const [snackMsg, setSnackMsg] = useState('');
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [showImageMenu, setShowImageMenu] = useState(false);
   const lastSeedKeyRef = useRef('');
 
   const blocksRef = useRef<NoteBlock[]>([]);
   const latestHtmlRef = useRef('');
+  const attachmentsRef = useRef<NoteEditorAttachment[]>([]);
   const noteRef = useRef<Note | undefined>(undefined);
   const editorRef = useRef<UnifiedEditor | null>(null);
   blocksRef.current = blocks;
@@ -127,7 +133,17 @@ export function PageScreen() {
     latestHtmlRef.current = html;
     const nextBlocks = htmlToBlocks(html, blocksRef.current);
     setBlocks(nextBlocks);
-    const snapshot = saveLocalNoteEdit(currentNote, nextBlocks);
+    const snapshot = saveLocalNoteEdit(currentNote, nextBlocks, attachmentsRef.current);
+    setLocalNote(snapshot);
+    noteRef.current = snapshot;
+    queryClient.setQueryData(queryKeys.note(currentNote.id), snapshot);
+  }, [queryClient]);
+
+  const persistAttachments = useCallback((nextAttachments: NoteEditorAttachment[]) => {
+    attachmentsRef.current = nextAttachments;
+    const currentNote = noteRef.current;
+    if (!currentNote) return;
+    const snapshot = saveLocalNoteEdit(currentNote, blocksRef.current, nextAttachments);
     setLocalNote(snapshot);
     noteRef.current = snapshot;
     queryClient.setQueryData(queryKeys.note(currentNote.id), snapshot);
@@ -196,6 +212,47 @@ export function PageScreen() {
     },
   });
 
+  const noteAttachments = useNoteAttachments(note, {
+    maxAttachmentsReached: pm.editorAttachmentMaxReached,
+    attachmentFileTooLarge: pm.editorAttachmentTooLarge,
+    attachmentLoadFailed: pm.editorAttachmentLoadFailed,
+    attachmentPermissionDenied: pm.editorAttachmentPermissionDenied,
+  }, persistAttachments);
+
+  const imageMenuItems = useMemo(() => [
+    { key: 'camera', icon: 'camera-outline', label: pm.editorInsertTakePhoto, source: 'camera' as const },
+    { key: 'photos', icon: 'image-outline', label: pm.editorInsertChoosePhoto, source: 'photos' as const },
+    { key: 'scan', icon: 'scan-helper', label: pm.editorInsertDocScan, source: 'camera' as const },
+    { key: 'idcard', icon: 'card-account-details-outline', label: pm.editorInsertIdCard, source: 'photos' as const },
+  ], [pm]);
+
+  const handlePickImageSource = useCallback(async (source: 'camera' | 'photos' | 'document') => {
+    if (noteAttachments.isFull) {
+      setSnackMsg(pm.editorAttachmentMaxReached);
+      return;
+    }
+    try {
+      const added = await noteAttachments.addFromSource(source);
+      if (added) {
+        editorRef.current?.focus();
+        setSnackMsg(pm.editorAttachmentAdded);
+      }
+    } catch (error) {
+      const message = noteAttachments.mapPickError(error);
+      if (message) setSnackMsg(message);
+    }
+  }, [noteAttachments, pm]);
+
+  const handleAttachmentPress = useCallback(() => {
+    void handlePickImageSource('document');
+  }, [handlePickImageSource]);
+
+  const insertDisabled = !editor || voiceInput.isActive;
+
+  useEffect(() => {
+    attachmentsRef.current = noteAttachments.attachments;
+  }, [noteAttachments.attachments]);
+
   const handleBack = useCallback(() => {
     if (voiceInput.isActive) {
       void voiceInput.cancelRecording();
@@ -217,7 +274,7 @@ export function PageScreen() {
   const handleApplyAiBlocks = useCallback(
     (nextBlocks: NoteBlock[], patch: NoteAiPatch) => {
       if (!note) return;
-      const snapshot = saveLocalNoteEdit(note, nextBlocks);
+      const snapshot = saveLocalNoteEdit(note, nextBlocks, attachmentsRef.current);
       setLocalNote(snapshot);
       noteRef.current = snapshot;
       queryClient.setQueryData(queryKeys.note(note.id), snapshot);
@@ -299,6 +356,13 @@ export function PageScreen() {
                 stopLabel={pm.editorVoiceStop}
                 transcribingLabel={pm.editorVoiceTranscribing}
               />
+              {noteAttachments.attachments.length > 0 ? (
+                <ComposerAttachmentStrip
+                  attachments={noteAttachments.attachments}
+                  onRemove={noteAttachments.removeAttachment}
+                  removeLabel={pm.editorAttachmentRemove}
+                />
+              ) : null}
               <NoteBlockEditor
                 key={editorSeed!.key}
                 contentKey={editorSeed!.key}
@@ -313,10 +377,21 @@ export function PageScreen() {
               editor={editor}
               onAiPress={() => setShowAiPanel(true)}
               onSlashPress={() => setShowSlashMenu(true)}
+              onImagePress={() => setShowImageMenu(true)}
+              onAttachmentPress={handleAttachmentPress}
+              insertDisabled={insertDisabled}
+              imageLabel={pm.editorInsertImage}
+              attachmentLabel={pm.editorInsertAttachment}
               onVoicePress={voiceInput.toggleVoiceInput}
               voiceActive={voiceInput.phase === 'recording'}
               voiceDisabled={!editor || voiceInput.phase === 'transcribing'}
               voiceLabel={voiceInput.phase === 'recording' ? pm.editorVoiceStop : pm.editorVoiceStart}
+            />
+            <EditorInsertMenu
+              visible={showImageMenu}
+              items={imageMenuItems}
+              onPick={(source) => void handlePickImageSource(source)}
+              onClose={() => setShowImageMenu(false)}
             />
             <Modal
               visible={showAiPanel}

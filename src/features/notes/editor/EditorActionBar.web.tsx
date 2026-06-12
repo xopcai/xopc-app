@@ -10,6 +10,11 @@ export interface EditorActionBarProps {
   voiceActive?: boolean;
   voiceDisabled?: boolean;
   voiceLabel?: string;
+  onImagePress?: () => void;
+  onAttachmentPress?: () => void;
+  insertDisabled?: boolean;
+  imageLabel?: string;
+  attachmentLabel?: string;
 }
 
 interface ActionItem {
@@ -46,6 +51,11 @@ export const EditorActionBar = memo(function EditorActionBar({
   voiceActive = false,
   voiceDisabled = false,
   voiceLabel,
+  onImagePress,
+  onAttachmentPress,
+  insertDisabled = false,
+  imageLabel,
+  attachmentLabel,
 }: EditorActionBarProps) {
   const { colors } = useTheme();
 
@@ -89,6 +99,32 @@ export const EditorActionBar = memo(function EditorActionBar({
           style={actionBtnStyle(colors, colors.accent.primary)}
         >
           {ICON_MAP.slash}
+        </button>
+      )}
+      {onImagePress && (
+        <button
+          title={imageLabel ?? 'Insert image'}
+          onClick={onImagePress}
+          disabled={insertDisabled}
+          style={{
+            ...actionBtnStyle(colors, colors.accent.primary),
+            opacity: insertDisabled ? 0.4 : 1,
+          }}
+        >
+          🖼
+        </button>
+      )}
+      {onAttachmentPress && (
+        <button
+          title={attachmentLabel ?? 'Insert attachment'}
+          onClick={onAttachmentPress}
+          disabled={insertDisabled}
+          style={{
+            ...actionBtnStyle(colors, colors.accent.primary),
+            opacity: insertDisabled ? 0.4 : 1,
+          }}
+        >
+          📎
         </button>
       )}
       {onVoicePress && (

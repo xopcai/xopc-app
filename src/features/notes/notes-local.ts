@@ -7,9 +7,10 @@
  */
 import { createOfflineQueue, type OfflineQueue, type QueuedOperation } from '../../sync';
 import { storage } from '../../storage/mmkv';
-import { syncNote, type Note } from '../../query/notes';
+import { syncNote, updateNote, type Note } from '../../query/notes';
 
 import { blocksToPlainText, type NoteBlock } from './note-blocks';
+import { editorAttachmentToSync, type NoteEditorAttachment } from './editor/note-attachment.types';
 
 // ── Local snapshot (instant read) ───────────────────────────
 
@@ -19,6 +20,7 @@ export interface LocalNoteSnapshot extends Note {
   blocks: NoteBlock[];
   localVersion: number;
   syncState: 'synced' | 'pending' | 'failed';
+  pendingAttachments?: NoteEditorAttachment[];
 }
 
 function parseJson<T>(raw: string | undefined): T | null {
@@ -50,13 +52,19 @@ interface EditSyncPayload {
   text: string;
   localVersion: number;
   baseRemoteVersion?: number;
+  attachments?: NoteEditorAttachment[];
 }
 
 const editQueue: OfflineQueue<EditSyncPayload> = createOfflineQueue<EditSyncPayload>({
   namespace: 'notes:edit',
   processor: async (operation: QueuedOperation<EditSyncPayload>) => {
-    const { noteId, blocks, text, localVersion, baseRemoteVersion } = operation.payload;
+    const { noteId, blocks, text, localVersion, baseRemoteVersion, attachments } = operation.payload;
     const syncResult = await syncNote({ noteId, blocks, text, localVersion, baseRemoteVersion });
+    if (attachments?.length) {
+      await updateNote(noteId, {
+        attachments: attachments.map(editorAttachmentToSync),
+      });
+    }
     // Update local snapshot on success
     const snapshot = readLocalNote(noteId);
     if (snapshot && snapshot.localVersion === localVersion) {
@@ -72,7 +80,11 @@ const editQueue: OfflineQueue<EditSyncPayload> = createOfflineQueue<EditSyncPayl
  * Save a local edit immediately and queue the sync operation.
  * Returns the updated local snapshot for optimistic UI.
  */
-export function saveLocalNoteEdit(note: Note, blocks: NoteBlock[]): LocalNoteSnapshot {
+export function saveLocalNoteEdit(
+  note: Note,
+  blocks: NoteBlock[],
+  attachments?: NoteEditorAttachment[],
+): LocalNoteSnapshot {
   const previous = readLocalNote(note.id);
   const localVersion = (previous?.localVersion ?? 0) + 1;
   const snapshot: LocalNoteSnapshot = {
@@ -82,6 +94,7 @@ export function saveLocalNoteEdit(note: Note, blocks: NoteBlock[]): LocalNoteSna
     updatedAt: Date.now(),
     localVersion,
     syncState: 'pending',
+    pendingAttachments: attachments ?? previous?.pendingAttachments,
   };
   writeLocalNote(snapshot);
 
@@ -91,6 +104,7 @@ export function saveLocalNoteEdit(note: Note, blocks: NoteBlock[]): LocalNoteSna
     text: snapshot.text ?? '',
     localVersion,
     baseRemoteVersion: note.remoteVersion,
+    attachments: snapshot.pendingAttachments,
   });
 
   return snapshot;

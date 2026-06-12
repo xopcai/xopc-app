@@ -213,11 +213,11 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
 
   const renderNote = useCallback(
     ({ item }: { item: NoteIndexEntry }) => (
-      <SwipeableNoteCard note={item} isDark={isDark} onAction={handleSwipeAction}>
+      <SwipeableNoteCard note={item} onAction={handleSwipeAction}>
         <NoteCard note={item} onPress={handleNotePress} onLongPress={handleLongPress} />
       </SwipeableNoteCard>
     ),
-    [isDark, handleNotePress, handleLongPress, handleSwipeAction],
+    [handleNotePress, handleLongPress, handleSwipeAction],
   );
 
   if (!configured) {
