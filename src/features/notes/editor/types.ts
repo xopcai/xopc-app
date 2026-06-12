@@ -39,4 +39,7 @@ export interface NoteBlockEditorProps {
   onSlashMenuClose?: () => void;
   /** When false, the editor is read-only (view mode). */
   editable?: boolean;
+  /** Focus editor (and keyboard) once editable becomes true — used when entering edit from view. */
+  focusOnEnable?: boolean;
+  onFocusApplied?: () => void;
 }

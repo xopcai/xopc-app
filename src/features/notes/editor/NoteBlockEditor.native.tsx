@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, TextInput, View } from 'react-native';
 import type { WebViewMessageEvent } from 'react-native-webview';
 import {
   RichText,
@@ -33,6 +33,14 @@ const SLASH_DETECT_JS = `
   } else {
     window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'xopc-slash', active: false }));
   }
+  return true;
+})();
+`;
+
+const FOCUS_END_JS = `
+(function () {
+  if (!window.editor) return true;
+  window.editor.commands.focus('end');
   return true;
 })();
 `;
@@ -126,6 +134,8 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
   slashMenuOpen,
   onSlashMenuClose,
   editable = true,
+  focusOnEnable = false,
+  onFocusApplied,
 }: NoteBlockEditorProps) {
   const { colors } = useTheme();
   const m = useMessages();
@@ -144,9 +154,12 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
   } | null>(null);
   const [manualSlashOpen, setManualSlashOpen] = useState(false);
 
+  const [keyboardSeed, setKeyboardSeed] = useState(false);
+
   const editor = useEditorBridge({
     initialContent: initialHtml,
     autofocus: false,
+    editable,
     avoidIosKeyboard: true,
     bridgeExtensions: [
       ...TenTapStartKit,
@@ -235,13 +248,16 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     editor.injectCSS(buildEditorCss(colors), 'xopc-editor-theme');
   }, [colors, editor]);
 
+  const applyEditorFocus = useCallback(() => {
+    editor.focus('end');
+    editor.injectJS(FOCUS_END_JS);
+    onFocusApplied?.();
+  }, [editor, onFocusApplied]);
+
   useEffect(() => {
-    editor.injectJS(
-      editable
-        ? 'document.body.style.pointerEvents="auto";'
-        : 'document.body.style.pointerEvents="none";',
-    );
-  }, [editable, editor]);
+    if (!editable || !focusOnEnable) return;
+    setKeyboardSeed(true);
+  }, [editable, focusOnEnable]);
 
   const handleWebViewMessage = useCallback((event: WebViewMessageEvent) => {
     try {
@@ -285,6 +301,18 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
 
   return (
     <View style={styles.container}>
+      {keyboardSeed ? (
+        <TextInput
+          autoFocus
+          caretHidden
+          style={styles.hiddenInput}
+          onFocus={() => {
+            setKeyboardSeed(false);
+            const delay = Platform.OS === 'android' ? 100 : 40;
+            setTimeout(() => applyEditorFocus(), delay);
+          }}
+        />
+      ) : null}
       <RichText
         editor={editor}
         onMessage={handleWebViewMessage}
@@ -309,4 +337,12 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
 const styles = StyleSheet.create({
   container: { flex: 1, minHeight: 200 },
   richText: { flex: 1 },
+  hiddenInput: {
+    display: 'none',
+    width: 0,
+    height: 0,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
 });

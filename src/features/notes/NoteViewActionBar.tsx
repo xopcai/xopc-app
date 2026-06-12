@@ -30,16 +30,18 @@ export function NoteViewActionBar({
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const barBg = isDark ? colors.surface.panel : '#FFFFFF';
+  const iconColor = isDark ? colors.text.secondary : '#8E8E93';
+  const labelColor = isDark ? colors.text.tertiary : '#AEAEB2';
 
   const items = [
     { key: 'share', icon: 'share-variant-outline', label: labels.share, onPress: onShare },
     {
       key: 'pin',
-      icon: pinned ? 'pin-off' : 'pin-outline',
+      icon: pinned ? 'pin-off-outline' : 'pin-outline',
       label: pinned ? labels.unpin : labels.pin,
       onPress: onPin,
     },
-    { key: 'delete', icon: 'delete-outline', label: labels.delete, onPress: onDelete, destructive: true },
+    { key: 'delete', icon: 'delete-outline', label: labels.delete, onPress: onDelete },
     { key: 'more', icon: 'dots-grid', label: labels.more, onPress: onMore },
   ] as const;
 
@@ -50,7 +52,6 @@ export function NoteViewActionBar({
           styles.bar,
           {
             backgroundColor: barBg,
-            borderColor: colors.border.subtle,
             shadowColor: '#000',
           },
         ]}
@@ -58,28 +59,13 @@ export function NoteViewActionBar({
         {items.map((item) => (
           <Pressable
             key={item.key}
-            style={styles.action}
+            style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
             onPress={item.onPress}
             accessibilityRole="button"
             accessibilityLabel={item.label}
           >
-            <Icon
-              source={item.icon}
-              size={22}
-              color={'destructive' in item && item.destructive ? colors.semantic.error : colors.text.secondary}
-            />
-            <Text
-              style={[
-                styles.label,
-                {
-                  color: 'destructive' in item && item.destructive
-                    ? colors.semantic.error
-                    : colors.text.tertiary,
-                },
-              ]}
-            >
-              {item.label}
-            </Text>
+            <Icon source={item.icon} size={18} color={iconColor} />
+            <Text style={[styles.label, { color: labelColor }]}>{item.label}</Text>
           </Pressable>
         ))}
       </View>
@@ -93,31 +79,34 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: FLOATING_BOTTOM_OFFSET,
-    paddingHorizontal: 20,
-    paddingTop: 8,
+    alignItems: 'center',
+    paddingTop: 6,
   },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    borderRadius: 28,
+    paddingVertical: 7,
+    paddingHorizontal: 6,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
   action: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    minHeight: 52,
+    gap: 2,
+    paddingHorizontal: 14,
+    paddingVertical: 2,
+    minWidth: 52,
+  },
+  actionPressed: {
+    opacity: 0.55,
   },
   label: {
-    fontSize: 11,
-    fontWeight: '500',
+    fontSize: 10,
+    fontWeight: '400',
+    lineHeight: 13,
   },
 });

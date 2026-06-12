@@ -21,6 +21,8 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
   slashMenuOpen,
   onSlashMenuClose,
   editable = true,
+  focusOnEnable = false,
+  onFocusApplied,
 }: NoteBlockEditorProps) {
   const { colors } = useTheme();
   const m = useMessages();
@@ -140,6 +142,15 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     if (!editor) return;
     editor.setEditable(editable);
   }, [editable, editor]);
+
+  useEffect(() => {
+    if (!editor || !editable || !focusOnEnable) return;
+    const timer = window.setTimeout(() => {
+      editor.chain().focus('end').run();
+      onFocusApplied?.();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [editable, editor, focusOnEnable, onFocusApplied]);
 
   // Reload only on external contentKey changes (note load / AI patch).
   useEffect(() => {

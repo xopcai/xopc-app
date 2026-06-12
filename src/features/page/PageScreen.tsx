@@ -58,7 +58,7 @@ import {
   type LocalNoteSnapshot,
 } from '../notes/notes-local';
 
-const VIEW_BOTTOM_BAR_HEIGHT = 88;
+const VIEW_BOTTOM_BAR_HEIGHT = 64;
 
 export function PageScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -83,6 +83,7 @@ export function PageScreen() {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [screenMode, setScreenMode] = useState<NoteScreenMode>('view');
   const [viewTitle, setViewTitle] = useState('');
+  const [focusOnEnable, setFocusOnEnable] = useState(false);
   const lastSeedKeyRef = useRef('');
 
   const blocksRef = useRef<NoteBlock[]>([]);
@@ -130,6 +131,7 @@ export function PageScreen() {
     setScreenMode('view');
     setViewTitle('');
     setShowMoreMenu(false);
+    setFocusOnEnable(false);
   }, [id]);
 
   useEffect(() => {
@@ -226,11 +228,13 @@ export function PageScreen() {
 
   const handleEnterEdit = useCallback(() => {
     if (isEditing) return;
+    setFocusOnEnable(true);
     setScreenMode('edit');
-    requestAnimationFrame(() => {
-      editorRef.current?.focus();
-    });
   }, [isEditing]);
+
+  const handleFocusApplied = useCallback(() => {
+    setFocusOnEnable(false);
+  }, []);
 
   const handleVoiceTranscription = useCallback((text: string) => {
     const liveEditor = editorRef.current;
@@ -474,11 +478,7 @@ export function PageScreen() {
                 />
               ) : null}
 
-              <Pressable
-                style={styles.editorPressable}
-                onPress={handleEnterEdit}
-                disabled={isEditing}
-              >
+              <View style={styles.editorPressable}>
                 <NoteBlockEditor
                   key={editorSeed!.key}
                   contentKey={editorSeed!.key}
@@ -488,8 +488,18 @@ export function PageScreen() {
                   slashMenuOpen={showSlashMenu}
                   onSlashMenuClose={() => setShowSlashMenu(false)}
                   editable={isEditing}
+                  focusOnEnable={focusOnEnable}
+                  onFocusApplied={handleFocusApplied}
                 />
-              </Pressable>
+                {!isEditing ? (
+                  <Pressable
+                    style={styles.editorOverlay}
+                    onPress={handleEnterEdit}
+                    accessibilityRole="button"
+                    accessibilityLabel={pm.edit}
+                  />
+                ) : null}
+              </View>
 
               {!isEditing ? (
                 <Text style={[styles.charCount, { color: colors.text.tertiary }]}>
@@ -644,7 +654,10 @@ const styles = StyleSheet.create({
   keyboardAvoid: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 24 },
   editorWrap: { flex: 1, paddingHorizontal: 16, paddingTop: 4 },
-  editorPressable: { flex: 1, minHeight: 120 },
+  editorPressable: { flex: 1, minHeight: 120, position: 'relative' },
+  editorOverlay: {
+    ...StyleSheet.absoluteFill,
+  },
   noteTitle: {
     fontSize: 28,
     fontWeight: '800',
