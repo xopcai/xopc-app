@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Share, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, Icon, Snackbar, Text } from 'react-native-paper';
@@ -22,6 +22,7 @@ import { NoteBlockEditor } from '../notes/editor/NoteBlockEditor';
 import { EditorActionBar } from '../notes/editor/EditorActionBar';
 import { useDebouncedCallback } from '../notes/editor/useDebouncedCallback';
 import type { UnifiedEditor } from '../notes/editor/types';
+import { mergeRemoteWithLocal } from '../notes/merge-remote-local';
 import {
   blocksToHtml,
   blocksToMarkdown,
@@ -38,16 +39,6 @@ import {
   type LocalNoteSnapshot,
 } from '../notes/notes-local';
 
-function mergeRemoteWithLocal(
-  remoteNote?: Note,
-  localNote?: LocalNoteSnapshot | null,
-): Note | undefined {
-  if (!remoteNote) return localNote ?? undefined;
-  if (!localNote) return remoteNote;
-  if (localNote.updatedAt >= remoteNote.updatedAt) return localNote;
-  return remoteNote;
-}
-
 export function PageScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -56,7 +47,9 @@ export function PageScreen() {
   const m = useMessages();
   const pm = m.notesPage;
 
-  const [localNote, setLocalNote] = useState<LocalNoteSnapshot | null>(null);
+  const [localNote, setLocalNote] = useState<LocalNoteSnapshot | null>(
+    () => (id ? readLocalNote(id) : null),
+  );
   const [blocks, setBlocks] = useState<NoteBlock[]>([]);
   const [editor, setEditor] = useState<UnifiedEditor | null>(null);
   const [contentRevision, setContentRevision] = useState(0);
@@ -67,6 +60,9 @@ export function PageScreen() {
   const lastSeedKeyRef = useRef('');
 
   const blocksRef = useRef<NoteBlock[]>([]);
+  const latestHtmlRef = useRef('');
+  const noteRef = useRef<Note | undefined>(undefined);
+  const editorRef = useRef<UnifiedEditor | null>(null);
   blocksRef.current = blocks;
 
   const noteQuery = useQuery({
@@ -84,6 +80,7 @@ export function PageScreen() {
     () => mergeRemoteWithLocal(noteQuery.data, localNote),
     [localNote, noteQuery.data],
   );
+  noteRef.current = note;
 
   useEffect(() => {
     if (!id) return;
@@ -92,9 +89,11 @@ export function PageScreen() {
 
   useEffect(() => {
     lastSeedKeyRef.current = '';
+    latestHtmlRef.current = '';
     setContentRevision(0);
     setEditorSeed(null);
     setEditor(null);
+    editorRef.current = null;
   }, [id]);
 
   // Seed editor when note first loads or external revision bumps (AI patch).
@@ -106,6 +105,7 @@ export function PageScreen() {
 
     const nextBlocks = noteToBlocks(note);
     const html = blocksToHtml(nextBlocks);
+    latestHtmlRef.current = html;
     setEditorSeed({ key: seedKey, html });
     setBlocks(nextBlocks);
 
@@ -117,18 +117,64 @@ export function PageScreen() {
         syncState: 'synced',
       });
     }
-  }, [id, contentRevision, note]);
+  }, [id, contentRevision, note?.id]);
 
-  const persistHtml = useDebouncedCallback((html: string) => {
-    if (!note) return;
+  const saveHtmlNow = useCallback((html: string) => {
+    const currentNote = noteRef.current;
+    if (!currentNote) return;
+    latestHtmlRef.current = html;
     const nextBlocks = htmlToBlocks(html, blocksRef.current);
     setBlocks(nextBlocks);
-    const snapshot = saveLocalNoteEdit(note, nextBlocks);
+    const snapshot = saveLocalNoteEdit(currentNote, nextBlocks);
     setLocalNote(snapshot);
-    queryClient.setQueryData(queryKeys.note(note.id), snapshot);
+    noteRef.current = snapshot;
+    queryClient.setQueryData(queryKeys.note(currentNote.id), snapshot);
+  }, [queryClient]);
+
+  const persistHtmlDebounced = useDebouncedCallback((html: string) => {
+    saveHtmlNow(html);
   }, 400);
 
+  const handleEditorChange = useCallback((html: string) => {
+    latestHtmlRef.current = html;
+    persistHtmlDebounced(html);
+  }, [persistHtmlDebounced]);
+
+  const flushPendingSave = useCallback(async () => {
+    persistHtmlDebounced.flush();
+
+    const liveEditor = editorRef.current;
+    if (liveEditor) {
+      try {
+        const html = await liveEditor.getHTML();
+        if (typeof html === 'string' && html !== latestHtmlRef.current) {
+          saveHtmlNow(html);
+          return;
+        }
+      } catch {
+        // Editor may already be torn down.
+      }
+    }
+
+    if (latestHtmlRef.current) {
+      saveHtmlNow(latestHtmlRef.current);
+    }
+  }, [persistHtmlDebounced, saveHtmlNow]);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        void flushPendingSave();
+      };
+    }, [flushPendingSave]),
+  );
+
+  const handleBack = useCallback(() => {
+    void flushPendingSave().finally(() => router.back());
+  }, [flushPendingSave, router]);
+
   const handleFlush = useCallback(async () => {
+    await flushPendingSave();
     await flushPendingNoteOperations();
     if (id) {
       await queryClient.invalidateQueries({ queryKey: queryKeys.note(id) });
@@ -136,15 +182,17 @@ export function PageScreen() {
     await invalidateNoteLists(queryClient);
     setLocalNote(id ? readLocalNote(id) : null);
     setSnackMsg(pm.updated);
-  }, [id, pm.updated, queryClient]);
+  }, [flushPendingSave, id, pm.updated, queryClient]);
 
   const handleApplyAiBlocks = useCallback(
     (nextBlocks: NoteBlock[], patch: NoteAiPatch) => {
       if (!note) return;
       const snapshot = saveLocalNoteEdit(note, nextBlocks);
       setLocalNote(snapshot);
+      noteRef.current = snapshot;
       queryClient.setQueryData(queryKeys.note(note.id), snapshot);
       setBlocks(nextBlocks);
+      latestHtmlRef.current = blocksToHtml(nextBlocks);
       setContentRevision((revision) => revision + 1);
       setSnackMsg(patch.summary || pm.updated);
     },
@@ -152,7 +200,8 @@ export function PageScreen() {
   );
 
   const handleShare = useCallback(async () => {
-    const markdown = blocksToMarkdown(blocks);
+    await flushPendingSave();
+    const markdown = blocksToMarkdown(blocksRef.current);
     if (Platform.OS === 'web') {
       await Clipboard.setStringAsync(markdown);
       setSnackMsg(pm.shareNotesCopied);
@@ -164,9 +213,10 @@ export function PageScreen() {
       await Clipboard.setStringAsync(markdown);
       setSnackMsg(pm.shareNotesCopied);
     }
-  }, [blocks, pm.shareNotesCopied]);
+  }, [flushPendingSave, pm.shareNotesCopied]);
 
   const handleEditorReady = useCallback((nextEditor: UnifiedEditor) => {
+    editorRef.current = nextEditor;
     setEditor(nextEditor);
   }, []);
 
@@ -187,7 +237,7 @@ export function PageScreen() {
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
       <FloatingHeader
         title={title || pm.title}
-        onBack={() => router.back()}
+        onBack={handleBack}
         rightActions={[
           { icon: 'share-variant-outline', onPress: () => void handleShare() },
           { icon: 'cloud-sync-outline', onPress: () => void handleFlush() },
@@ -220,7 +270,7 @@ export function PageScreen() {
                 key={editorSeed!.key}
                 contentKey={editorSeed!.key}
                 initialHtml={editorSeed!.html}
-                onChange={persistHtml}
+                onChange={handleEditorChange}
                 onEditorReady={handleEditorReady}
                 slashMenuOpen={showSlashMenu}
                 onSlashMenuClose={() => setShowSlashMenu(false)}
