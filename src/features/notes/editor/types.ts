@@ -37,4 +37,6 @@ export interface NoteBlockEditorProps {
   /** When true, opens the slash command menu (toolbar fallback on native). */
   slashMenuOpen?: boolean;
   onSlashMenuClose?: () => void;
+  /** When false, the editor is read-only (view mode). */
+  editable?: boolean;
 }

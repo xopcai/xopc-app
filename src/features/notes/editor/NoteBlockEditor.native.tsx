@@ -125,6 +125,7 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
   onEditorReady,
   slashMenuOpen,
   onSlashMenuClose,
+  editable = true,
 }: NoteBlockEditorProps) {
   const { colors } = useTheme();
   const m = useMessages();
@@ -234,6 +235,14 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     editor.injectCSS(buildEditorCss(colors), 'xopc-editor-theme');
   }, [colors, editor]);
 
+  useEffect(() => {
+    editor.injectJS(
+      editable
+        ? 'document.body.style.pointerEvents="auto";'
+        : 'document.body.style.pointerEvents="none";',
+    );
+  }, [editable, editor]);
+
   const handleWebViewMessage = useCallback((event: WebViewMessageEvent) => {
     try {
       const data = JSON.parse(event.nativeEvent.data) as SlashDetectMessage;
@@ -269,7 +278,7 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     onSlashMenuClose?.();
   }, [editor, onSlashMenuClose, slashMenu, unifiedEditor]);
 
-  const slashVisible = Boolean(slashMenu || manualSlashOpen);
+  const slashVisible = editable && Boolean(slashMenu || manualSlashOpen);
   const menuItems = manualSlashOpen && !slashMenu
     ? slashItems
     : filteredSlashItems;

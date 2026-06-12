@@ -20,6 +20,7 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
   onEditorReady,
   slashMenuOpen,
   onSlashMenuClose,
+  editable = true,
 }: NoteBlockEditorProps) {
   const { colors } = useTheme();
   const m = useMessages();
@@ -134,6 +135,11 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     };
     onEditorReady?.(unified);
   }, [editor, onEditorReady]);
+
+  useEffect(() => {
+    if (!editor) return;
+    editor.setEditable(editable);
+  }, [editable, editor]);
 
   // Reload only on external contentKey changes (note load / AI patch).
   useEffect(() => {

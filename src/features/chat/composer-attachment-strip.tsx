@@ -25,10 +25,12 @@ export const ComposerAttachmentStrip = memo(function ComposerAttachmentStrip({
   attachments,
   onRemove,
   removeLabel,
+  readOnly = false,
 }: {
   attachments: ComposerAttachment[];
   onRemove: (index: number) => void;
   removeLabel: string;
+  readOnly?: boolean;
 }) {
   const scheme = useColorScheme();
   const [preview, setPreview] = useState<PreviewableFile | null>(null);
@@ -69,17 +71,19 @@ export const ComposerAttachmentStrip = memo(function ComposerAttachmentStrip({
                   </View>
                 )}
               </Pressable>
-              <Pressable
-                style={styles.removeHit}
-                onPress={() => onRemove(index)}
-                hitSlop={6}
-                accessibilityRole="button"
-                accessibilityLabel={removeLabel}
-              >
-                <View style={styles.removeBadge}>
-                  <Icon source="close" size={14} color="#FFFFFF" />
-                </View>
-              </Pressable>
+              {!readOnly ? (
+                <Pressable
+                  style={styles.removeHit}
+                  onPress={() => onRemove(index)}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={removeLabel}
+                >
+                  <View style={styles.removeBadge}>
+                    <Icon source="close" size={14} color="#FFFFFF" />
+                  </View>
+                </Pressable>
+              ) : null}
             </View>
           );
         })}
