@@ -5,6 +5,7 @@ import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Icon, Snackbar, Text } from 'react-native-paper';
 
 import { FloatingHeader } from '../../components/FloatingHeader';
+import { useFlatListEndReached } from '../../lib/use-flat-list-end-reached';
 import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
 import { queryKeys } from '../../query/keys';
 import {
@@ -40,12 +41,12 @@ export function SessionsScreen() {
     getNextPageParam: (lastPage: SessionsPage) => lastPage.hasMore ? lastPage.offset + lastPage.limit : undefined,
     enabled: configured,
     staleTime: 60_000,
+    refetchOnMount: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
 
   const allSessions = sessionsQuery.data?.pages.flatMap((page) => page.items) ?? [];
-  const hasMore = sessionsQuery.data?.pages[sessionsQuery.data.pages.length - 1]?.hasMore ?? false;
 
   const actionMutation = useMutation({
     mutationFn: async ({ session, action }: { session: SessionListItem; action: SessionAction }) => {
@@ -94,14 +95,15 @@ export function SessionsScreen() {
   }, [actionMutation, handleOpenSession]);
 
   const handleLoadMore = useCallback(() => {
-    if (hasMore && !sessionsQuery.isFetching && !sessionsQuery.isFetchingNextPage) {
-      sessionsQuery.fetchNextPage();
-    }
-  }, [hasMore, sessionsQuery]);
+    if (!sessionsQuery.hasNextPage || sessionsQuery.isFetchingNextPage) return;
+    void sessionsQuery.fetchNextPage();
+  }, [sessionsQuery.fetchNextPage, sessionsQuery.hasNextPage, sessionsQuery.isFetchingNextPage]);
+
+  const { onEndReached, onMomentumScrollBegin } = useFlatListEndReached(handleLoadMore);
 
   const handleRefresh = useCallback(() => {
     void sessionsQuery.refetch();
-  }, [sessionsQuery]);
+  }, [sessionsQuery.refetch]);
 
   const renderSession = useCallback(({ item }: { item: SessionListItem }) => (
     <SessionCard
@@ -137,8 +139,9 @@ export function SessionsScreen() {
           data={allSessions}
           keyExtractor={(item) => item.key}
           renderItem={renderSession}
-          onEndReached={handleLoadMore}
+          onEndReached={onEndReached}
           onEndReachedThreshold={0.5}
+          onMomentumScrollBegin={onMomentumScrollBegin}
           ListFooterComponent={renderListFooter}
           refreshControl={
             <RefreshControl

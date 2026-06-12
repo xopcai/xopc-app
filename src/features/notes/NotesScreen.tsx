@@ -28,6 +28,7 @@ import {
 } from '../chat/voiceRecording';
 import { useMessages } from '../../i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
+import { useFlatListEndReached } from '../../lib/use-flat-list-end-reached';
 import {
   deleteNote,
   fetchNotes,
@@ -38,7 +39,7 @@ import {
   type NoteStatus,
 } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
-import { invalidateNoteLists } from '../../query/workspace-sync';
+import { invalidateHomeFeed, invalidateNoteLists } from '../../query/workspace-sync';
 import { useGatewayConfigured } from '../../query/sessions';
 import { useTheme, FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
 
@@ -95,6 +96,7 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
     getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.offset + lastPage.limit : undefined,
     enabled: configured,
     staleTime: 60_000,
+    refetchOnMount: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
@@ -196,18 +198,19 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
   const dismissAction = useCallback(() => setActionNote(null), []);
 
   const notes = notesQuery.data?.pages.flatMap((page) => page.items) ?? [];
-  const hasMore = notesQuery.data?.pages[notesQuery.data.pages.length - 1]?.hasMore ?? false;
 
   const handleLoadMore = useCallback(() => {
-    if (hasMore && !notesQuery.isFetching && !notesQuery.isFetchingNextPage) {
-      notesQuery.fetchNextPage();
-    }
-  }, [hasMore, notesQuery]);
+    if (!notesQuery.hasNextPage || notesQuery.isFetchingNextPage) return;
+    void notesQuery.fetchNextPage();
+  }, [notesQuery.fetchNextPage, notesQuery.hasNextPage, notesQuery.isFetchingNextPage]);
+
+  const { onEndReached, onMomentumScrollBegin } = useFlatListEndReached(handleLoadMore);
 
   const onRefresh = useCallback(async () => {
     await flushPendingNotes();
-    await invalidateNoteLists(queryClient);
-  }, [queryClient]);
+    await queryClient.invalidateQueries({ queryKey: [...queryKeys.notesAll, statusFilter, kindFilter] });
+    invalidateHomeFeed(queryClient);
+  }, [queryClient, statusFilter, kindFilter]);
 
   const statusFilters: { key: StatusFilter; label: string }[] = useMemo(() => [
     { key: 'all', label: pm.filterAll },
@@ -278,8 +281,9 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
             data={notes}
             keyExtractor={(item) => item.id}
             renderItem={renderNote}
-            onEndReached={handleLoadMore}
+            onEndReached={onEndReached}
             onEndReachedThreshold={0.5}
+            onMomentumScrollBegin={onMomentumScrollBegin}
             ListFooterComponent={notesQuery.isFetchingNextPage ? <View style={styles.footerLoader}><ActivityIndicator size="small" /></View> : null}
             contentContainerStyle={styles.list}
             refreshControl={
