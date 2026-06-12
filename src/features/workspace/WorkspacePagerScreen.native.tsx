@@ -6,6 +6,7 @@ import { useFocusEffect } from 'expo-router';
 
 import { motion } from '../../motion';
 import { invalidateHomeFeed } from '../../query/workspace-sync';
+import { useTheme } from '../../theme';
 
 import { AskAiHeroGhost } from './AskAiHeroGhost';
 import { WorkspaceChatOverlay } from './WorkspaceChatOverlay';
@@ -19,6 +20,7 @@ import {
 const AnimatedView = Animated.createAnimatedComponent(View);
 
 function WorkspaceShellContent() {
+  const { colors } = useTheme();
   const { phase, progress, dismissDrag, closeAskAi } = useWorkspaceTransition();
 
   const handleRequestHome = useCallback(() => {
@@ -48,7 +50,7 @@ function WorkspaceShellContent() {
   );
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
       <AnimatedView style={[styles.homeLayer, homeLayerStyle]}>
         <WorkspaceHomeScreen />
       </AnimatedView>

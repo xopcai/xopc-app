@@ -6,9 +6,13 @@
  */
 import { Stack } from 'expo-router';
 
+import { useThemedStackScreenOptions } from '../../src/lib/stack-screen-theme';
+
 export default function ChatDetailLayout() {
+  const themedScreenOptions = useThemedStackScreenOptions();
+
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack screenOptions={{ headerShown: false, ...themedScreenOptions }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="[k]" />
     </Stack>

@@ -8,6 +8,7 @@ import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
 
 import { tryConsumeGatewayDeeplink } from '../src/features/gateway/apply-gateway-deeplink';
 import { themedStackScreenOptions } from '../src/lib/stack-screen-theme';
+import { getColors } from '../src/theme';
 import { GatewayConnectLandingContext } from '../src/features/gateway/gateway-connect-context';
 import { GatewayConnectLandingModal } from '../src/features/gateway/GatewayConnectLandingModal';
 import { useGatewayConnectionWatch } from '../src/features/gateway/use-gateway-connection-watch';
@@ -37,7 +38,14 @@ export default function RootLayout() {
 
   const isDark = resolvedTheme === 'dark';
   const paperTheme = isDark ? MD3DarkTheme : MD3LightTheme;
-  const agentsStackOptions = themedStackScreenOptions(isDark);
+  const stackScreenOptions = useMemo(
+    () => ({
+      headerShown: false,
+      ...themedStackScreenOptions(isDark),
+    }),
+    [isDark],
+  );
+  const rootBackgroundColor = getColors(isDark).surface.base;
 
   useEffect(() => {
     // Eagerly refresh the network snapshot before/while we hydrate so the
@@ -94,12 +102,12 @@ export default function RootLayout() {
   );
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: rootBackgroundColor }}>
       <KeyboardProvider>
         <QueryClientProvider client={queryClient}>
           <PaperProvider theme={paperTheme}>
             <GatewayConnectLandingContext.Provider value={gatewayConnectCtx}>
-              <Stack screenOptions={{ headerShown: false }}>
+              <Stack screenOptions={stackScreenOptions}>
               {/**
                * (tabs) is the default landing group — single home screen.
                * chat/[k] pushes a full-screen chat detail on top.
@@ -120,9 +128,7 @@ export default function RootLayout() {
                 <Stack.Screen
                   name="agents"
                   options={{
-                    headerShown: false,
                     presentation: 'modal',
-                    ...agentsStackOptions,
                   }}
                 />
                 <Stack.Screen
