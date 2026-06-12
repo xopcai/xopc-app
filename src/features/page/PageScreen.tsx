@@ -55,7 +55,7 @@ import {
   type NoteAiPatch,
   type NoteBlock,
 } from '../notes/note-blocks';
-import { countNoteCharacters, deriveNoteTitle } from '../notes/note-title';
+import { countNoteCharacters, resolveDisplayTitle } from '../notes/note-title';
 import {
   flushPendingNoteOperations,
   readLocalNote,
@@ -65,11 +65,6 @@ import {
 } from '../notes/notes-local';
 
 const VIEW_BOTTOM_BAR_HEIGHT = 64;
-
-function resolveDisplayTitle(note: Pick<Note, 'title'> | undefined, blocks: NoteBlock[], fallback: string): string {
-  const explicitTitle = note?.title?.trim();
-  return explicitTitle || deriveNoteTitle(blocks, 10, fallback);
-}
 
 function extractCatalystSuggestion(patch: NoteAiPatch): string {
   for (const operation of patch.operations) {

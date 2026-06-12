@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,7 +9,9 @@ import { FloatingHeader } from '../../components/FloatingHeader';
 
 import { queryKeys } from '../../query/keys';
 import { fetchHome } from '../../query/home';
-import { createBlankNote, type NoteIndexEntry } from '../../query/notes';
+import { resolveNoteListTitle } from '../notes/note-title';
+import { readLocalNote } from '../notes/notes-local';
+import { createBlankNote, fetchNotes, type NoteIndexEntry } from '../../query/notes';
 import { useGatewayConfigured } from '../../query/sessions';
 import { useTheme } from '../../theme';
 
@@ -35,6 +37,31 @@ export function WorkspaceHomeScreen() {
     enabled: configured,
   });
 
+  const home = homeQuery.data;
+  const recentlyOpened = home?.recentlyOpened ?? [];
+  const needsRecentNotesFallback = configured && !homeQuery.isLoading && recentlyOpened.length === 0;
+
+  const recentNotesFallbackQuery = useQuery({
+    queryKey: [...queryKeys.notesAll, 'home-preview'] as const,
+    queryFn: () =>
+      fetchNotes({
+        limit: 5,
+        offset: 0,
+        sortBy: 'updatedAt',
+        sortOrder: 'desc',
+      }),
+    enabled: needsRecentNotesFallback,
+    staleTime: 60_000,
+  });
+
+  const homeNotes = useMemo(() => {
+    if (recentlyOpened.length > 0) return recentlyOpened.slice(0, 5);
+    return recentNotesFallbackQuery.data?.items ?? [];
+  }, [recentNotesFallbackQuery.data?.items, recentlyOpened]);
+
+  const homeNotesLoading =
+    homeQuery.isLoading || (needsRecentNotesFallback && recentNotesFallbackQuery.isLoading);
+
   const handleNotePress = useCallback((item: NoteIndexEntry) => {
     if (item.kind === 'task') {
       router.push(`/items/${item.id}`);
@@ -48,15 +75,24 @@ export function WorkspaceHomeScreen() {
   }, [router]);
 
   const handleRefresh = useCallback(() => {
-    void homeQuery.refetch().then(() => {
+    void homeQuery.refetch().then((result) => {
+      const opened = result.data?.recentlyOpened ?? [];
+      if (opened.length === 0) {
+        void recentNotesFallbackQuery.refetch();
+      }
       prefetchAskAiSession();
     });
-  }, [homeQuery, prefetchAskAiSession]);
+  }, [homeQuery, recentNotesFallbackQuery, prefetchAskAiSession]);
 
   if (!configured) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.surface.base }]}> 
-        <FloatingHeader title="工作空间" rightIcon="cog-outline" onRightPress={() => router.push('/settings')} />
+        <FloatingHeader
+          title="工作空间"
+          showLogo
+          rightIcon="cog-outline"
+          onRightPress={() => router.push('/settings')}
+        />
         <View style={styles.centerContent}>
           <Icon source="cloud-off-outline" size={42} color={colors.text.tertiary} />
           <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>连接你的 XOPC Gateway</Text>
@@ -66,12 +102,16 @@ export function WorkspaceHomeScreen() {
     );
   }
 
-  const home = homeQuery.data;
   const refreshing = homeQuery.isFetching && !homeQuery.isLoading;
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}> 
-      <FloatingHeader title="工作空间" rightIcon="cog-outline" onRightPress={() => router.push('/settings')} />
+      <FloatingHeader
+        title="工作空间"
+        showLogo
+        rightIcon="cog-outline"
+        onRightPress={() => router.push('/settings')}
+      />
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 112 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
@@ -90,7 +130,8 @@ export function WorkspaceHomeScreen() {
             />
             <InboxPreview count={home?.inboxCount ?? 0} onOpenInbox={() => router.push('/inbox')} />
             <RecentNotesCard
-              notes={(home?.recentlyOpened ?? []).slice(0, 5)}
+              notes={homeNotes}
+              loading={homeNotesLoading}
               onNotePress={handleNotePress}
               onViewAll={() => router.push('/notes')}
             />
@@ -131,10 +172,12 @@ function iconForNoteKind(kind: NoteIndexEntry['kind']): string {
 
 function RecentNotesCard({
   notes,
+  loading = false,
   onNotePress,
   onViewAll,
 }: {
   notes: NoteIndexEntry[];
+  loading?: boolean;
   onNotePress: (note: NoteIndexEntry) => void;
   onViewAll: () => void;
 }) {
@@ -149,14 +192,18 @@ function RecentNotesCard({
         </Pressable>
       </View>
       <View style={[styles.listCard, { backgroundColor: colors.surface.panel }]}> 
-        {notes.length === 0 ? (
+        {loading ? (
+          <View style={styles.emptyRow}>
+            <ActivityIndicator size="small" />
+          </View>
+        ) : notes.length === 0 ? (
           <View style={styles.emptyRow}>
             <Icon source="note-text-outline" size={20} color={colors.text.tertiary} />
             <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>还没有最近笔记</Text>
           </View>
         ) : (
           notes.map((note) => {
-            const title = note.title?.trim() || note.snippet || '无标题';
+            const title = resolveNoteListTitle(note, '无标题', readLocalNote(note.id));
             const subtitle = note.title?.trim() && note.snippet?.trim() ? note.snippet : null;
             return (
             <Pressable key={note.id} style={styles.itemRow} onPress={() => onNotePress(note)}>

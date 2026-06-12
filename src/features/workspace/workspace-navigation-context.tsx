@@ -7,7 +7,7 @@ import {
 } from 'react';
 import { useRouter } from 'expo-router';
 
-import { prefetchNewChatSession } from '../chat/session-prefetch';
+import { prefetchNewChatSession, takeOptimisticSessionKey } from '../chat/session-prefetch';
 import { useEffectiveDefaultAgentId } from '../../query/agents';
 
 import { useOptionalWorkspaceTransition } from './workspace-transition-context';
@@ -43,13 +43,14 @@ export function WorkspaceNavigationProvider({ children }: WorkspaceNavigationPro
   );
 
   const openAskAi = useCallback(() => {
-    prefetchAskAiSession();
     if (transition) {
-      void transition.openAskAi();
+      const sessionKey = takeOptimisticSessionKey(defaultAgentId);
+      void transition.openAskAi(sessionKey);
       return;
     }
+    prefetchAskAiSession();
     router.push('/chat');
-  }, [prefetchAskAiSession, router, transition]);
+  }, [defaultAgentId, prefetchAskAiSession, router, transition]);
 
   const value = useMemo(
     () => ({ openAskAi, prefetchAskAiSession, registerFinalizeHandler }),

@@ -55,6 +55,14 @@ describe('createSession', () => {
     expect(body.chat_id).toMatch(/^chat_\d+_[a-z0-9]+$/);
   });
 
+  it('sends an explicit chat_id when provided', async () => {
+    await createSession('MainAgent', { chatId: 'chat_123_abc' });
+
+    const [, init] = mockedApiFetch.mock.calls[0];
+    const body = JSON.parse(String(init?.body)) as { chat_id?: string };
+    expect(body.chat_id).toBe('chat_123_abc');
+  });
+
   it('does not send a chat_id by default so empty sessions can be reused', async () => {
     await createSession('MainAgent');
 

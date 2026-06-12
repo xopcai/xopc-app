@@ -11,10 +11,11 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { openChat } from '../../lib/navigation';
 
-import { useGatewayStore } from '../../stores/gateway-store';
-import { createSession } from '../../query/sessions';
 import { resolveEffectiveDefaultAgentId } from '../../query/agents';
-import { consumePrefetchedSession } from './session-prefetch';
+import {
+  ensureOptimisticSessionRegistered,
+  takeOptimisticSessionKey,
+} from './session-prefetch';
 import { invalidateSessionLists } from '../../query/workspace-sync';
 import type { useMessages } from '../../i18n/messages';
 
@@ -27,6 +28,8 @@ export type ChatBootstrapDeps = {
   /** Shared mutable ref — bootstrap writes the new session key here so callers stay in sync. */
   activeSessionKeyRef: React.MutableRefObject<string>;
   shouldNavigateToRoute?: boolean;
+  /** When false, skip auto session creation (overlay supplies its own key). */
+  shouldAutoBootstrap?: boolean;
 };
 
 export type ChatBootstrapResult = {
@@ -48,6 +51,7 @@ export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResu
     messages: m,
     activeSessionKeyRef,
     shouldNavigateToRoute = true,
+    shouldAutoBootstrap = true,
   } = deps;
 
   const router = useRouter();
@@ -64,12 +68,6 @@ export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResu
     if (urlSessionKey) setPendingBootstrapKey('');
   }, [urlSessionKey]);
 
-  const resolveNewSessionKey = useCallback(async (agentId: string) => {
-    await useGatewayStore.getState().refreshActiveBaseUrl();
-    const prefetched = consumePrefetchedSession(agentId, { forceNew: true });
-    return prefetched ?? createSession(agentId, { forceNew: true });
-  }, []);
-
   const startAutoSession = useCallback((options?: { force?: boolean }) => {
     if (urlSessionKey || !gatewayOnline) return;
     if (autoSessionInFlightRef.current && !options?.force) return;
@@ -84,34 +82,34 @@ export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResu
 
     autoSessionAttemptedRef.current = true;
     autoSessionInFlightRef.current = true;
-    setCreatingInitialSession(true);
     setBootstrapError(null);
     const agentId = resolveEffectiveDefaultAgentId(agentsData, localDefaultAgentId);
-    void (async () => {
-      try {
-        const key = await resolveNewSessionKey(agentId);
-        activeSessionKeyRef.current = key;
-        setPendingBootstrapKey(key);
+    const key = takeOptimisticSessionKey(agentId);
+    activeSessionKeyRef.current = key;
+    setPendingBootstrapKey(key);
+    setCreatingInitialSession(false);
+    if (shouldNavigateToRoute) {
+      openChat(router, key, { replace: true });
+    }
+    void ensureOptimisticSessionRegistered(key)
+      .then(() => {
         invalidateSessionLists(queryClient);
-        if (shouldNavigateToRoute) {
-          openChat(router, key, { replace: true });
-        }
-      } catch (e) {
+      })
+      .catch((e) => {
         const message = e instanceof Error ? e.message : String(e);
         setBootstrapError(message.trim() || m.sessions.bootstrapFailed);
-      } finally {
+      })
+      .finally(() => {
         autoSessionInFlightRef.current = false;
-        setCreatingInitialSession(false);
-      }
-    })();
-  }, [urlSessionKey, gatewayOnline, agentsData, localDefaultAgentId, router, queryClient, m.sessions.bootstrapFailed, activeSessionKeyRef, shouldNavigateToRoute, resolveNewSessionKey]);
+      });
+  }, [urlSessionKey, gatewayOnline, agentsData, localDefaultAgentId, router, queryClient, m.sessions.bootstrapFailed, activeSessionKeyRef, shouldNavigateToRoute]);
 
   // Auto-start on first mount when gateway is online
   useEffect(() => {
-    if (urlSessionKey || !gatewayOnline) return;
+    if (!shouldAutoBootstrap || urlSessionKey || !gatewayOnline) return;
     if (autoSessionAttemptedRef.current || autoSessionInFlightRef.current) return;
     startAutoSession();
-  }, [urlSessionKey, gatewayOnline, startAutoSession]);
+  }, [shouldAutoBootstrap, urlSessionKey, gatewayOnline, startAutoSession]);
 
   // Retry on gateway reconnect after a failure
   useEffect(() => {

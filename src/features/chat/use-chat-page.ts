@@ -26,7 +26,6 @@ import { fetchChatAgents, readPlaceholderAgents, resolveEffectiveDefaultAgentId 
 import { fetchChatModels, resolveEffectiveModelId, setSessionModelRef, fetchSessionAgentConfig } from '../../query/models';
 import { queryKeys } from '../../query/keys';
 import { invalidateSessionLists } from '../../query/workspace-sync';
-import { createSession } from '../../query/sessions';
 import { getColors } from '../../theme';
 
 import { EMPTY_CHAT_GOAL_PREFILL } from './chat-empty-shortcuts';
@@ -36,10 +35,12 @@ import type { Message } from './messages.types';
 import { MAX_PENDING_FOLLOW_UPS } from './pending-follow-up.types';
 import { sendOrQueueMessage } from './send-or-queue';
 import { parseSessionMessages, dedupeWireMessages } from './session-message-parser';
+import { ensureOptimisticSessionRegistered, takeOptimisticSessionKey } from './session-prefetch';
 import { useChatPageBootstrap } from './use-chat-page-bootstrap';
 import { useChatSession } from './use-chat-session';
 import { useSessionHistory } from './use-session-history';
 import { useWorkspaceNavigation } from '../workspace/workspace-navigation-context';
+import { useOptionalWorkspaceTransition } from '../workspace/workspace-transition-context';
 
 export type UseChatPageOptions = {
   embedded?: boolean;
@@ -79,6 +80,8 @@ export function useChatPage(options: UseChatPageOptions = {}) {
   // ── Bootstrap ────────────────────────────────────────────
   // Shared ref for session key — bootstrap writes here, chatSession reads it.
   const activeSessionKeyRef = useRef('');
+  const transition = useOptionalWorkspaceTransition();
+  const overlaySessionKey = embedded ? transition?.overlaySessionKey ?? '' : '';
 
   const bootstrap = useChatPageBootstrap({
     urlSessionKey,
@@ -88,9 +91,10 @@ export function useChatPage(options: UseChatPageOptions = {}) {
     messages: m,
     activeSessionKeyRef,
     shouldNavigateToRoute: !embedded,
+    shouldAutoBootstrap: !embedded,
   });
 
-  const sessionKey = urlSessionKey || bootstrap.pendingBootstrapKey;
+  const sessionKey = urlSessionKey || overlaySessionKey || bootstrap.pendingBootstrapKey;
 
   // Re-init chat session with resolved sessionKey
   const currentSessionAgentId = useMemo(
@@ -106,6 +110,19 @@ export function useChatPage(options: UseChatPageOptions = {}) {
 
   const effectiveModelId = resolveEffectiveModelId(modelsQuery.data, localSelectedModelRef);
   const chatSession = useChatSession({ sessionKey, effectiveModelId });
+
+  // Overlay: reset UI when a new Ask AI session key arrives from the transition.
+  const prevOverlayKeyRef = useRef('');
+  useEffect(() => {
+    if (!embedded || !overlaySessionKey || overlaySessionKey === prevOverlayKeyRef.current) return;
+    prevOverlayKeyRef.current = overlaySessionKey;
+    activeSessionKeyRef.current = overlaySessionKey;
+    chatSession.streamRecoveryRef.current.cancelRecovery();
+    chatSession.clearAllState();
+    void ensureOptimisticSessionRegistered(overlaySessionKey)
+      .then(() => invalidateSessionLists(queryClient))
+      .catch(() => {});
+  }, [embedded, overlaySessionKey, queryClient]);
 
   // Sync session model override from agent-config when session changes.
   useEffect(() => {
@@ -235,15 +252,14 @@ export function useChatPage(options: UseChatPageOptions = {}) {
 
   const handleAgentSelect = useCallback(
     (agentId: string) => {
-      void createSession(agentId, { forceNew: true })
-        .then((key) => {
-          chatSession.activeSessionKeyRef.current = key;
-          bootstrap.setPendingBootstrapKey(key);
-          invalidateSessionLists(queryClient);
-          if (!embedded) {
-            openChat(router, key, { replace: true });
-          }
-        })
+      const key = takeOptimisticSessionKey(agentId);
+      chatSession.activeSessionKeyRef.current = key;
+      bootstrap.setPendingBootstrapKey(key);
+      if (!embedded) {
+        openChat(router, key, { replace: true });
+      }
+      void ensureOptimisticSessionRegistered(key)
+        .then(() => invalidateSessionLists(queryClient))
         .catch((e) => {
           chatSession.setSnackMsg(e instanceof Error ? e.message : String(e));
         });
@@ -257,15 +273,14 @@ export function useChatPage(options: UseChatPageOptions = {}) {
     chatSession.clearAllState();
 
     const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
-    void createSession(agentId, { forceNew: true })
-      .then((key) => {
-        chatSession.activeSessionKeyRef.current = key;
-        bootstrap.setPendingBootstrapKey(key);
-        invalidateSessionLists(queryClient);
-        if (!embedded) {
-          openChat(router, key, { replace: true });
-        }
-      })
+    const key = takeOptimisticSessionKey(agentId);
+    chatSession.activeSessionKeyRef.current = key;
+    bootstrap.setPendingBootstrapKey(key);
+    if (!embedded) {
+      openChat(router, key, { replace: true });
+    }
+    void ensureOptimisticSessionRegistered(key)
+      .then(() => invalidateSessionLists(queryClient))
       .catch((e) => {
         chatSession.activeSessionKeyRef.current = sessionKey;
         chatSession.setSnackMsg(e instanceof Error ? e.message : String(e));
@@ -318,10 +333,7 @@ export function useChatPage(options: UseChatPageOptions = {}) {
     pendingSendRef.current = null;
     chatSession.streamRecoveryRef.current.cancelRecovery();
     chatSession.clearAllState();
-    chatSession.activeSessionKeyRef.current = '';
-    bootstrap.setPendingBootstrapKey('');
-    bootstrap.startFreshSession();
-  }, [bootstrap, chatSession]);
+  }, [chatSession]);
 
   useEffect(() => {
     if (!embedded) return;
@@ -385,14 +397,15 @@ export function useChatPage(options: UseChatPageOptions = {}) {
         switchGateway(profileId);
         await syncAfterGatewaySettingsSave();
         const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
-        const key = await createSession(agentId, { forceNew: true });
+        const key = takeOptimisticSessionKey(agentId);
         chatSession.activeSessionKeyRef.current = key;
         bootstrap.setPendingBootstrapKey(key);
-        invalidateSessionLists(queryClient);
         setGatewaySheetVisible(false);
         if (!embedded) {
           openChat(router, key, { replace: true });
         }
+        await ensureOptimisticSessionRegistered(key);
+        invalidateSessionLists(queryClient);
       } catch (e) {
         chatSession.setSnackMsg(e instanceof Error ? e.message : String(e));
       } finally {

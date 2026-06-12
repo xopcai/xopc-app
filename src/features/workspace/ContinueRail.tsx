@@ -1,6 +1,8 @@
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
+import { resolveNoteListTitle } from '../notes/note-title';
+import { readLocalNote } from '../notes/notes-local';
 import type { NoteIndexEntry } from '../../query/notes';
 import { useTheme } from '../../theme';
 
@@ -37,7 +39,7 @@ export function ContinueRail({ items, onItemPress }: ContinueRailProps) {
             >
               <Icon source={iconForKind(item.kind)} size={20} color="#6D5DFB" />
               <Text numberOfLines={2} style={[styles.cardTitle, { color: colors.text.primary }]}> 
-                {item.title?.trim() || item.snippet || '无标题'}
+                {resolveNoteListTitle(item, '无标题', readLocalNote(item.id))}
               </Text>
               {!!item.snippet && (
                 <Text numberOfLines={2} style={[styles.cardSummary, { color: colors.text.tertiary }]}>{item.snippet}</Text>

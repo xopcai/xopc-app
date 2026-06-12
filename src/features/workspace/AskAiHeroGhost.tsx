@@ -37,8 +37,8 @@ export const AskAiHeroGhost = memo(function AskAiHeroGhost() {
     );
     const shellOpacity = interpolate(
       t,
-      [0, motion.hero.revealComposerAt, 1],
-      [1, 0.35, 0],
+      [0, 0.06, motion.hero.revealComposerAt, 1],
+      [0, 1, 0.35, 0],
       Extrapolation.CLAMP,
     );
 

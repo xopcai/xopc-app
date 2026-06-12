@@ -20,65 +20,61 @@ vi.mock('../../../query/sessions', () => ({
 
 import { createSession } from '../../../query/sessions';
 import {
-  consumePrefetchedSession,
   prefetchNewChatSession,
   resetSessionPrefetchCacheForTests,
+  takeOptimisticSessionKey,
+  ensureOptimisticSessionRegistered,
 } from '../session-prefetch';
 
 const mockedCreate = vi.mocked(createSession);
 
+async function flushRegistration(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 beforeEach(() => {
   resetSessionPrefetchCacheForTests();
   mockedCreate.mockReset();
-  mockedCreate.mockResolvedValue('agent:webchat:main:direct:chat_test');
+  mockedCreate.mockImplementation(async (agentId, options) => {
+    const id = (agentId ?? 'main').trim().toLowerCase() || 'main';
+    const chatId = options?.chatId ?? 'chat_fallback';
+    return `agent:${id}:webchat:default:direct:${chatId}`;
+  });
 });
 
 afterEach(() => {
   resetSessionPrefetchCacheForTests();
 });
 
-describe('prefetchNewChatSession / consumePrefetchedSession', () => {
-  it('returns null when nothing was prefetched', () => {
-    expect(consumePrefetchedSession('main', { forceNew: true })).toBeNull();
-  });
-
-  it('returns the prefetched promise on consume', async () => {
-    prefetchNewChatSession('main', { forceNew: true });
-    const p = consumePrefetchedSession('main', { forceNew: true });
-    expect(p).not.toBeNull();
-    await expect(p).resolves.toBe('agent:webchat:main:direct:chat_test');
-  });
-
-  it('fires createSession exactly once on prefetch (idempotent)', async () => {
-    prefetchNewChatSession('main', { forceNew: true });
-    prefetchNewChatSession('main', { forceNew: true });
-    await Promise.resolve();
-    await Promise.resolve();
+describe('optimistic session prefetch', () => {
+  it('takeOptimisticSessionKey returns immediately without awaiting POST', async () => {
+    const key = takeOptimisticSessionKey('main');
+    expect(key).toMatch(/^agent:main:webchat:default:direct:chat_\d+_[a-z0-9]+$/);
+    await flushRegistration();
     expect(mockedCreate).toHaveBeenCalledTimes(1);
   });
 
-  it('different agent keys cache independently', async () => {
+  it('prefetch then take reuses the same prefetched key', async () => {
+    prefetchNewChatSession('main', { forceNew: true });
+    await flushRegistration();
+    expect(mockedCreate).toHaveBeenCalledTimes(1);
+    const key1 = takeOptimisticSessionKey('main');
+    const key2 = takeOptimisticSessionKey('main');
+    expect(key2).not.toBe(key1);
+    await flushRegistration();
+    expect(mockedCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it('ensureOptimisticSessionRegistered resolves after background POST', async () => {
+    const key = takeOptimisticSessionKey('main');
+    await expect(ensureOptimisticSessionRegistered(key)).resolves.toBe(key);
+  });
+
+  it('different agents cache independently', async () => {
     prefetchNewChatSession('main', { forceNew: true });
     prefetchNewChatSession('other', { forceNew: true });
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushRegistration();
     expect(mockedCreate).toHaveBeenCalledTimes(2);
-    expect(consumePrefetchedSession('main', { forceNew: true })).not.toBeNull();
-    expect(consumePrefetchedSession('other', { forceNew: true })).not.toBeNull();
-  });
-
-  it('consume removes the entry — a second consume returns null', () => {
-    prefetchNewChatSession('main', { forceNew: true });
-    expect(consumePrefetchedSession('main', { forceNew: true })).not.toBeNull();
-    expect(consumePrefetchedSession('main', { forceNew: true })).toBeNull();
-  });
-
-  it('swallows rejection of an unattached prefetch (no unhandled rejection)', async () => {
-    mockedCreate.mockRejectedValue(new Error('server down'));
-    prefetchNewChatSession('main', { forceNew: true });
-    await Promise.resolve();
-    await Promise.resolve();
-    const p = consumePrefetchedSession('main', { forceNew: true });
-    if (p) await expect(p).rejects.toThrow('server down');
   });
 });

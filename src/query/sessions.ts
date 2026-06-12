@@ -1,10 +1,11 @@
-import { useGatewayStore } from '../stores/gateway-store';
+import { generateNewChatId } from '../lib/session-key';
 import { apiFetch, formatApiHttpError } from '../api/client';
 import {
   readCachedSessions,
   writeCachedSessions,
 } from '../features/gateway/sessions-cache';
 import { sessionListItemSchema, sessionsListResponseSchema } from '../config/schema';
+import { useGatewayStore } from '../stores/gateway-store';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -45,6 +46,18 @@ export type SessionMessagePage = {
     nextBeforeCursor?: string;
   };
 };
+
+export function emptySessionMessagePage(key: string): SessionMessagePage {
+  return {
+    session: { key, messages: [] },
+    pagination: {
+      total: 0,
+      limit: 50,
+      offset: 0,
+      hasMore: false,
+    },
+  };
+}
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -156,12 +169,14 @@ export async function fetchSessionMessagePage(
 
 export async function createSession(
   agentId?: string,
-  options?: { forceNew?: boolean },
+  options?: { forceNew?: boolean; chatId?: string },
 ): Promise<string> {
   const body: Record<string, unknown> = { channel: 'webchat' };
   if (agentId?.trim()) body.agentId = agentId.trim().toLowerCase();
-  if (options?.forceNew) {
-    body.chat_id = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  if (options?.chatId?.trim()) {
+    body.chat_id = options.chatId.trim();
+  } else if (options?.forceNew) {
+    body.chat_id = generateNewChatId();
   }
   const res = await apiFetch('/api/sessions', {
     method: 'POST',

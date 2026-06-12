@@ -50,20 +50,17 @@ export function BottomCommandBar({ bottomInset, onSearch, onAskAi, onAskAiPressI
     return () => transition.registerPillMeasurer(null);
   }, [measurePill, transition]);
 
-  const phase = transition?.phase;
   const pillHiddenStyle = useAnimatedStyle(() => {
     if (!transition) return { opacity: 1 };
-    // Keep the home pill hidden until the overlay transition fully settles,
-    // so it does not overlap the morphing ghost on close.
-    return { opacity: phase === 'closed' ? 1 : 0 };
-  }, [phase, transition]);
+    // Crossfade with the morphing ghost — real pill shows only when progress ≈ 0.
+    return { opacity: transition.progress.value < 0.04 ? 1 : 0 };
+  }, [transition]);
 
   const barHiddenStyle = useAnimatedStyle(() => {
-    if (!transition) return { opacity: 1, transform: [{ translateY: 0 }] };
+    if (!transition) return { opacity: 1 };
     const openAmount = transition.progress.value;
     return {
       opacity: 1 - openAmount * 0.85,
-      transform: [{ translateY: openAmount * 40 }],
     };
   }, [transition]);
 

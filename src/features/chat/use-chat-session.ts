@@ -30,6 +30,7 @@ import {
   canSendComposerDraft,
   buildOptimisticUserMessage,
 } from './composer-send-helpers';
+import { ensureOptimisticSessionRegistered } from './session-prefetch';
 import type { WireAttachment } from './composer.types';
 import type { Message, ProgressState } from './messages.types';
 import type { ClarifyPromptState } from './ClarifyPrompt';
@@ -495,6 +496,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       setAwaitingSessionRefresh(false);
       lastStreamActivityAtRef.current = Date.now();
       try {
+        await ensureOptimisticSessionRegistered(sessionKey);
         await senderRef.current.sendMessage(
           text.trim(),
           sessionKey,

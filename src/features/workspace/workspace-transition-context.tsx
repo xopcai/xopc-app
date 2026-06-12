@@ -35,13 +35,15 @@ export type WorkspaceTransitionContextValue = {
   progress: SharedValue<number>;
   dismissDrag: SharedValue<number>;
   isChatWarm: boolean;
+  /** Session key for the overlay chat — resolved when Ask AI opens. */
+  overlaySessionKey: string;
   pillAnchor: LayoutRect | null;
   composerAnchor: LayoutRect | null;
   registerPillMeasurer: (measurer: LayoutMeasurer | null) => void;
   registerComposerMeasurer: (measurer: LayoutMeasurer | null) => void;
   registerFinalizeHandler: (handler: FinalizeAskAiHandler | null) => void;
   notifyComposerAnchor: (rect: LayoutRect) => void;
-  openAskAi: () => Promise<void>;
+  openAskAi: (sessionKey: string) => Promise<void>;
   closeAskAi: () => void;
   completeInteractiveDismiss: () => void;
   cancelInteractiveDismiss: () => void;
@@ -62,6 +64,7 @@ export function WorkspaceTransitionProvider({ children, onClosed }: WorkspaceTra
 
   const [phase, setPhase] = useState<WorkspaceTransitionPhase>('closed');
   const [isChatWarm, setIsChatWarm] = useState(false);
+  const [overlaySessionKey, setOverlaySessionKey] = useState('');
   const [pillAnchor, setPillAnchor] = useState<LayoutRect | null>(null);
   const [composerAnchor, setComposerAnchor] = useState<LayoutRect | null>(null);
 
@@ -115,10 +118,12 @@ export function WorkspaceTransitionProvider({ children, onClosed }: WorkspaceTra
     setComposerAnchor(rect);
   }, []);
 
-  const openAskAi = useCallback(async () => {
+  const openAskAi = useCallback(async (sessionKey: string) => {
     if (transitionBusyRef.current || phase === 'open' || phase === 'opening') return;
     transitionBusyRef.current = true;
     hapticAskAiPress();
+
+    setOverlaySessionKey(sessionKey);
 
     const pillRect = await pillMeasurerRef.current?.();
     setPillAnchor(pillRect ?? null);
@@ -151,6 +156,10 @@ export function WorkspaceTransitionProvider({ children, onClosed }: WorkspaceTra
     hapticAskAiPress();
     setPhase('closing');
     dismissDrag.value = 0;
+
+    void pillMeasurerRef.current?.().then((rect) => {
+      if (rect) setPillAnchor(rect);
+    });
 
     if (reducedMotion) {
       progress.value = 0;
@@ -189,6 +198,7 @@ export function WorkspaceTransitionProvider({ children, onClosed }: WorkspaceTra
       progress,
       dismissDrag,
       isChatWarm,
+      overlaySessionKey,
       pillAnchor,
       composerAnchor,
       registerPillMeasurer,
@@ -207,6 +217,7 @@ export function WorkspaceTransitionProvider({ children, onClosed }: WorkspaceTra
       completeInteractiveDismiss,
       composerAnchor,
       isChatWarm,
+      overlaySessionKey,
       notifyComposerAnchor,
       openAskAi,
       phase,

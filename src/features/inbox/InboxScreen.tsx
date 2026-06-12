@@ -137,7 +137,7 @@ export function InboxScreen() {
         refreshControl={<RefreshControl refreshing={inboxQuery.isFetching} onRefresh={() => void inboxQuery.refetch()} />}
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
-            <Icon source="inbox-check-outline" size={42} color={colors.text.tertiary} />
+            <Icon source="tray" size={42} color={colors.text.tertiary} />
             <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>Inbox 已清空</Text>
             <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>新想法会先进入这里，再由你整理归类。</Text>
           </View>

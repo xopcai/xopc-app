@@ -25,7 +25,7 @@ export function InboxPreview({ count, onOpenInbox }: InboxPreviewProps) {
       <Pressable style={[styles.card, { backgroundColor: colors.surface.panel }]} onPress={onOpenInbox}>
         {count === 0 ? (
           <View style={styles.emptyRow}>
-            <Icon source="inbox-check-outline" size={20} color={colors.text.tertiary} />
+            <Icon source="tray" size={20} color={colors.text.tertiary} />
             <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>Inbox 已清空</Text>
           </View>
         ) : (

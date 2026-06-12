@@ -6,12 +6,13 @@
  * for rename, pin/unpin, archive/unarchive, and delete.
  */
 import { memo, useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Menu, Text } from 'react-native-paper';
 
 import { t, useMessages } from '../../i18n/messages';
 import { sessionDisplayName } from '../../lib/session-helpers';
 import type { SessionListItem } from '../../query/sessions';
+import { useTheme } from '../../theme';
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ export const SessionCard = memo(function SessionCard({
   onPress,
   onAction,
 }: SessionCardProps) {
-  const isDark = useColorScheme() === 'dark';
+  const { colors, isDark } = useTheme();
   const m = useMessages();
   const [menuVisible, setMenuVisible] = useState(false);
 
@@ -81,8 +82,8 @@ export const SessionCard = memo(function SessionCard({
           style={({ pressed }) => [
             styles.card,
             {
-              backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
-              borderColor: isDark ? '#374151' : '#E5E7EB',
+              backgroundColor: colors.surface.panel,
+              borderColor: colors.border.default,
             },
             pressed && { opacity: 0.85 },
           ]}
@@ -91,10 +92,10 @@ export const SessionCard = memo(function SessionCard({
             <View style={styles.content}>
               <View style={styles.titleRow}>
                 {isPinned ? (
-                  <Icon source="pin" size={14} color={isDark ? '#60A5FA' : '#2563EB'} />
+                  <Icon source="pin" size={14} color={colors.accent.primary} />
                 ) : null}
                 {isArchived ? (
-                  <Icon source="archive" size={14} color={isDark ? '#9CA3AF' : '#6B7280'} />
+                  <Icon source="archive" size={14} color={colors.text.secondary} />
                 ) : null}
                 <Text
                   variant="titleSmall"
@@ -105,18 +106,18 @@ export const SessionCard = memo(function SessionCard({
                 </Text>
               </View>
               <View style={styles.metaRow}>
-                <Text variant="bodySmall" style={styles.meta}>
+                <Text variant="bodySmall" style={[styles.meta, { color: colors.text.tertiary }]}>
                   {t(m.sessions.messagesCount, { count: session.messageCount })}
                 </Text>
-                <Text variant="bodySmall" style={styles.metaDot}>
+                <Text variant="bodySmall" style={[styles.metaDot, { color: colors.text.tertiary }]}>
                   ·
                 </Text>
-                <Text variant="bodySmall" style={styles.meta}>
+                <Text variant="bodySmall" style={[styles.meta, { color: colors.text.tertiary }]}>
                   {time}
                 </Text>
               </View>
             </View>
-            <Icon source="chevron-right" size={20} color={isDark ? '#6B7280' : '#9CA3AF'} />
+            <Icon source="chevron-right" size={20} color={colors.text.tertiary} />
           </View>
         </Pressable>
       }
@@ -155,7 +156,7 @@ export const SessionCard = memo(function SessionCard({
       <Menu.Item
         leadingIcon="delete-outline"
         title={m.sessionActions.delete}
-        titleStyle={styles.deleteText}
+        titleStyle={{ color: colors.semantic.errorBold }}
         onPress={() => handleAction('delete')}
       />
     </Menu>
@@ -197,14 +198,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   meta: {
-    color: '#9CA3AF',
     fontSize: 12,
   },
   metaDot: {
-    color: '#9CA3AF',
     fontSize: 12,
-  },
-  deleteText: {
-    color: '#EF4444',
   },
 });

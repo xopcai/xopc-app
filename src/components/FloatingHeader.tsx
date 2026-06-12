@@ -3,6 +3,7 @@ import { Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '../theme';
+import { XopcLogo } from './XopcLogo';
 
 type FloatingHeaderAction = {
   icon: string;
@@ -11,13 +12,14 @@ type FloatingHeaderAction = {
 
 interface FloatingHeaderProps {
   title: string;
+  showLogo?: boolean;
   onBack?: () => void;
   rightIcon?: string;
   onRightPress?: () => void;
   rightActions?: FloatingHeaderAction[];
 }
 
-export function FloatingHeader({ title, onBack, rightIcon, onRightPress, rightActions }: FloatingHeaderProps) {
+export function FloatingHeader({ title, showLogo, onBack, rightIcon, onRightPress, rightActions }: FloatingHeaderProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const backgroundColor = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.05)';
@@ -29,6 +31,10 @@ export function FloatingHeader({ title, onBack, rightIcon, onRightPress, rightAc
         <Pressable style={[styles.iconButton, { backgroundColor }]} onPress={onBack}>
           <Icon source="chevron-left" size={24} color={colors.text.secondary} />
         </Pressable>
+      ) : showLogo ? (
+        <View style={[styles.iconButton, styles.logoButton, { backgroundColor }]}>
+          <XopcLogo size={32} />
+        </View>
       ) : (
         <View style={styles.iconPlaceholder} />
       )}
@@ -71,6 +77,10 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  logoButton: {
+    overflow: 'hidden',
+    padding: 0,
   },
   iconPlaceholder: {
     width: 44,
