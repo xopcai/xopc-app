@@ -230,6 +230,7 @@ export const en = {
     sessionArchived: 'Session archived',
     sessionUnarchived: 'Session unarchived',
     sessionDeleted: 'Session deleted',
+    sessionRenamed: 'Session renamed',
     failedToPin: 'Failed to pin session',
     failedToUnpin: 'Failed to unpin session',
     failedToArchive: 'Failed to archive session',
@@ -580,6 +581,12 @@ export const en = {
     minutesAgo: '{{n}}m ago',
     hoursAgo: '{{n}}h ago',
     daysAgo: '{{n}}d ago',
+  },
+
+  sessionsPage: {
+    title: 'All chats',
+    empty: 'No chats yet',
+    emptyHint: 'Start a chat and it will appear here.',
   },
 
   notesPage: {

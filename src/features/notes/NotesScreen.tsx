@@ -39,7 +39,7 @@ import {
   type NoteStatus,
 } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
-import { invalidateHomeFeed, invalidateNoteLists } from '../../query/workspace-sync';
+import { refreshNotesList } from '../../query/infinite-list-sync';
 import { useGatewayConfigured } from '../../query/sessions';
 import { useTheme, FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
 
@@ -83,8 +83,13 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
   const [recording, setRecording] = useState(false);
   const recordingRef = useRef<ExpoRecording | null>(null);
 
+  const notesListQueryKey = useMemo(
+    () => [...queryKeys.notesAll, statusFilter, kindFilter] as const,
+    [statusFilter, kindFilter],
+  );
+
   const notesQuery = useInfiniteQuery({
-    queryKey: [...queryKeys.notesAll, statusFilter, kindFilter],
+    queryKey: notesListQueryKey,
     queryFn: ({ pageParam }) =>
       fetchNotes({
         status: statusFilter === 'all' ? undefined : statusFilter,
@@ -101,10 +106,14 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
     refetchOnReconnect: false,
   });
 
+  const refreshList = useCallback(async () => {
+    await refreshNotesList(queryClient, notesListQueryKey);
+  }, [queryClient, notesListQueryKey]);
+
   const captureMutation = useMutation({
     mutationFn: (text: string) => quickCaptureNote(text),
     onSuccess: async () => {
-      await invalidateNoteLists(queryClient);
+      await refreshList();
     },
     onError: (_err, text) => {
       queueNote(text);
@@ -177,13 +186,13 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
         else if (action === 'unpin') await updateNote(note.id, { pinned: false });
         else if (action === 'archive') await updateNote(note.id, { status: 'archived' });
         else if (action === 'delete') await deleteNote(note.id);
-        await invalidateNoteLists(queryClient);
+        await refreshList();
         setSnackMsg(action === 'delete' ? pm.deleted : pm.updated);
       } catch (err) {
         setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
       }
     },
-    [queryClient, pm],
+    [pm, refreshList],
   );
 
   const handleAction = useCallback(
@@ -208,9 +217,8 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
 
   const onRefresh = useCallback(async () => {
     await flushPendingNotes();
-    await queryClient.invalidateQueries({ queryKey: [...queryKeys.notesAll, statusFilter, kindFilter] });
-    invalidateHomeFeed(queryClient);
-  }, [queryClient, statusFilter, kindFilter]);
+    await refreshList();
+  }, [refreshList]);
 
   const statusFilters: { key: StatusFilter; label: string }[] = useMemo(() => [
     { key: 'all', label: pm.filterAll },

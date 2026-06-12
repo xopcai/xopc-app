@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 
 import { apiFetch } from '../api/client';
+import { notesListResponseSchema } from '../config/schema';
 import { createTextBlock, type NoteAiPatch, type NoteBlock } from '../features/notes/note-blocks';
 
 export type { NoteBlock, NoteAiPatch } from '../features/notes/note-blocks';
@@ -126,7 +127,20 @@ export async function fetchNotes(query?: NotesListQuery): Promise<NotesListResul
   const qs = params.toString();
   const res = await apiFetch(`/api/notes${qs ? `?${qs}` : ''}`);
   if (!res.ok) throw await readError(res);
-  return res.json() as Promise<NotesListResult>;
+  const raw = await res.json();
+  const parsed = notesListResponseSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid notes list response');
+  const limit = parsed.data.limit ?? query?.limit ?? 20;
+  const offset = parsed.data.offset ?? query?.offset ?? 0;
+  const items = parsed.data.items as NoteIndexEntry[];
+  const hasMore = parsed.data.hasMore ?? offset + items.length < parsed.data.total;
+  return {
+    items,
+    total: parsed.data.total,
+    limit,
+    offset,
+    hasMore,
+  };
 }
 
 export async function quickCaptureNote(text: string): Promise<{ note: { id: string } }> {

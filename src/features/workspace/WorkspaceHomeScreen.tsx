@@ -155,24 +155,28 @@ function RecentNotesCard({
             <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>还没有最近笔记</Text>
           </View>
         ) : (
-          notes.map((note) => (
+          notes.map((note) => {
+            const title = note.title?.trim() || note.snippet || '无标题';
+            const subtitle = note.title?.trim() && note.snippet?.trim() ? note.snippet : null;
+            return (
             <Pressable key={note.id} style={styles.itemRow} onPress={() => onNotePress(note)}>
               <View style={styles.iconBubble}>
                 <Icon source={iconForNoteKind(note.kind)} size={16} color="#6D5DFB" />
               </View>
               <View style={styles.itemCopy}>
                 <Text numberOfLines={1} style={[styles.itemTitle, { color: colors.text.primary }]}>
-                  {note.title?.trim() || note.snippet || '无标题'}
+                  {title}
                 </Text>
-                {!!note.snippet && (
+                {!!subtitle && (
                   <Text numberOfLines={1} style={[styles.itemSubtitle, { color: colors.text.tertiary }]}>
-                    {note.snippet}
+                    {subtitle}
                   </Text>
                 )}
               </View>
               <Icon source="chevron-right" size={18} color={colors.text.tertiary} />
             </Pressable>
-          ))
+            );
+          })
         )}
       </View>
     </View>

@@ -230,6 +230,7 @@ export const zh: MessageBundle = {
     sessionArchived: '会话已归档',
     sessionUnarchived: '已取消归档',
     sessionDeleted: '会话已删除',
+    sessionRenamed: '会话已重命名',
     failedToPin: '置顶失败',
     failedToUnpin: '取消置顶失败',
     failedToArchive: '归档失败',
@@ -580,6 +581,12 @@ export const zh: MessageBundle = {
     minutesAgo: '{{n}}分钟前',
     hoursAgo: '{{n}}小时前',
     daysAgo: '{{n}}天前',
+  },
+
+  sessionsPage: {
+    title: '全部对话',
+    empty: '还没有对话',
+    emptyHint: '开始一次 AI 对话后会显示在这里。',
   },
 
   notesPage: {

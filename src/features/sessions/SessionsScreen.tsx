@@ -5,8 +5,11 @@ import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Icon, Snackbar, Text } from 'react-native-paper';
 
 import { FloatingHeader } from '../../components/FloatingHeader';
+import { useMessages } from '../../i18n/messages';
+import { sessionDisplayName } from '../../lib/session-helpers';
 import { useFlatListEndReached } from '../../lib/use-flat-list-end-reached';
 import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
+import { refreshSessionsList } from '../../query/infinite-list-sync';
 import { queryKeys } from '../../query/keys';
 import {
   archiveSession,
@@ -22,17 +25,26 @@ import {
 } from '../../query/sessions';
 import { useTheme } from '../../theme';
 
+import { DeleteConfirmDialog } from './DeleteConfirmDialog';
+import { RenameDialog } from './RenameDialog';
 import { SessionCard, type SessionAction } from './SessionCard';
 
 const PAGE_SIZE = 20;
+
+type SessionMutationAction = Exclude<SessionAction, 'open' | 'rename' | 'delete'>;
 
 export function SessionsScreen() {
   const router = useRouter();
   useDismissOnHardwareBack(router);
   const queryClient = useQueryClient();
   const { colors } = useTheme();
+  const m = useMessages();
+  const sm = m.sessionsPage;
+  const sa = m.sessionActions;
   const configured = useGatewayConfigured();
   const [snackMsg, setSnackMsg] = useState('');
+  const [renameTarget, setRenameTarget] = useState<SessionListItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SessionListItem | null>(null);
 
   const sessionsQuery = useInfiniteQuery({
     queryKey: queryKeys.sessionsAll,
@@ -48,13 +60,12 @@ export function SessionsScreen() {
 
   const allSessions = sessionsQuery.data?.pages.flatMap((page) => page.items) ?? [];
 
+  const refreshList = useCallback(async () => {
+    await refreshSessionsList(queryClient);
+  }, [queryClient]);
+
   const actionMutation = useMutation({
-    mutationFn: async ({ session, action }: { session: SessionListItem; action: SessionAction }) => {
-      if (action === 'open') return;
-      if (action === 'rename') {
-        await renameSession(session.key, session.name?.trim() || session.title?.trim() || '新对话');
-        return;
-      }
+    mutationFn: async ({ session, action }: { session: SessionListItem; action: SessionMutationAction }) => {
       if (action === 'pin') {
         await pinSession(session.key);
         return;
@@ -69,17 +80,47 @@ export function SessionsScreen() {
       }
       if (action === 'unarchive') {
         await unarchiveSession(session.key);
-        return;
       }
-      await deleteSession(session.key);
     },
     onSuccess: async (_data, variables) => {
-      if (variables.action === 'open') return;
-      await queryClient.invalidateQueries({ queryKey: queryKeys.sessionsAll });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.home });
-      setSnackMsg(variables.action === 'delete' ? '对话已删除' : '对话已更新');
+      await refreshList();
+      const msg = {
+        pin: sa.sessionPinned,
+        unpin: sa.sessionUnpinned,
+        archive: sa.sessionArchived,
+        unarchive: sa.sessionUnarchived,
+      }[variables.action];
+      setSnackMsg(msg);
     },
-    onError: (error) => setSnackMsg(error instanceof Error ? error.message : '操作失败'),
+    onError: (error, variables) => {
+      const msg = {
+        pin: sa.failedToPin,
+        unpin: sa.failedToUnpin,
+        archive: sa.failedToArchive,
+        unarchive: sa.failedToUnarchive,
+      }[variables.action];
+      setSnackMsg(error instanceof Error ? error.message : msg);
+    },
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: ({ key, name }: { key: string; name: string }) => renameSession(key, name),
+    onSuccess: async () => {
+      setRenameTarget(null);
+      await refreshList();
+      setSnackMsg(sa.sessionRenamed);
+    },
+    onError: (error) => setSnackMsg(error instanceof Error ? error.message : sa.failedToRename),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (key: string) => deleteSession(key),
+    onSuccess: async () => {
+      setDeleteTarget(null);
+      await refreshList();
+      setSnackMsg(sa.sessionDeleted);
+    },
+    onError: (error) => setSnackMsg(error instanceof Error ? error.message : sa.failedToDelete),
   });
 
   const handleOpenSession = useCallback((session: SessionListItem) => {
@@ -89,6 +130,14 @@ export function SessionsScreen() {
   const handleSessionAction = useCallback((session: SessionListItem, action: SessionAction) => {
     if (action === 'open') {
       handleOpenSession(session);
+      return;
+    }
+    if (action === 'rename') {
+      setRenameTarget(session);
+      return;
+    }
+    if (action === 'delete') {
+      setDeleteTarget(session);
       return;
     }
     actionMutation.mutate({ session, action });
@@ -102,8 +151,8 @@ export function SessionsScreen() {
   const { onEndReached, onMomentumScrollBegin } = useFlatListEndReached(handleLoadMore);
 
   const handleRefresh = useCallback(() => {
-    void sessionsQuery.refetch();
-  }, [sessionsQuery.refetch]);
+    void refreshList();
+  }, [refreshList]);
 
   const renderSession = useCallback(({ item }: { item: SessionListItem }) => (
     <SessionCard
@@ -121,14 +170,14 @@ export function SessionsScreen() {
   }, [sessionsQuery.isFetchingNextPage]);
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.surface.base }]}> 
-      <FloatingHeader title="全部对话" onBack={() => dismissOrHome(router)} />
+    <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
+      <FloatingHeader title={sm.title} onBack={() => dismissOrHome(router)} />
 
       {!configured ? (
         <View style={styles.center}>
           <Icon source="cloud-off-outline" size={42} color={colors.text.tertiary} />
-          <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>未连接网关</Text>
-          <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>连接后即可查看所有对话。</Text>
+          <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>{m.sessions.gatewayNotConfigured}</Text>
+          <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>{m.sessions.gatewayNotConfiguredHint}</Text>
         </View>
       ) : sessionsQuery.isLoading ? (
         <View style={styles.center}>
@@ -153,12 +202,34 @@ export function SessionsScreen() {
           ListEmptyComponent={
             <View style={styles.center}>
               <Icon source="message-processing-outline" size={42} color={colors.text.tertiary} />
-              <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>还没有对话</Text>
-              <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>开始一次 AI 对话后会显示在这里。</Text>
+              <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>{sm.empty}</Text>
+              <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>{sm.emptyHint}</Text>
             </View>
           }
         />
       )}
+
+      <RenameDialog
+        visible={Boolean(renameTarget)}
+        currentName={renameTarget ? sessionDisplayName(renameTarget) : ''}
+        loading={renameMutation.isPending}
+        onDismiss={() => setRenameTarget(null)}
+        onRename={(name) => {
+          if (!renameTarget) return;
+          renameMutation.mutate({ key: renameTarget.key, name });
+        }}
+      />
+
+      <DeleteConfirmDialog
+        visible={Boolean(deleteTarget)}
+        sessionName={deleteTarget ? sessionDisplayName(deleteTarget) : ''}
+        loading={deleteMutation.isPending}
+        onDismiss={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          deleteMutation.mutate(deleteTarget.key);
+        }}
+      />
 
       <Snackbar visible={Boolean(snackMsg)} onDismiss={() => setSnackMsg('')} duration={2200}>
         {snackMsg}

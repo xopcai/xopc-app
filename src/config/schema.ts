@@ -51,6 +51,14 @@ export const sessionsListResponseSchema = z.object({
   hasMore: z.boolean(),
 });
 
+export const notesListResponseSchema = z.object({
+  items: z.array(z.unknown()),
+  total: z.number(),
+  limit: z.number().optional(),
+  offset: z.number().optional(),
+  hasMore: z.boolean().optional(),
+});
+
 export const agentsResponseSchema = z.object({
   ok: z.literal(true),
   payload: z.object({
