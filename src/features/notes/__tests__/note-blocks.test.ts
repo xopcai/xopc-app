@@ -88,6 +88,17 @@ describe('blocksToHtml', () => {
     expect(html).toBe('<p data-block-id="a"><br></p>');
   });
 
+  it('tolerates API blocks with missing text fields', () => {
+    const malformed = {
+      id: 'a',
+      type: 'paragraph',
+      createdAt: 1,
+      updatedAt: 1,
+    } as NoteBlock;
+    expect(() => blocksToHtml([malformed])).not.toThrow();
+    expect(blocksToHtml([malformed])).toBe('<p data-block-id="a"><br></p>');
+  });
+
   it('converts heading with level', () => {
     const block = Object.assign(createTextBlock('heading', '标题'), { level: 1 as const, id: 'h' });
     const html = blocksToHtml([block]);

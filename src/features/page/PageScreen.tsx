@@ -96,7 +96,12 @@ function firstSuggestionLine(text: string, fallback: string): string {
 }
 
 export function PageScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id: idParam } = useLocalSearchParams<{ id: string | string[] }>();
+  const id = typeof idParam === 'string'
+    ? idParam
+    : Array.isArray(idParam)
+      ? idParam[0]
+      : undefined;
   const router = useRouter();
   const queryClient = useQueryClient();
   const { colors } = useTheme();
@@ -527,6 +532,7 @@ export function PageScreen() {
     (nextBlocks: NoteBlock[], patch: NoteAiPatch) => {
       if (!note) return;
       const snapshot = saveLocalNoteEdit(note, nextBlocks, attachmentsRef.current);
+      if (!snapshot) return;
       setLocalNote(snapshot);
       noteRef.current = snapshot;
       queryClient.setQueryData(queryKeys.note(note.id), snapshot);

@@ -115,12 +115,16 @@ export function noteToBlocks(note?: Pick<Note, 'text' | 'blocks'> | null): NoteB
 
 // ── Serialization ──────────────────────────────────────────
 
+function coalesceText(text: string | undefined | null): string {
+  return text ?? '';
+}
+
 function blockReadableText(block: NoteBlock): string {
   if (block.type === 'divider' || block.type === 'image') {
     return block.type === 'image' ? (block.alt?.trim() ?? '') : '';
   }
-  if (block.type === 'todo') return block.text.trim();
-  return block.text.trim();
+  if (block.type === 'todo') return coalesceText(block.text).trim();
+  return coalesceText(block.text).trim();
 }
 
 /** Human-readable text for titles, snippets, and search — no markdown or data URIs. */
@@ -173,8 +177,8 @@ function escapeAttr(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function escapeHtml(text: string): string {
-  return text
+function escapeHtml(text: string | undefined | null): string {
+  return coalesceText(text)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
@@ -211,7 +215,7 @@ export function blocksToHtml(blocks: NoteBlock[]): string {
       if (block.type === 'divider') return `<hr${id}>`;
       if (block.type === 'image') {
         const alt = block.alt ? ` alt="${escapeAttr(block.alt)}"` : '';
-        return `<img${id} src="${escapeAttr(block.src)}"${alt}>`;
+        return `<img${id} src="${escapeAttr(coalesceText(block.src))}"${alt}>`;
       }
       if (block.type === 'heading') {
         const level = block.level ?? 2;

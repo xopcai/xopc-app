@@ -178,6 +178,7 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
 
   const loadedKeyRef = useRef('');
   const isExternalUpdateRef = useRef(false);
+  const pendingContentRef = useRef<{ key: string; html: string } | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
@@ -296,16 +297,43 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     safeInjectJS(RESET_SCROLL_JS);
   }, [safeInjectJS]);
 
-  useEffect(() => {
-    if (loadedKeyRef.current === contentKey) return;
-    loadedKeyRef.current = contentKey;
+  const applyEditorTheme = useCallback(() => {
+    if (!webViewReadyRef.current) return;
+    try {
+      editor.injectCSS(buildEditorCss(colors), 'xopc-editor-theme');
+    } catch {
+      // WebView may be torn down during navigation.
+    }
+  }, [colors, editor]);
+
+  const applyEditorContent = useCallback((html: string) => {
+    if (!webViewReadyRef.current) return;
     isExternalUpdateRef.current = true;
-    editor.setContent(initialHtml);
+    try {
+      editor.setContent(html);
+    } catch {
+      isExternalUpdateRef.current = false;
+      return;
+    }
     setTimeout(() => {
       isExternalUpdateRef.current = false;
       resetEditorScroll();
     }, 100);
-  }, [contentKey, initialHtml, editor, resetEditorScroll]);
+  }, [editor, resetEditorScroll]);
+
+  const syncEditorContent = useCallback((key: string, html: string) => {
+    if (loadedKeyRef.current === key) return;
+    loadedKeyRef.current = key;
+    if (webViewReadyRef.current) {
+      applyEditorContent(html);
+      return;
+    }
+    pendingContentRef.current = { key, html };
+  }, [applyEditorContent]);
+
+  useEffect(() => {
+    syncEditorContent(contentKey, initialHtml);
+  }, [contentKey, initialHtml, syncEditorContent]);
 
   useEffect(() => {
     if (editable) return;
@@ -313,8 +341,8 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
   }, [editable, resetEditorScroll]);
 
   useEffect(() => {
-    editor.injectCSS(buildEditorCss(colors), 'xopc-editor-theme');
-  }, [colors, editor]);
+    applyEditorTheme();
+  }, [applyEditorTheme]);
 
   const applyEditorFocus = useCallback(() => {
     editor.focus('start');
@@ -326,6 +354,7 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
   useEffect(() => {
     return () => {
       webViewReadyRef.current = false;
+      pendingContentRef.current = null;
     };
   }, []);
 
@@ -396,6 +425,14 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
         showsHorizontalScrollIndicator={false}
         onLoad={() => {
           webViewReadyRef.current = true;
+          applyEditorTheme();
+          const pending = pendingContentRef.current;
+          if (pending) {
+            pendingContentRef.current = null;
+            syncEditorContent(pending.key, pending.html);
+          } else if (loadedKeyRef.current !== contentKey) {
+            syncEditorContent(contentKey, initialHtml);
+          }
           resetEditorScroll();
         }}
         style={[styles.richText, { backgroundColor: 'transparent' }]}

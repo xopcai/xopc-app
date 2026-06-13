@@ -1,6 +1,6 @@
 import { useFocusEffect, type ImperativeRouter } from 'expo-router';
 import { useCallback } from 'react';
-import { BackHandler } from 'react-native';
+import { BackHandler, Platform } from 'react-native';
 
 type ChatRouteParams = { k: string; msg?: string };
 
@@ -46,7 +46,7 @@ export function useDismissOnHardwareBack(
 
   useFocusEffect(
     useCallback(() => {
-      if (!enabled) return undefined;
+      if (!enabled || Platform.OS !== 'android') return undefined;
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
         dismissOrHome(router);
         return true;

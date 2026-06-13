@@ -14,15 +14,7 @@ export function TodayBrief({ inboxCount, pendingTaskCount, onInboxPress, onTasks
   const { colors } = useTheme();
 
   return (
-    <View
-      style={[
-        styles.card,
-        {
-          backgroundColor: colors.accent.soft,
-          borderColor: colors.border.default,
-        },
-      ]}
-    > 
+    <View style={[styles.card, { backgroundColor: colors.accent.soft }]}> 
       <View style={styles.headerRow}>
         <View style={styles.titleWrap}>
           <Text style={[styles.title, { color: colors.text.primary }]}>今日简报</Text>
@@ -42,13 +34,7 @@ function Metric({ label, value, onPress }: { label: string; value: number; onPre
   const { colors } = useTheme();
   return (
     <Pressable
-      style={[
-        styles.metric,
-        {
-          backgroundColor: colors.surface.panel,
-          borderColor: colors.border.subtle,
-        },
-      ]}
+      style={[styles.metric, { backgroundColor: colors.surface.panel }]}
       onPress={onPress}
     >
       <Text style={[styles.metricValue, { color: colors.text.primary }]}>{value}</Text>
@@ -58,13 +44,13 @@ function Metric({ label, value, onPress }: { label: string; value: number; onPre
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: 24, padding: 16, gap: 16, borderWidth: 1 },
+  card: { borderRadius: 24, padding: 16, gap: 16 },
   headerRow: { flexDirection: 'row', alignItems: 'center' },
   titleWrap: { flex: 1, gap: 2 },
   title: { fontSize: 17, fontWeight: '600' },
   subtitle: { fontSize: 12, fontWeight: '400' },
   metricsRow: { flexDirection: 'row', gap: 10 },
-  metric: { flex: 1, borderRadius: 16, paddingVertical: 10, alignItems: 'center', borderWidth: 1 },
+  metric: { flex: 1, borderRadius: 16, paddingVertical: 10, alignItems: 'center' },
   metricValue: { fontSize: 20, fontWeight: '600' },
   metricLabel: { fontSize: 11, fontWeight: '500', marginTop: 2 },
 });
