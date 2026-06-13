@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,7 +15,7 @@ import { createBlankNote, fetchNotes, type NoteIndexEntry } from '../../query/no
 import { useGatewayConfigured } from '../../query/sessions';
 import { useTheme } from '../../theme';
 
-import { BottomCommandBar } from './BottomCommandBar';
+import { WorkspaceSearchOverlay } from '../search/WorkspaceSearchOverlay';
 import { InboxPreview } from './InboxPreview';
 import { SpaceList } from './SpaceList';
 import { TodayBrief } from './TodayBrief';
@@ -28,6 +28,7 @@ export function WorkspaceHomeScreen() {
   const insets = useSafeAreaInsets();
   const configured = useGatewayConfigured();
   const { openAskAi, prefetchAskAiSession } = useWorkspaceNavigation();
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useHomeChatPrefetch(configured);
 
@@ -84,12 +85,22 @@ export function WorkspaceHomeScreen() {
     });
   }, [homeQuery, recentNotesFallbackQuery, prefetchAskAiSession]);
 
+  const handleCreateNote = useCallback(async () => {
+    try {
+      const { note } = await createBlankNote();
+      router.push(`/notes/${note.id}`);
+    } catch {
+      router.push('/notes');
+    }
+  }, [router]);
+
   if (!configured) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.surface.base }]}> 
         <FloatingHeader
-          title="工作空间"
           showLogo
+          searchPlaceholder="搜索笔记和会话…"
+          onSearchPress={() => setSearchOpen(true)}
           rightIcon="cog-outline"
           onRightPress={() => router.push('/settings')}
         />
@@ -98,6 +109,7 @@ export function WorkspaceHomeScreen() {
           <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>连接你的 XOPC Gateway</Text>
           <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>连接后即可使用 AI 原生工作空间。</Text>
         </View>
+        <WorkspaceSearchOverlay visible={searchOpen} onClose={() => setSearchOpen(false)} />
       </View>
     );
   }
@@ -107,13 +119,14 @@ export function WorkspaceHomeScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}> 
       <FloatingHeader
-        title="工作空间"
         showLogo
+        searchPlaceholder="搜索笔记和会话…"
+        onSearchPress={() => setSearchOpen(true)}
         rightIcon="cog-outline"
         onRightPress={() => router.push('/settings')}
       />
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 112 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
         {homeQuery.isLoading ? (
@@ -133,31 +146,21 @@ export function WorkspaceHomeScreen() {
               notes={homeNotes}
               loading={homeNotesLoading}
               onNotePress={handleNotePress}
+              onCreateNote={handleCreateNote}
               onViewAll={() => router.push('/notes')}
             />
             <SpaceList
               sessions={(home?.recentSessions ?? []).slice(0, 5)}
               onSessionPress={handleSessionPress}
+              onAskAi={openAskAi}
+              onAskAiPressIn={prefetchAskAiSession}
               onViewAll={() => router.push('/sessions')}
             />
           </>
         )}
       </ScrollView>
 
-      <BottomCommandBar
-        bottomInset={insets.bottom}
-        onSearch={() => router.push('/search')}
-        onAskAi={openAskAi}
-        onAskAiPressIn={prefetchAskAiSession}
-        onCreate={async () => {
-          try {
-            const { note } = await createBlankNote();
-            router.push(`/notes/${note.id}`);
-          } catch {
-            router.push('/notes');
-          }
-        }}
-      />
+      <WorkspaceSearchOverlay visible={searchOpen} onClose={() => setSearchOpen(false)} />
     </View>
   );
 }
@@ -174,11 +177,13 @@ function RecentNotesCard({
   notes,
   loading = false,
   onNotePress,
+  onCreateNote,
   onViewAll,
 }: {
   notes: NoteIndexEntry[];
   loading?: boolean;
   onNotePress: (note: NoteIndexEntry) => void;
+  onCreateNote: () => void;
   onViewAll: () => void;
 }) {
   const { colors } = useTheme();
@@ -191,14 +196,23 @@ function RecentNotesCard({
           <Text style={[styles.openText, { color: '#6D5DFB' }]}>查看更多</Text>
         </Pressable>
       </View>
-      <View style={[styles.listCard, { backgroundColor: colors.surface.panel }]}> 
+      <View style={[styles.listCard, { backgroundColor: colors.surface.panel }]}>
+        <Pressable style={[styles.itemRow, styles.actionRow]} onPress={onCreateNote}>
+          <View style={[styles.iconBubble, styles.actionIconBubble]}>
+            <Icon source="square-edit-outline" size={16} color="#6D5DFB" />
+          </View>
+          <View style={styles.itemCopy}>
+            <Text numberOfLines={1} style={[styles.itemTitle, { color: colors.text.primary }]}>新建笔记</Text>
+            <Text numberOfLines={1} style={[styles.itemSubtitle, { color: colors.text.tertiary }]}>创建空白笔记</Text>
+          </View>
+          <Icon source="chevron-right" size={18} color={colors.text.tertiary} />
+        </Pressable>
         {loading ? (
           <View style={styles.emptyRow}>
             <ActivityIndicator size="small" />
           </View>
         ) : notes.length === 0 ? (
-          <View style={styles.emptyRow}>
-            <Icon source="note-text-outline" size={20} color={colors.text.tertiary} />
+          <View style={styles.emptyRowCompact}>
             <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>还没有最近笔记</Text>
           </View>
         ) : (
@@ -243,7 +257,9 @@ const styles = StyleSheet.create({
   openText: { fontSize: 13, fontWeight: '600' },
   listCard: { borderRadius: 20, padding: 8, gap: 2 },
   emptyRow: { minHeight: 72, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  emptyRowCompact: { minHeight: 48, alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
   itemRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8, paddingVertical: 10 },
+  actionRow: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(109,93,251,0.12)' },
   iconBubble: {
     width: 32,
     height: 32,
@@ -252,6 +268,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(109,93,251,0.14)',
   },
+  actionIconBubble: { backgroundColor: 'rgba(109,93,251,0.18)' },
   itemCopy: { flex: 1, gap: 2 },
   itemTitle: { fontSize: 14, fontWeight: '600' },
   itemSubtitle: { fontSize: 12, fontWeight: '400' },

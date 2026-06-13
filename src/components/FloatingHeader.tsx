@@ -11,15 +11,26 @@ type FloatingHeaderAction = {
 };
 
 interface FloatingHeaderProps {
-  title: string;
+  title?: string;
   showLogo?: boolean;
   onBack?: () => void;
   rightIcon?: string;
   onRightPress?: () => void;
   rightActions?: FloatingHeaderAction[];
+  searchPlaceholder?: string;
+  onSearchPress?: () => void;
 }
 
-export function FloatingHeader({ title, showLogo, onBack, rightIcon, onRightPress, rightActions }: FloatingHeaderProps) {
+export function FloatingHeader({
+  title,
+  showLogo,
+  onBack,
+  rightIcon,
+  onRightPress,
+  rightActions,
+  searchPlaceholder,
+  onSearchPress,
+}: FloatingHeaderProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const backgroundColor = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.05)';
@@ -39,9 +50,23 @@ export function FloatingHeader({ title, showLogo, onBack, rightIcon, onRightPres
         <View style={styles.iconPlaceholder} />
       )}
 
-      <View style={[styles.titlePill, { backgroundColor }]}>
-        <Text numberOfLines={1} style={[styles.title, { color: colors.text.primary }]}>{title}</Text>
-      </View>
+      {onSearchPress ? (
+        <Pressable
+          style={[styles.titlePill, styles.searchPill, { backgroundColor }]}
+          onPress={onSearchPress}
+          accessibilityRole="search"
+          accessibilityLabel={searchPlaceholder ?? '搜索'}
+        >
+          <Icon source="magnify" size={20} color={colors.text.tertiary} />
+          <Text numberOfLines={1} style={[styles.searchPlaceholder, { color: colors.text.tertiary }]}>
+            {searchPlaceholder ?? '搜索'}
+          </Text>
+        </Pressable>
+      ) : (
+        <View style={[styles.titlePill, { backgroundColor }]}>
+          <Text numberOfLines={1} style={[styles.title, { color: colors.text.primary }]}>{title}</Text>
+        </View>
+      )}
 
       {actions.length > 0 ? (
         <View style={styles.actionsRow}>
@@ -97,5 +122,16 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 15,
     fontWeight: '600',
+  },
+  searchPill: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    paddingHorizontal: 14,
+    gap: 8,
+  },
+  searchPlaceholder: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
   },
 });
