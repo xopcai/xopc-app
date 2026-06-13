@@ -85,7 +85,7 @@ export function upsertNoteInListCaches(queryClient: QueryClient, entry: NoteInde
       predicate: (query) => query.queryKey[1] === 'home-preview',
     },
     (prev) => {
-      if (!prev) return prev;
+      if (!prev?.items) return prev;
       const hadEntry = prev.items.some((item) => item.id === entry.id);
       return {
         ...prev,
@@ -106,15 +106,16 @@ export function upsertNoteInListCaches(queryClient: QueryClient, entry: NoteInde
       },
     },
     (prev) => {
-      if (!prev?.pages.length) return prev;
+      if (!prev?.pages?.length) return prev;
       const [first, ...rest] = prev.pages;
-      const hadEntry = first.items.some((item) => item.id === entry.id);
+      const items = first.items ?? [];
+      const hadEntry = items.some((item) => item.id === entry.id);
       return {
         ...prev,
         pages: [
           {
             ...first,
-            items: upsertAtFront(first.items, entry),
+            items: upsertAtFront(items, entry),
             total: hadEntry ? first.total : first.total + 1,
           },
           ...rest,

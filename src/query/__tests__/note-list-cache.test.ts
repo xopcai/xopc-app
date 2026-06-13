@@ -118,4 +118,25 @@ describe('upsertNoteInListCaches', () => {
     expect(allList?.pages[0]?.total).toBe(2);
     expect(inboxList?.pages[0]?.items.map((item) => item.id)).toEqual(['inbox-note']);
   });
+
+  it('no-ops when matching note queries have no cached data yet', () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(queryKeys.home, {
+      recentlyOpened: [],
+      inboxCount: 0,
+      pendingTasks: [],
+      pendingTaskCount: 0,
+      recentSessions: [],
+    });
+    queryClient.getQueryCache().build(queryClient, {
+      queryKey: [...queryKeys.notesAll, 'all', 'all'],
+    });
+
+    expect(() => {
+      upsertNoteInListCaches(queryClient, blankNoteIndexEntry('note-new'));
+    }).not.toThrow();
+
+    const home = queryClient.getQueryData<{ recentlyOpened: NoteIndexEntry[] }>(queryKeys.home);
+    expect(home?.recentlyOpened.map((item) => item.id)).toEqual(['note-new']);
+  });
 });
