@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useState } from 'react';
 import {
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -8,7 +9,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
@@ -106,8 +106,7 @@ export const NoteTagPickerSheet = memo(function NoteTagPickerSheet(props: NoteTa
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onDismiss}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior="padding"
-        automaticOffset
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <Pressable style={styles.overlay} onPress={onDismiss}>
           <Pressable

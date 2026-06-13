@@ -11,10 +11,9 @@ import { openNoteDetail } from '../../lib/navigation';
 import { queryKeys } from '../../query/keys';
 import { fetchHome } from '../../query/home';
 import { resolveNoteListTitle } from '../notes/note-title';
-import { createTextBlock } from '../notes/note-blocks';
 import { readLocalNote } from '../notes/notes-local';
 import { blankNoteIndexEntry, upsertNoteInListCaches } from '../../query/note-list-cache';
-import { createBlankNote, fetchNotes, type Note, type NoteIndexEntry } from '../../query/notes';
+import { createBlankNote, fetchNotes, type NoteIndexEntry } from '../../query/notes';
 import { useGatewayConfigured } from '../../query/sessions';
 import { useTheme } from '../../theme';
 
@@ -94,20 +93,6 @@ export function WorkspaceHomeScreen() {
     setCreatingNote(true);
     try {
       const { note } = await createBlankNote();
-      const now = Date.now();
-      const placeholder: Note = {
-        id: note.id,
-        kind: 'mixed',
-        status: 'processed',
-        blocks: [createTextBlock('paragraph')],
-        createdAt: now,
-        updatedAt: now,
-        capturedVia: {
-          channel: 'app',
-          platform: Platform.OS === 'ios' ? 'ios' : 'android',
-        },
-      };
-      queryClient.setQueryData(queryKeys.note(note.id), placeholder);
       upsertNoteInListCaches(queryClient, blankNoteIndexEntry(note.id));
       openNoteDetail(router, note.id);
     } catch {

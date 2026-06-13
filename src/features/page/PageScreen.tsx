@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -13,10 +14,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { ActivityIndicator, Button, Icon, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Icon, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppToast } from '../../components/AppToast';
 import { TOAST_DURATION_SHORT } from '../../constants/toast';
 import { useMessages, t } from '../../i18n/messages';
 import { dismissOrHome, openChat, useDismissOnHardwareBack } from '../../lib/navigation';
@@ -134,6 +134,7 @@ export function PageScreen() {
   const [catalystTaskLoading, setCatalystTaskLoading] = useState(false);
   const [catalystChatLoading, setCatalystChatLoading] = useState(false);
   const [showTagPicker, setShowTagPicker] = useState(false);
+  const [editorHostReady, setEditorHostReady] = useState(Platform.OS === 'web');
   const lastSeedKeyRef = useRef('');
 
   const blocksRef = useRef<NoteBlock[]>([]);
@@ -147,14 +148,13 @@ export function PageScreen() {
   const noteQuery = useQuery({
     queryKey: id ? queryKeys.note(id) : ['note', 'missing'],
     queryFn: async () => {
-      // recordNoteOpen can bump remoteVersion on the server; refetch so sync uses a fresh base.
-      await fetchNote(id!);
+      const remote = await fetchNote(id!);
       try {
         await recordNoteOpen(id!);
       } catch {
         // Opening is best-effort — still show the note if this fails.
       }
-      return fetchNote(id!);
+      return remote;
     },
     enabled: Boolean(id),
     retry: 1,
@@ -172,6 +172,30 @@ export function PageScreen() {
   }, [noteQuery.data, queryClient]);
 
   const isEditing = screenMode === 'edit';
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS === 'web') {
+        setEditorHostReady(true);
+        return undefined;
+      }
+      let cancelled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const task = InteractionManager.runAfterInteractions(() => {
+        // Defer WebView mount until stack transition finishes — avoids Android release crashes.
+        const delayMs = Platform.OS === 'android' ? 400 : 0;
+        timer = setTimeout(() => {
+          if (!cancelled) setEditorHostReady(true);
+        }, delayMs);
+      });
+      return () => {
+        cancelled = true;
+        task.cancel();
+        if (timer) clearTimeout(timer);
+        setEditorHostReady(false);
+      };
+    }, []),
+  );
 
   const refreshViewTitle = useCallback(() => {
     const nextTitle = resolveDisplayTitle(noteRef.current, blocksRef.current, pm.untitledNote);
@@ -814,18 +838,24 @@ export function PageScreen() {
               ) : null}
 
               <View style={styles.editorPressable}>
-                <NoteBlockEditor
-                  key={editorSeed!.key}
-                  contentKey={editorSeed!.key}
-                  initialHtml={editorSeed!.html}
-                  onChange={handleEditorChange}
-                  onEditorReady={handleEditorReady}
-                  slashMenuOpen={showSlashMenu}
-                  onSlashMenuClose={() => setShowSlashMenu(false)}
-                  editable={isEditing}
-                  focusOnEnable={focusOnEnable}
-                  onFocusApplied={handleFocusApplied}
-                />
+                {editorHostReady && editorSeed ? (
+                  <NoteBlockEditor
+                    key={editorSeed.key}
+                    contentKey={editorSeed.key}
+                    initialHtml={editorSeed.html}
+                    onChange={handleEditorChange}
+                    onEditorReady={handleEditorReady}
+                    slashMenuOpen={showSlashMenu}
+                    onSlashMenuClose={() => setShowSlashMenu(false)}
+                    editable={isEditing}
+                    focusOnEnable={focusOnEnable}
+                    onFocusApplied={handleFocusApplied}
+                  />
+                ) : (
+                  <View style={styles.editorLoading}>
+                    <ActivityIndicator color={colors.accent.primary} />
+                  </View>
+                )}
                 {!isEditing ? (
                   <Pressable
                     style={styles.editorOverlay}
@@ -1018,23 +1048,25 @@ export function PageScreen() {
         </Pressable>
       ) : null}
 
-      <AppToast
+      <Snackbar
         visible={Boolean(snackMsg)}
         onDismiss={() => setSnackMsg('')}
         duration={TOAST_DURATION_SHORT}
       >
         {snackMsg}
-      </AppToast>
+      </Snackbar>
 
-      <NoteTagPickerSheet
-        visible={showTagPicker}
-        mode="multi"
-        tags={noteTags}
-        selectedTags={activeNoteTags}
-        onApplyTags={(tags) => void handleApplyTags(tags)}
-        onCreateTag={handleCreateTag}
-        onDismiss={() => setShowTagPicker(false)}
-      />
+      {showTagPicker ? (
+        <NoteTagPickerSheet
+          visible={showTagPicker}
+          mode="multi"
+          tags={noteTags}
+          selectedTags={activeNoteTags}
+          onApplyTags={(tags) => void handleApplyTags(tags)}
+          onCreateTag={handleCreateTag}
+          onDismiss={() => setShowTagPicker(false)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -1048,6 +1080,12 @@ const styles = StyleSheet.create({
   editorPressable: { flex: 1, minHeight: 120, position: 'relative' },
   editorOverlay: {
     ...StyleSheet.absoluteFill,
+  },
+  editorLoading: {
+    flex: 1,
+    minHeight: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   noteTitle: {
     fontSize: 28,
