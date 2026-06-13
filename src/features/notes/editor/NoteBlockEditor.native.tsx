@@ -183,6 +183,7 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
   const [manualSlashOpen, setManualSlashOpen] = useState(false);
 
   const [keyboardSeed, setKeyboardSeed] = useState(false);
+  const webViewReadyRef = useRef(false);
 
   const editor = useEditorBridge({
     initialContent: initialHtml,
@@ -196,6 +197,18 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
       }),
     ],
   });
+
+  const safeInjectJS = useCallback(
+    (js: string) => {
+      if (!webViewReadyRef.current) return;
+      try {
+        editor.injectJS(js);
+      } catch {
+        // WebView may be torn down during navigation.
+      }
+    },
+    [editor],
+  );
 
   const filteredSlashItems = useMemo(
     () => filterSlashItems(slashItems, slashMenu?.query ?? ''),
@@ -255,16 +268,16 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
   useEffect(() => {
     const unsubscribe = editor._subscribeToContentUpdate(() => {
       if (!isExternalUpdateRef.current) {
-        editor.injectJS(SLASH_DETECT_JS);
+        safeInjectJS(SLASH_DETECT_JS);
         void handleContentChange();
       }
     });
     return unsubscribe;
-  }, [editor, handleContentChange]);
+  }, [editor, handleContentChange, safeInjectJS]);
 
   const resetEditorScroll = useCallback(() => {
-    editor.injectJS(RESET_SCROLL_JS);
-  }, [editor]);
+    safeInjectJS(RESET_SCROLL_JS);
+  }, [safeInjectJS]);
 
   useEffect(() => {
     if (loadedKeyRef.current === contentKey) return;
@@ -288,10 +301,16 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
 
   const applyEditorFocus = useCallback(() => {
     editor.focus('start');
-    editor.injectJS(FOCUS_START_JS);
+    safeInjectJS(FOCUS_START_JS);
     resetEditorScroll();
     onFocusApplied?.();
-  }, [editor, onFocusApplied, resetEditorScroll]);
+  }, [editor, onFocusApplied, resetEditorScroll, safeInjectJS]);
+
+  useEffect(() => {
+    return () => {
+      webViewReadyRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!editable || !focusOnEnable) return;
@@ -359,6 +378,7 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
         onLoad={() => {
+          webViewReadyRef.current = true;
           resetEditorScroll();
         }}
         style={[styles.richText, { backgroundColor: 'transparent' }]}
@@ -382,11 +402,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, minHeight: 200 },
   richText: { flex: 1 },
   hiddenInput: {
-    display: 'none',
-    width: 0,
-    height: 0,
+    opacity: 0,
+    width: 1,
+    height: 1,
     position: 'absolute',
     top: 0,
-    left: 0,
+    left: -9999,
   },
 });

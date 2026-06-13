@@ -19,76 +19,16 @@ import {
 } from 'react-native';
 import { Text } from 'react-native-paper';
 
-/** Regex to match `/skill:name` tokens (name is non-whitespace). */
-const SLASH_TOKEN_RE = /\/skill:\S+/g;
+import {
+  findPillTokenEndingAtCursor,
+  parseSlashTokens,
+} from './slash-token-utils';
 
-export interface SlashTokenSegment {
-  text: string;
-  isPill: boolean;
-  start: number;
-  end: number;
-}
+export type { SlashTokenSegment } from './slash-token-utils';
+export { findPillTokenEndingAtCursor, parseSlashTokens } from './slash-token-utils';
 
-/** Parse the draft into segments: plain text and pill tokens. */
-export function parseSlashTokens(text: string): SlashTokenSegment[] {
-  const segments: SlashTokenSegment[] = [];
-  let lastIndex = 0;
-
-  const regex = new RegExp(SLASH_TOKEN_RE.source, 'g');
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(text)) !== null) {
-    // Plain text before this token
-    if (match.index > lastIndex) {
-      segments.push({
-        text: text.slice(lastIndex, match.index),
-        isPill: false,
-        start: lastIndex,
-        end: match.index,
-      });
-    }
-    // The pill token itself
-    segments.push({
-      text: match[0],
-      isPill: true,
-      start: match.index,
-      end: match.index + match[0].length,
-    });
-    lastIndex = match.index + match[0].length;
-  }
-
-  // Remaining plain text
-  if (lastIndex < text.length) {
-    segments.push({
-      text: text.slice(lastIndex),
-      isPill: false,
-      start: lastIndex,
-      end: text.length,
-    });
-  }
-
-  return segments;
-}
-
-/**
- * Given a cursor position, check if it's immediately after a pill token.
- * Returns the token range to delete, or null.
- */
-export function findPillTokenEndingAtCursor(
-  text: string,
-  cursor: number,
-): { start: number; end: number } | null {
-  const regex = new RegExp(SLASH_TOKEN_RE.source, 'g');
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(text)) !== null) {
-    const tokenEnd = match.index + match[0].length;
-    if (tokenEnd === cursor) {
-      return { start: match.index, end: tokenEnd };
-    }
-  }
-  return null;
-}
+/** Android crashes when TextInput has both `value` and nested Text children. */
+const SUPPORTS_PILL_CHILDREN = Platform.OS === 'ios';
 
 interface SlashTokenInputProps extends Omit<TextInputProps, 'children'> {
   value: string;
@@ -117,6 +57,7 @@ export const SlashTokenInput = memo(
 
   const segments = useMemo(() => parseSlashTokens(value), [value]);
   const hasPills = segments.some((s) => s.isPill);
+  const renderPillChildren = hasPills && SUPPORTS_PILL_CHILDREN;
 
   const pillBg = isDark ? 'rgba(0,122,255,0.2)' : 'rgba(0,122,255,0.1)';
   const pillColor = isDark ? '#60A5FA' : '#2563EB';
@@ -126,7 +67,6 @@ export const SlashTokenInput = memo(
       if (e.nativeEvent.key === 'Backspace') {
         const tokenRange = findPillTokenEndingAtCursor(value, cursorPos);
         if (tokenRange) {
-          // Delete the entire pill token
           const newText =
             value.slice(0, tokenRange.start) + value.slice(tokenRange.end);
           suppressNextChangeRef.current = true;
@@ -157,17 +97,18 @@ export const SlashTokenInput = memo(
   );
 
   // Keep a single TextInput instance so focus survives pill token insert/remove.
+  // iOS only: omit `value` when rendering styled children (RN invariant on Android).
   return (
     <TextInput
       ref={inputRef}
       style={style}
-      value={value}
+      {...(renderPillChildren ? {} : { value })}
       onChangeText={handleChangeText}
       onSelectionChange={handleSelectionChange}
       onKeyPress={handleKeyPress}
       {...rest}
     >
-      {hasPills ? (
+      {renderPillChildren ? (
         <Text>
           {segments.map((seg, i) =>
             seg.isPill ? (
