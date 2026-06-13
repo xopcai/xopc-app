@@ -2,14 +2,16 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Icon, Snackbar, Text } from 'react-native-paper';
+import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AppToast } from '../../components/AppToast';
 import { BatchActionBar } from '../../components/BatchActionBar';
 import { BatchDeleteConfirmDialog } from '../../components/BatchDeleteConfirmDialog';
 import { FloatingHeader } from '../../components/FloatingHeader';
 import { SwipeableRow, type SwipeRowAction } from '../../components/SwipeableRow';
 import { SwipeHintBanner } from '../../components/SwipeHintBanner';
+import { TOAST_DURATION_SHORT } from '../../constants/toast';
 import { useListSelection } from '../../hooks/use-list-selection';
 import { useMessages, t } from '../../i18n/messages';
 import { sessionDisplayName } from '../../lib/session-helpers';
@@ -384,9 +386,9 @@ export function SessionsScreen() {
         loading={batchDeleteMutation.isPending}
       />
 
-      <Snackbar visible={Boolean(snackMsg)} onDismiss={() => setSnackMsg('')} duration={2200}>
+      <AppToast visible={Boolean(snackMsg)} onDismiss={() => setSnackMsg('')} duration={TOAST_DURATION_SHORT}>
         {snackMsg}
-      </Snackbar>
+      </AppToast>
     </View>
   );
 }

@@ -11,11 +11,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
-import { Banner, Snackbar, Text } from 'react-native-paper';
+import { Banner, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AppToast } from '../../components/AppToast';
 import { GlobalConnectionStatusBar } from '../gateway/GlobalConnectionStatusBar';
 import { RouteOverrideToastView } from '../gateway/RouteOverrideToastView';
+import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_DEFAULT, TOAST_DURATION_STATUS } from '../../constants/toast';
 import { t } from '../../i18n/messages';
 import { queryKeys } from '../../query/keys';
 import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
@@ -269,18 +271,24 @@ export function ChatScreen({ embedded = false, overlay = false, onRequestHome }:
         </AnimatedView>
       </View>
 
-      <Snackbar visible={Boolean(chat.snackMsg)} onDismiss={() => chat.setSnackMsg('')} duration={2500}>
+      <AppToast
+        visible={Boolean(chat.snackMsg)}
+        onDismiss={() => chat.setSnackMsg('')}
+        duration={TOAST_DURATION_DEFAULT}
+        bottomLift={TOAST_BOTTOM_LIFT_ABOVE_BAR}
+      >
         {chat.snackMsg}
-      </Snackbar>
+      </AppToast>
 
-      <Snackbar
+      <AppToast
         key={routeSwitchToast?.key ?? 'none'}
         visible={Boolean(routeSwitchToast)}
         onDismiss={() => { /* hook auto-clears */ }}
-        duration={3500}
+        duration={TOAST_DURATION_STATUS}
+        bottomLift={TOAST_BOTTOM_LIFT_ABOVE_BAR}
       >
         {routeSwitchToast?.message ?? ''}
-      </Snackbar>
+      </AppToast>
 
       <RouteOverrideToastView
         toast={routeOverrideToast}

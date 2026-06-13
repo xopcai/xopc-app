@@ -14,7 +14,10 @@ import {
   View,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import { Button, IconButton, Snackbar, Text, TextInput } from 'react-native-paper';
+import { Button, IconButton, Text, TextInput } from 'react-native-paper';
+
+import { AppToast } from '../../components/AppToast';
+import { TOAST_DURATION_SHORT } from '../../constants/toast';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { gatewaySettingsSchema } from '../../config/schema';
@@ -360,9 +363,9 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
         </View>
       </KeyboardAwareScrollView>
 
-      <Snackbar visible={Boolean(tokenNotice)} onDismiss={() => setTokenNotice(null)} duration={2200}>
+      <AppToast visible={Boolean(tokenNotice)} onDismiss={() => setTokenNotice(null)} duration={TOAST_DURATION_SHORT}>
         {tokenNotice}
-      </Snackbar>
+      </AppToast>
     </View>
   );
 

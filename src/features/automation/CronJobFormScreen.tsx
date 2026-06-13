@@ -10,9 +10,11 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { Button, Snackbar, Text, TextInput } from 'react-native-paper';
+import { Button, Text, TextInput } from 'react-native-paper';
 
+import { AppToast } from '../../components/AppToast';
 import { FloatingHeader } from '../../components/FloatingHeader';
+import { TOAST_DURATION_DEFAULT } from '../../constants/toast';
 import { useMessages } from '../../i18n/messages';
 import { useResolvedIsDark } from '../../lib/stack-screen-theme';
 import {
@@ -207,9 +209,9 @@ export function CronJobFormScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <Snackbar visible={Boolean(snackbarMessage)} onDismiss={() => setSnackbarMessage('')} duration={3000}>
+      <AppToast visible={Boolean(snackbarMessage)} onDismiss={() => setSnackbarMessage('')} duration={TOAST_DURATION_DEFAULT}>
         {snackbarMessage}
-      </Snackbar>
+      </AppToast>
     </View>
   );
 }

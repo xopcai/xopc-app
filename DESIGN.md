@@ -280,10 +280,58 @@ elevation: 2,
 - `mode="outlined"`，`compact`
 - 横向 ScrollView 可滚动
 
-### 7.8 Snackbar
+### 7.8 Toast（AppToast）
 
-- 使用 react-native-paper `Snackbar`
-- `duration: 2200`（操作反馈）
+全局轻反馈统一使用 `AppToast`（`src/components/AppToast.tsx`），**禁止**在业务代码中直接使用 Paper `Snackbar`。
+
+#### 视觉
+
+与浮动底栏、批量操作栏同一套「浮动面板」语言：
+
+| 属性 | 值 | 说明 |
+|------|-----|------|
+| 背景 | Light `#FFFFFF` / Dark `surface.panel` | 非 Material 反色黑条 |
+| 边框 | `hairlineWidth` + `rgba(15,23,42,0.10)` / `rgba(255,255,255,0.10)` | 与浮动元素一致 |
+| 圆角 | `radii.xxl`（22px） | 胶囊感 |
+| 阴影 | `shadowOpacity: 0.06`（深 `0.18`）、`shadowRadius: 8`、`elevation: 3` | 轻抬升 |
+| 文案 | `typography.ui`（14 / 20 / 500） | 颜色 `text.primary` |
+| 操作按钮 | 系统蓝 `accent.primary` | 如「撤销」；字重由 Paper action 渲染 |
+| 内边距 | 垂直 10px、水平 14px | `contentStyle` |
+
+带图标的 toast（如路由切换）可在 children 内放 16px 语义色图标 + 文案；图标色用 `semantic.success` / `semantic.errorBold` / `semantic.info`。
+
+#### 位置
+
+- 通过 `Portal` 渲染至屏幕根部，避免被父级 `overflow` 裁切。
+- 默认 `bottom = floatingBottomPadding(safeArea) + FLOATING_BOTTOM_OFFSET`。
+- 页面有浮动底栏 / 输入 composer 时传 `bottomLift={TOAST_BOTTOM_LIFT_ABOVE_BAR}`（58px），避免与底栏重叠。
+
+#### 时长（`src/constants/toast.ts`）
+
+| 常量 | 毫秒 | 场景 |
+|------|------|------|
+| `TOAST_DURATION_SHORT` | 2200 | 归档、复制、开关 |
+| `TOAST_DURATION_DEFAULT` | 2500 | 一般操作反馈 |
+| `TOAST_DURATION_LONG` | 3200 | 错误、扫描、附件 |
+| `TOAST_DURATION_STATUS` | 3500 | 网关路由切换 |
+| `TOAST_DURATION_UNDO` | 5000 | 单条删除撤销（与 `LIST_DELETE_UNDO_MS` 一致） |
+
+#### 用法示例
+
+```tsx
+import { AppToast } from '@/components/AppToast';
+import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_UNDO } from '@/constants/toast';
+
+<AppToast
+  visible={Boolean(message)}
+  onDismiss={() => setMessage('')}
+  duration={undo ? TOAST_DURATION_UNDO : TOAST_DURATION_DEFAULT}
+  bottomLift={TOAST_BOTTOM_LIFT_ABOVE_BAR}
+  action={undo ? { label: m.common.undo, onPress: undo } : undefined}
+>
+  {message}
+</AppToast>
+```
 
 ---
 
@@ -294,6 +342,7 @@ elevation: 2,
 | 按压反馈 | 即时 | RN Pressable 默认 opacity 变化 |
 | 页面转场 | ~300ms | Expo Router Stack 默认 |
 | Sheet 展开 | ~300ms | 底部 Sheet 滑入 |
+| Toast 显隐 | ~250ms | Paper Snackbar 系统动画，短、可打断 |
 | RefreshControl | 系统默认 | 下拉刷新 |
 
 **原则**：
@@ -347,6 +396,7 @@ elevation: 2,
 - 保持字号落在 `tokens.typography` 的 8 个层级之一
 - 圆角使用 `tokens.radii` 中的值
 - 所有间距基于 8pt grid（`tokens.spacing`）
+- 轻反馈 toast 使用 `AppToast`，勿直接用 Paper `Snackbar`
 - 触控目标最小 44×44px
 - 三个底栏入口**各自独立**，功能零重叠（搜索=找、AI=问、新建=写）
 
@@ -360,6 +410,7 @@ elevation: 2,
 - 不要在底栏按钮中加文字标签（图标即含义，AI pill 除外）
 - 不要用 `StyleSheet.hairlineWidth` 以外的粗线分割页面
 - 不要用重渐变、毛玻璃等装饰效果
+- 不要用 Material 默认反色 Snackbar（黑底白字）；统一 `AppToast` 浮动面板样式
 
 ---
 
@@ -374,3 +425,4 @@ elevation: 2,
 7. 浮动元素是否有 **边框 + 轻阴影**，与背景拉开？
 8. 输入框是否在 **底部浮动**，而非顶部？
 9. 是否正确处理了 **Safe Area**（top + bottom）？
+10. 操作反馈是否使用 **AppToast**（白/深 panel + 边框 + 轻阴影），而非默认 Snackbar？

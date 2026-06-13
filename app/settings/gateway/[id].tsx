@@ -6,9 +6,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Alert, Platform, StyleSheet, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import { Button, HelperText, Snackbar, Text, TextInput } from 'react-native-paper';
+import { Button, HelperText, Text, TextInput } from 'react-native-paper';
 
+import { AppToast } from '../../../src/components/AppToast';
 import { FloatingHeader } from '../../../src/components/FloatingHeader';
+import { TOAST_DURATION_LONG, TOAST_DURATION_SHORT } from '../../../src/constants/toast';
 
 import { type GatewayProfileForm, gatewayProfileSchema } from '../../../src/config/schema';
 import { syncGatewayUrlsFromTunnelQr } from '../../../src/features/gateway/apply-tunnel-qr-from-api';
@@ -443,12 +445,12 @@ export default function GatewayEditScreen() {
         onCameraDenied={() => setScanNotice(l.cameraDenied)}
       />
 
-      <Snackbar visible={Boolean(scanNotice)} onDismiss={() => setScanNotice(null)} duration={3200}>
+      <AppToast visible={Boolean(scanNotice)} onDismiss={() => setScanNotice(null)} duration={TOAST_DURATION_LONG}>
         {scanNotice}
-      </Snackbar>
-      <Snackbar visible={Boolean(tokenNotice)} onDismiss={() => setTokenNotice(null)} duration={2200}>
+      </AppToast>
+      <AppToast visible={Boolean(tokenNotice)} onDismiss={() => setTokenNotice(null)} duration={TOAST_DURATION_SHORT}>
         {tokenNotice}
-      </Snackbar>
+      </AppToast>
     </View>
   );
 }

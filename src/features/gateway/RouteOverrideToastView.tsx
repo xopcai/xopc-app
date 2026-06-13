@@ -1,61 +1,55 @@
 /**
- * Snackbar that renders a leading icon driven by the override-toast state
+ * Toast that renders a leading icon driven by the override-toast state
  * machine. Pending shows a spinner; ok/error fade-swaps the icon while the
- * Snackbar stays mounted so the user sees the toast morph in place.
+ * toast stays mounted so the user sees the morph in place.
  */
 import { memo } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { Icon, Snackbar } from 'react-native-paper';
+import { Icon } from 'react-native-paper';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
-import { useResolvedIsDark } from '../../lib/stack-screen-theme';
+import { TOAST_BOTTOM_LIFT_ABOVE_BAR } from '../../constants/toast';
+import { AppToast, useToastContentStyle } from '../../components/AppToast';
+import { useTheme } from '../../theme';
 
 import type { RouteOverrideToast } from './use-route-override-toast';
 
 export type RouteOverrideToastViewProps = {
   toast: RouteOverrideToast;
   onDismiss: () => void;
+  bottomLift?: number;
 };
 
 export const RouteOverrideToastView = memo(function RouteOverrideToastView({
   toast,
   onDismiss,
+  bottomLift = TOAST_BOTTOM_LIFT_ABOVE_BAR,
 }: RouteOverrideToastViewProps) {
-  const isDark = useResolvedIsDark();
+  const { colors } = useTheme();
+  const messageStyle = useToastContentStyle();
 
-  // We always render the Snackbar so its enter animation can play once; the
-  // children inside cross-fade as the status morphs. Visibility is bound to
-  // toast presence; we keep the same `key` for the whole pending → resolved
-  // lifecycle so Paper doesn't re-mount and reset its slide-in.
   if (!toast) {
     return (
-      <Snackbar visible={false} onDismiss={onDismiss}>
+      <AppToast visible={false} onDismiss={onDismiss} duration={120_000} bottomLift={bottomLift}>
         {''}
-      </Snackbar>
+      </AppToast>
     );
   }
 
   const tint =
     toast.status === 'error'
-      ? isDark
-        ? '#FF6961'
-        : '#FCA5A5'
+      ? colors.semantic.errorBold
       : toast.status === 'ok'
-        ? isDark
-          ? '#7BE995'
-          : '#86EFAC'
-        : isDark
-          ? '#93C5FD'
-          : '#BFDBFE';
+        ? colors.semantic.success
+        : colors.semantic.info;
 
   return (
-    <Snackbar
+    <AppToast
       key={toast.key}
       visible
       onDismiss={onDismiss}
-      // Hook owns the lifetime; we pick a large value so Paper's internal
-      // timer never preempts the morph from pending → resolved.
       duration={120_000}
+      bottomLift={bottomLift}
     >
       <View style={styles.row}>
         <Animated.View
@@ -74,13 +68,13 @@ export const RouteOverrideToastView = memo(function RouteOverrideToastView({
           key={`msg-${toast.message}`}
           entering={FadeIn.duration(160)}
           exiting={FadeOut.duration(120)}
-          style={styles.message}
+          style={messageStyle}
           numberOfLines={2}
         >
           {toast.message}
         </Animated.Text>
       </View>
-    </Snackbar>
+    </AppToast>
   );
 });
 
@@ -110,9 +104,5 @@ const styles = StyleSheet.create({
     height: 18,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  message: {
-    flex: 1,
-    fontSize: 14,
   },
 });

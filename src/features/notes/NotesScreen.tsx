@@ -11,16 +11,17 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { ActivityIndicator, Chip, Icon, Snackbar, Text } from 'react-native-paper';
+import { ActivityIndicator, Chip, Icon, Text } from 'react-native-paper';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AppToast } from '../../components/AppToast';
 import { FloatingHeader } from '../../components/FloatingHeader';
 import { BatchActionBar } from '../../components/BatchActionBar';
 import { BatchDeleteConfirmDialog } from '../../components/BatchDeleteConfirmDialog';
 import { SwipeableRow, type SwipeRowAction } from '../../components/SwipeableRow';
 import { SwipeHintBanner } from '../../components/SwipeHintBanner';
-import { LIST_DELETE_UNDO_MS } from '../../constants/list-interaction';
+import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_DEFAULT, TOAST_DURATION_UNDO } from '../../constants/toast';
 import { useListSelection } from '../../hooks/use-list-selection';
 import { useNoteDeleteWithUndo } from '../../hooks/use-note-delete-with-undo';
 
@@ -685,17 +686,18 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
         onConfirm={() => void handleBatchDelete()}
       />
 
-      <Snackbar
+      <AppToast
         visible={Boolean(snackMsg)}
         onDismiss={() => {
           setSnackMsg('');
           setSnackUndo(null);
         }}
-        duration={snackUndo ? LIST_DELETE_UNDO_MS : 2500}
+        duration={snackUndo ? TOAST_DURATION_UNDO : TOAST_DURATION_DEFAULT}
+        bottomLift={TOAST_BOTTOM_LIFT_ABOVE_BAR}
         action={snackUndo ? { label: snackUndo.label, onPress: snackUndo.onPress } : undefined}
       >
         {snackMsg}
-      </Snackbar>
+      </AppToast>
 
       <NoteTagPickerSheet
         visible={showTagPicker}

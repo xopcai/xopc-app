@@ -13,9 +13,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { ActivityIndicator, Button, Icon, Snackbar, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AppToast } from '../../components/AppToast';
+import { TOAST_DURATION_SHORT } from '../../constants/toast';
 import { useMessages, t } from '../../i18n/messages';
 import { openChat } from '../../lib/navigation';
 import { queryKeys } from '../../query/keys';
@@ -992,13 +994,13 @@ export function PageScreen() {
         </Pressable>
       ) : null}
 
-      <Snackbar
+      <AppToast
         visible={Boolean(snackMsg)}
         onDismiss={() => setSnackMsg('')}
-        duration={2200}
+        duration={TOAST_DURATION_SHORT}
       >
         {snackMsg}
-      </Snackbar>
+      </AppToast>
 
       <NoteTagPickerSheet
         visible={showTagPicker}

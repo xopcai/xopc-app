@@ -3,16 +3,18 @@ import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
-import { Icon, Snackbar, Text } from 'react-native-paper';
+import { Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BatchActionBar } from '../../components/BatchActionBar';
 import { BatchDeleteConfirmDialog } from '../../components/BatchDeleteConfirmDialog';
+import { AppToast } from '../../components/AppToast';
 import { FloatingHeader } from '../../components/FloatingHeader';
 import { ListSelectionCheckbox } from '../../components/ListSelectionCheckbox';
 import { SwipeableRow, type SwipeRowAction } from '../../components/SwipeableRow';
 import { SwipeHintBanner } from '../../components/SwipeHintBanner';
-import { LIST_DELAY_LONG_PRESS, LIST_DELETE_UNDO_MS } from '../../constants/list-interaction';
+import { LIST_DELAY_LONG_PRESS } from '../../constants/list-interaction';
+import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_SHORT, TOAST_DURATION_UNDO } from '../../constants/toast';
 import { useListSelection } from '../../hooks/use-list-selection';
 import { useNoteDeleteWithUndo } from '../../hooks/use-note-delete-with-undo';
 import { useMessages, t } from '../../i18n/messages';
@@ -344,17 +346,18 @@ export function InboxScreen() {
         loading={deleteMutation.isPending}
       />
 
-      <Snackbar
+      <AppToast
         visible={!!snackMsg}
         onDismiss={() => {
           setSnackMsg('');
           setSnackUndo(null);
         }}
-        duration={snackUndo ? LIST_DELETE_UNDO_MS : 2200}
+        duration={snackUndo ? TOAST_DURATION_UNDO : TOAST_DURATION_SHORT}
+        bottomLift={TOAST_BOTTOM_LIFT_ABOVE_BAR}
         action={snackUndo ? { label: snackUndo.label, onPress: snackUndo.onPress } : undefined}
       >
         {snackMsg}
-      </Snackbar>
+      </AppToast>
     </View>
   );
 }

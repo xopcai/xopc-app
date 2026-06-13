@@ -14,8 +14,11 @@ import {
   type View as RNView,
 } from 'react-native';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle } from 'react-native-reanimated';
-import { Icon, Snackbar } from 'react-native-paper';
+import { Icon } from 'react-native-paper';
 
+import { AppToast } from '../../components/AppToast';
+
+import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_LONG } from '../../constants/toast';
 import { useMessages } from '../../i18n/messages';
 import { motion } from '../../motion';
 import { transcribeVoice } from '../../api/agent-client';
@@ -915,12 +918,12 @@ export const ChatComposer = memo(function ChatComposer({
         onPick={(source) => void handleAttachmentPick(source)}
       />
 
-      <Snackbar visible={Boolean(snack)} onDismiss={() => setSnack('')} duration={3200}>
+      <AppToast visible={Boolean(snack)} onDismiss={() => setSnack('')} duration={TOAST_DURATION_LONG} bottomLift={TOAST_BOTTOM_LIFT_ABOVE_BAR}>
         {snack}
-      </Snackbar>
-      <Snackbar visible={Boolean(att.snack)} onDismiss={att.dismissSnack} duration={3200}>
+      </AppToast>
+      <AppToast visible={Boolean(att.snack)} onDismiss={att.dismissSnack} duration={TOAST_DURATION_LONG} bottomLift={TOAST_BOTTOM_LIFT_ABOVE_BAR}>
         {att.snack}
-      </Snackbar>
+      </AppToast>
     </View>
   );
 });

@@ -2,7 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Button, Chip, Icon, IconButton, Snackbar, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Chip, Icon, IconButton, Text } from 'react-native-paper';
+
+import { AppToast } from '../../components/AppToast';
+import { TOAST_DURATION_DEFAULT } from '../../constants/toast';
 
 import { useMessages } from '../../i18n/messages';
 import { useResolvedIsDark } from '../../lib/stack-screen-theme';
@@ -235,13 +238,13 @@ export function SchedulesList() {
           </View>
         }
       />
-      <Snackbar
+      <AppToast
         visible={Boolean(snackbarMessage)}
         onDismiss={() => setSnackbarMessage('')}
-        duration={3000}
+        duration={TOAST_DURATION_DEFAULT}
       >
         {snackbarMessage}
-      </Snackbar>
+      </AppToast>
     </>
   );
 }

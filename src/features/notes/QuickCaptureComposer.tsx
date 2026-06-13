@@ -8,7 +8,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Icon, Snackbar } from 'react-native-paper';
+import { Icon } from 'react-native-paper';
+
+import { AppToast } from '../../components/AppToast';
+import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_LONG } from '../../constants/toast';
 
 import { transcribeVoice } from '../../api/agent-client';
 import { useMessages } from '../../i18n/messages';
@@ -354,9 +357,14 @@ export function QuickCaptureComposer({
         }}
       />
 
-      <Snackbar visible={Boolean(snack)} onDismiss={() => setSnack('')} duration={3200}>
+      <AppToast
+        visible={Boolean(snack)}
+        onDismiss={() => setSnack('')}
+        duration={TOAST_DURATION_LONG}
+        bottomLift={TOAST_BOTTOM_LIFT_ABOVE_BAR}
+      >
         {snack}
-      </Snackbar>
+      </AppToast>
     </>
   );
 }
