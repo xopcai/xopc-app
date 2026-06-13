@@ -7,7 +7,8 @@ export type NoteEditorAttachment = ComposerAttachment;
 
 export function noteAttachmentToEditor(att: NoteAttachment, apiUrl: (path: string) => string): NoteEditorAttachment {
   const isImage = att.type === 'image' || att.mimeType.startsWith('image/');
-  const localUri = isImage && att.relativePath
+  const isAudio = att.type === 'audio' || att.mimeType.startsWith('audio/');
+  const remoteUri = att.relativePath
     ? apiUrl(workspaceRelativePathToApiPath(att.relativePath))
     : undefined;
   return {
@@ -17,14 +18,16 @@ export function noteAttachmentToEditor(att: NoteAttachment, apiUrl: (path: strin
     mimeType: att.mimeType,
     size: att.size,
     content: '',
-    localUri,
+    localUri: (isImage || isAudio) ? remoteUri : undefined,
   };
 }
 
 export function editorAttachmentToSync(att: NoteEditorAttachment) {
+  const isImage = att.type === 'image' || att.mimeType.startsWith('image/');
+  const isAudio = att.mimeType.startsWith('audio/');
   return {
     id: att.id,
-    type: att.type === 'image' ? 'image' as const : 'file' as const,
+    type: isImage ? 'image' as const : isAudio ? 'audio' as const : 'file' as const,
     mimeType: att.mimeType,
     fileName: att.name,
     size: att.size,

@@ -10,12 +10,32 @@ import { BatchActionBar } from '../../components/BatchActionBar';
 import { FloatingHeader } from '../../components/FloatingHeader';
 import { useMessages, t } from '../../i18n/messages';
 import { pickAttachmentFromSource, type AttachmentPickSource } from '../chat/attachment-file-io';
-import { deleteNote, fetchNotes, quickCaptureNote, updateNote, type NoteIndexEntry } from '../../query/notes';
+import type { ComposerAttachment } from '../chat/composer.types';
+import { deleteNote, fetchNotes, quickCaptureNote, updateNote, type NoteIndexEntry, type NoteKind } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
 import { invalidateHomeFeed } from '../../query/workspace-sync';
 import { useTheme, FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
+import {
+  captureNoteWithComposerAttachment,
+  captureNoteWithVoice,
+} from '../notes/capture-note-media';
 import { QuickCaptureComposer } from '../notes/QuickCaptureComposer';
 import { InboxSwipeableItem } from './InboxSwipeableItem';
+
+type CapturePayload =
+  | { type: 'text'; text: string }
+  | { type: 'attachment'; attachment: ComposerAttachment }
+  | { type: 'voice'; uri: string; durationMillis: number; mimeType: string };
+
+const INBOX_KIND_ICONS: Record<NoteKind, string> = {
+  thought: 'lightbulb-outline',
+  todo: 'checkbox-marked-outline',
+  voice: 'microphone',
+  media: 'image-outline',
+  bookmark: 'link',
+  mixed: 'lightbulb-outline',
+  task: 'checkbox-marked-circle-outline',
+};
 
 export function InboxScreen() {
   const router = useRouter();
@@ -49,7 +69,15 @@ export function InboxScreen() {
   }, []);
 
   const captureMutation = useMutation({
-    mutationFn: (text: string) => quickCaptureNote(text),
+    mutationFn: async (payload: CapturePayload) => {
+      if (payload.type === 'text') {
+        return quickCaptureNote(payload.text);
+      }
+      if (payload.type === 'attachment') {
+        return captureNoteWithComposerAttachment(payload.attachment);
+      }
+      return captureNoteWithVoice(payload);
+    },
     onSuccess: async () => {
       setCaptureText('');
       await invalidateInbox();
@@ -94,15 +122,14 @@ export function InboxScreen() {
   const handleCapture = useCallback(() => {
     const text = captureText.trim();
     if (!text) return;
-    captureMutation.mutate(text);
+    captureMutation.mutate({ type: 'text', text });
   }, [captureMutation, captureText]);
 
   const handleAttachmentSource = useCallback(async (source: AttachmentPickSource) => {
     try {
       const attachment = await pickAttachmentFromSource(source);
       if (!attachment) return;
-      const prefix = source === 'document' ? 'file' : 'image';
-      captureMutation.mutate(`[${prefix}: ${attachment.name}]`);
+      captureMutation.mutate({ type: 'attachment', attachment });
     } catch (error) {
       if (error instanceof Error && error.message.includes('permission')) {
         setSnackMsg(pm.micDenied);
@@ -112,8 +139,8 @@ export function InboxScreen() {
     }
   }, [captureMutation, pm.actionFailed, pm.micDenied]);
 
-  const handleVoiceCapture = useCallback(({ durationMillis }: { uri: string; durationMillis: number; mimeType: string }) => {
-    captureMutation.mutate(`[voice memo: ${Math.round(durationMillis / 1000)}s]`);
+  const handleVoiceCapture = useCallback((payload: { uri: string; durationMillis: number; mimeType: string }) => {
+    captureMutation.mutate({ type: 'voice', ...payload });
   }, [captureMutation]);
 
   const enterSelection = useCallback((item: NoteIndexEntry) => {
@@ -196,7 +223,7 @@ export function InboxScreen() {
           </View>
         ) : (
           <View style={styles.itemIcon}>
-            <Icon source="lightbulb-outline" size={20} color="#6D5DFB" />
+            <Icon source={INBOX_KIND_ICONS[item.kind] ?? 'lightbulb-outline'} size={20} color="#6D5DFB" />
           </View>
         )}
         <View style={styles.itemCopy}>

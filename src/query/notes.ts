@@ -153,6 +153,41 @@ export async function quickCaptureNote(text: string): Promise<{ note: { id: stri
   return readCreatedNote(res);
 }
 
+export type CaptureNoteAttachment = {
+  id: string;
+  type: 'image' | 'audio' | 'file';
+  mimeType: string;
+  fileName: string;
+  size: number;
+  data?: string;
+  duration?: number;
+  transcript?: string;
+};
+
+export interface CaptureNoteInput {
+  text?: string;
+  kind?: NoteKind;
+  attachments?: CaptureNoteAttachment[];
+}
+
+/** Create an inbox note, optionally with uploaded media attachments. */
+export async function captureNote(input: CaptureNoteInput): Promise<{ note: { id: string } }> {
+  const trimmedText = input.text?.trim() ?? '';
+  const { note } = await quickCaptureNote(trimmedText);
+  if (!input.attachments?.length && !input.kind) {
+    return { note };
+  }
+
+  const patch: Record<string, unknown> = {};
+  if (input.kind) patch.kind = input.kind;
+  if (input.attachments?.length) {
+    patch.attachments = input.attachments;
+    if (!trimmedText) patch.text = '';
+  }
+  await updateNote(note.id, patch);
+  return { note };
+}
+
 /** Create an empty note for the block editor (POST /api/notes, not quick-capture). */
 export async function createBlankNote(): Promise<{ note: { id: string } }> {
   const platform = Platform.OS === 'ios' ? 'ios' : 'android';
