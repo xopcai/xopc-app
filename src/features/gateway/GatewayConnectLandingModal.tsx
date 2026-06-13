@@ -375,6 +375,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
       <View style={styles.webOverlay}>
         {landingContent}
         <GatewayQrScannerModal
+          embedded
           visible={scannerOpen}
           onRequestClose={() => setScannerOpen(false)}
           onScanned={applyParsed}
@@ -393,6 +394,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
     >
       {landingContent}
       <GatewayQrScannerModal
+        embedded
         visible={scannerOpen}
         onRequestClose={() => setScannerOpen(false)}
         onScanned={applyParsed}

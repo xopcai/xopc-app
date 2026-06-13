@@ -1,11 +1,15 @@
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useCallback, useRef } from 'react';
+import {
+  CameraView,
+  useCameraPermissions,
+} from 'expo-camera';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
 
+import { ensureGatewayQrCameraPermission } from './gateway-qr-camera-permission';
 import { hasPairableGatewayQr, type ParsedGatewayQr, parseGatewayQrPayload } from './parse-gateway-qr';
 
 export type GatewayQrScannerModalProps = {
@@ -14,19 +18,43 @@ export type GatewayQrScannerModalProps = {
   onScanned: (parsed: ParsedGatewayQr) => void;
   /** Called when camera permission is denied. */
   onCameraDenied?: () => void;
+  /** Overlay inside an existing Modal instead of opening a nested Modal (Android camera preview). */
+  embedded?: boolean;
 };
 
 export function GatewayQrScannerModal({
   visible,
   onRequestClose,
   onScanned,
-  onCameraDenied: _onCameraDenied,
+  onCameraDenied,
+  embedded = false,
 }: GatewayQrScannerModalProps) {
   const insets = useSafeAreaInsets();
   const m = useMessages();
   const l = m.gatewayConnect;
-  const [camPermission] = useCameraPermissions();
+  const [cameraReady, setCameraReady] = useState(false);
   const scanCooldown = useRef(0);
+
+  useEffect(() => {
+    if (!visible) {
+      setCameraReady(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const granted = await ensureGatewayQrCameraPermission();
+      if (cancelled) return;
+      if (granted) {
+        setCameraReady(true);
+        return;
+      }
+      onCameraDenied?.();
+      onRequestClose();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, onCameraDenied, onRequestClose]);
 
   const onBarcodeScanned = useCallback(
     (ev: { data: string }) => {
@@ -51,7 +79,7 @@ export function GatewayQrScannerModal({
         <View style={{ width: 48 }} />
       </View>
       <View style={styles.cameraWrap}>
-        {visible && camPermission?.granted ? (
+        {visible && cameraReady ? (
           <CameraView
             style={styles.camera}
             facing="back"
@@ -72,6 +100,11 @@ export function GatewayQrScannerModal({
     return <View style={styles.webOverlay}>{content}</View>;
   }
 
+  if (embedded) {
+    if (!visible) return null;
+    return <View style={styles.embeddedOverlay}>{content}</View>;
+  }
+
   return (
     <Modal visible={visible} animationType="fade" onRequestClose={onRequestClose}>
       {content}
@@ -86,16 +119,23 @@ export async function requestGatewayQrCameraAccess(
   onCameraDenied: () => void,
 ): Promise<boolean> {
   if (camPermission?.granted) return true;
-  const r = await requestCamPermission();
-  if (!r.granted) {
+  const granted = await ensureGatewayQrCameraPermission();
+  if (!granted) {
     onCameraDenied();
     return false;
   }
+  // Refresh hook state for callers that still read `camPermission`.
+  await requestCamPermission();
   return true;
 }
 
 const styles = StyleSheet.create({
   webOverlay: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 1000,
+    elevation: 1000,
+  },
+  embeddedOverlay: {
     ...StyleSheet.absoluteFill,
     zIndex: 1000,
     elevation: 1000,
