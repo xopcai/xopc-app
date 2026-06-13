@@ -12,6 +12,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { dismissOrHome, openChat, useDismissOnHardwareBack } from '../../lib/navigation';
+import { extractAgentIdFromWebchatSessionKey } from '../../lib/session-key';
 
 import { useGatewayStore } from '../../stores/gateway-store';
 import { usePreferencesStore } from '../../stores/preferences-store';
@@ -25,7 +26,6 @@ import { useMessages, t } from '../../i18n/messages';
 import { fetchChatAgents, readPlaceholderAgents, resolveEffectiveDefaultAgentId } from '../../query/agents';
 import { fetchChatModels, resolveEffectiveModelId, setSessionModelRef, fetchSessionAgentConfig } from '../../query/models';
 import { queryKeys } from '../../query/keys';
-import { invalidateSessionLists } from '../../query/workspace-sync';
 import { getColors } from '../../theme';
 
 import { EMPTY_CHAT_GOAL_PREFILL } from './chat-empty-shortcuts';
@@ -35,7 +35,7 @@ import type { Message } from './messages.types';
 import { MAX_PENDING_FOLLOW_UPS } from './pending-follow-up.types';
 import { sendOrQueueMessage } from './send-or-queue';
 import { parseSessionMessages, dedupeWireMessages } from './session-message-parser';
-import { ensureOptimisticSessionRegistered, takeOptimisticSessionKey } from './session-prefetch';
+import { takeOptimisticSessionKey } from './session-prefetch';
 import { useChatPageBootstrap } from './use-chat-page-bootstrap';
 import { useChatSession } from './use-chat-session';
 import { useSessionHistory } from './use-session-history';
@@ -98,7 +98,7 @@ export function useChatPage(options: UseChatPageOptions = {}) {
 
   // Re-init chat session with resolved sessionKey
   const currentSessionAgentId = useMemo(
-    () => (sessionKey ? sessionKey.split(':')[0]?.trim().toLowerCase() ?? '' : ''),
+    () => (sessionKey ? extractAgentIdFromWebchatSessionKey(sessionKey) ?? '' : ''),
     [sessionKey],
   );
 
@@ -119,10 +119,7 @@ export function useChatPage(options: UseChatPageOptions = {}) {
     activeSessionKeyRef.current = overlaySessionKey;
     chatSession.streamRecoveryRef.current.cancelRecovery();
     chatSession.clearAllState();
-    void ensureOptimisticSessionRegistered(overlaySessionKey)
-      .then(() => invalidateSessionLists(queryClient))
-      .catch(() => {});
-  }, [embedded, overlaySessionKey, queryClient]);
+  }, [embedded, overlaySessionKey, chatSession]);
 
   // Sync session model override from agent-config when session changes.
   useEffect(() => {
@@ -258,13 +255,8 @@ export function useChatPage(options: UseChatPageOptions = {}) {
       if (!embedded) {
         openChat(router, key, { replace: true });
       }
-      void ensureOptimisticSessionRegistered(key)
-        .then(() => invalidateSessionLists(queryClient))
-        .catch((e) => {
-          chatSession.setSnackMsg(e instanceof Error ? e.message : String(e));
-        });
     },
-    [embedded, queryClient, router, chatSession, bootstrap],
+    [embedded, router, chatSession, bootstrap],
   );
 
   const handleNewChat = useCallback(() => {
@@ -279,13 +271,7 @@ export function useChatPage(options: UseChatPageOptions = {}) {
     if (!embedded) {
       openChat(router, key, { replace: true });
     }
-    void ensureOptimisticSessionRegistered(key)
-      .then(() => invalidateSessionLists(queryClient))
-      .catch((e) => {
-        chatSession.activeSessionKeyRef.current = sessionKey;
-        chatSession.setSnackMsg(e instanceof Error ? e.message : String(e));
-      });
-  }, [agentsQuery.data, embedded, localDefaultAgentId, queryClient, router, sessionKey, chatSession, bootstrap]);
+  }, [agentsQuery.data, embedded, localDefaultAgentId, router, chatSession, bootstrap]);
 
   const queueFollowUpOrSend = useCallback(
     (text: string) => {
@@ -404,8 +390,6 @@ export function useChatPage(options: UseChatPageOptions = {}) {
         if (!embedded) {
           openChat(router, key, { replace: true });
         }
-        await ensureOptimisticSessionRegistered(key);
-        invalidateSessionLists(queryClient);
       } catch (e) {
         chatSession.setSnackMsg(e instanceof Error ? e.message : String(e));
       } finally {

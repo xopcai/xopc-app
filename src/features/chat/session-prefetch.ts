@@ -1,10 +1,16 @@
 /**
  * Optimistic new-chat session keys.
  *
- * Generates the canonical session key locally (instant UI), then registers
- * with `POST /api/sessions` in the background via `chat_id`.
+ * Generates the canonical session key locally (instant UI). Registration with
+ * `POST /api/sessions` is deferred until the user sends their first message.
  */
-import { buildWebchatSessionKey, generateNewChatId, normalizeAgentId } from '../../lib/session-key';
+import {
+  buildWebchatSessionKey,
+  extractAgentIdFromWebchatSessionKey,
+  extractChatIdFromWebchatSessionKey,
+  generateNewChatId,
+  normalizeAgentId,
+} from '../../lib/session-key';
 import { useGatewayStore } from '../../stores/gateway-store';
 import { createSession } from '../../query/sessions';
 
@@ -23,6 +29,7 @@ type OptimisticEntry = {
 const cache = new Map<string, OptimisticEntry>();
 const registerPromises = new Map<string, Promise<string>>();
 const optimisticKeys = new Set<string>();
+const optimisticMeta = new Map<string, { agentId: string; chatId: string }>();
 
 function keyOf(agentId: string | undefined): string {
   return normalizeAgentId(agentId);
@@ -34,8 +41,9 @@ function dropExpired(now: number): void {
   }
 }
 
-function markOptimistic(sessionKey: string): void {
+function markOptimistic(sessionKey: string, agentId: string, chatId: string): void {
   optimisticKeys.add(sessionKey);
+  optimisticMeta.set(sessionKey, { agentId, chatId });
 }
 
 export function isOptimisticSessionKey(sessionKey: string): boolean {
@@ -44,10 +52,20 @@ export function isOptimisticSessionKey(sessionKey: string): boolean {
 
 function confirmOptimistic(sessionKey: string): void {
   optimisticKeys.delete(sessionKey);
+  optimisticMeta.delete(sessionKey);
+}
+
+function resolveOptimisticMeta(sessionKey: string): { agentId: string; chatId: string } | null {
+  const stored = optimisticMeta.get(sessionKey);
+  if (stored) return stored;
+
+  const chatId = extractChatIdFromWebchatSessionKey(sessionKey);
+  if (!chatId) return null;
+  const agentId = extractAgentIdFromWebchatSessionKey(sessionKey) || 'main';
+  return { agentId, chatId };
 }
 
 function startRegistration(agentId: string, chatId: string, sessionKey: string): Promise<string> {
-  markOptimistic(sessionKey);
   const existing = registerPromises.get(sessionKey);
   if (existing) return existing;
 
@@ -66,7 +84,7 @@ function createOptimisticEntry(agentId: string | undefined): OptimisticEntry {
   const id = keyOf(agentId);
   const chatId = generateNewChatId();
   const sessionKey = buildWebchatSessionKey(id, chatId);
-  startRegistration(id, chatId, sessionKey);
+  markOptimistic(sessionKey, id, chatId);
   return {
     sessionKey,
     chatId,
@@ -83,7 +101,7 @@ function takeCachedEntry(agentId: string | undefined): OptimisticEntry {
   return entry;
 }
 
-/** Pre-register a new chat session while the user is still on the home screen. */
+/** Cache a local session key while the user is still on the home screen. */
 export function prefetchNewChatSession(agentId?: string, _options?: SessionPrefetchOptions): void {
   const now = Date.now();
   dropExpired(now);
@@ -94,7 +112,7 @@ export function prefetchNewChatSession(agentId?: string, _options?: SessionPrefe
 
 /**
  * Return an optimistic session key synchronously — no network wait.
- * Background registration starts immediately if not already prefetched.
+ * Server registration happens on first message via ensureOptimisticSessionRegistered.
  */
 export function takeOptimisticSessionKey(agentId?: string): string {
   return takeCachedEntry(agentId).sessionKey;
@@ -104,11 +122,15 @@ export function getOptimisticRegisterPromise(sessionKey: string): Promise<string
   return registerPromises.get(sessionKey);
 }
 
-/** Await background registration (e.g. before first message send). */
+/** Register with the server before the first message send. */
 export async function ensureOptimisticSessionRegistered(sessionKey: string): Promise<string> {
   const pending = registerPromises.get(sessionKey);
   if (pending) return pending;
-  return sessionKey;
+  if (!isOptimisticSessionKey(sessionKey)) return sessionKey;
+
+  const meta = resolveOptimisticMeta(sessionKey);
+  if (!meta) return sessionKey;
+  return startRegistration(meta.agentId, meta.chatId, sessionKey);
 }
 
 /** Legacy async resolver — prefer takeOptimisticSessionKey. */
@@ -137,4 +159,5 @@ export function resetSessionPrefetchCacheForTests(): void {
   cache.clear();
   registerPromises.clear();
   optimisticKeys.clear();
+  optimisticMeta.clear();
 }

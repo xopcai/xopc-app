@@ -48,33 +48,33 @@ afterEach(() => {
 });
 
 describe('optimistic session prefetch', () => {
-  it('takeOptimisticSessionKey returns immediately without awaiting POST', async () => {
+  it('takeOptimisticSessionKey returns immediately without POST', async () => {
     const key = takeOptimisticSessionKey('main');
     expect(key).toMatch(/^agent:main:webchat:default:direct:chat_\d+_[a-z0-9]+$/);
+    await flushRegistration();
+    expect(mockedCreate).toHaveBeenCalledTimes(0);
+  });
+
+  it('ensureOptimisticSessionRegistered POSTs on first message', async () => {
+    const key = takeOptimisticSessionKey('main');
+    await expect(ensureOptimisticSessionRegistered(key)).resolves.toBe(key);
     await flushRegistration();
     expect(mockedCreate).toHaveBeenCalledTimes(1);
   });
 
-  it('prefetch then take reuses the same prefetched key', async () => {
+  it('prefetch then take reuses the same prefetched key without POST', async () => {
     prefetchNewChatSession('main', { forceNew: true });
-    await flushRegistration();
-    expect(mockedCreate).toHaveBeenCalledTimes(1);
     const key1 = takeOptimisticSessionKey('main');
     const key2 = takeOptimisticSessionKey('main');
     expect(key2).not.toBe(key1);
     await flushRegistration();
-    expect(mockedCreate).toHaveBeenCalledTimes(2);
+    expect(mockedCreate).toHaveBeenCalledTimes(0);
   });
 
-  it('ensureOptimisticSessionRegistered resolves after background POST', async () => {
-    const key = takeOptimisticSessionKey('main');
-    await expect(ensureOptimisticSessionRegistered(key)).resolves.toBe(key);
-  });
-
-  it('different agents cache independently', async () => {
+  it('different agents cache independently without POST', async () => {
     prefetchNewChatSession('main', { forceNew: true });
     prefetchNewChatSession('other', { forceNew: true });
     await flushRegistration();
-    expect(mockedCreate).toHaveBeenCalledTimes(2);
+    expect(mockedCreate).toHaveBeenCalledTimes(0);
   });
 });

@@ -14,6 +14,7 @@ export const KEYS = {
   themePreference: 'prefs.themePreference',
   defaultAgentId: 'prefs.defaultAgentId',
   selectedModelRef: 'prefs.selectedModelRef',
+  noteTags: 'prefs.noteTags',
 } as const;
 
 export type KeyValueStorage = {

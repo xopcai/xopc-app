@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,6 +32,8 @@ export function WorkspaceHomeScreen() {
   const configured = useGatewayConfigured();
   const { openAskAi, prefetchAskAiSession } = useWorkspaceNavigation();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [creatingNote, setCreatingNote] = useState(false);
+  const createNoteInFlightRef = useRef(false);
 
   useHomeChatPrefetch(configured);
 
@@ -89,12 +91,18 @@ export function WorkspaceHomeScreen() {
   }, [homeQuery, recentNotesFallbackQuery, prefetchAskAiSession]);
 
   const handleCreateNote = useCallback(async () => {
+    if (createNoteInFlightRef.current) return;
+    createNoteInFlightRef.current = true;
+    setCreatingNote(true);
     try {
       const { note } = await createBlankNote();
       upsertNoteInListCaches(queryClient, blankNoteIndexEntry(note.id));
       router.push(`/notes/${note.id}`);
     } catch {
       router.push('/notes');
+    } finally {
+      createNoteInFlightRef.current = false;
+      setCreatingNote(false);
     }
   }, [queryClient, router]);
 
@@ -150,6 +158,7 @@ export function WorkspaceHomeScreen() {
               notes={homeNotes}
               loading={homeNotesLoading}
               onNotePress={handleNotePress}
+              creatingNote={creatingNote}
               onCreateNote={handleCreateNote}
               onViewAll={() => router.push('/notes')}
             />
@@ -181,12 +190,14 @@ function iconForNoteKind(kind: NoteIndexEntry['kind']): string {
 function RecentNotesCard({
   notes,
   loading = false,
+  creatingNote = false,
   onNotePress,
   onCreateNote,
   onViewAll,
 }: {
   notes: NoteIndexEntry[];
   loading?: boolean;
+  creatingNote?: boolean;
   onNotePress: (note: NoteIndexEntry) => void;
   onCreateNote: () => void;
   onViewAll: () => void;
@@ -202,15 +213,25 @@ function RecentNotesCard({
         </Pressable>
       </View>
       <View style={[styles.listCard, { backgroundColor: colors.surface.panel }]}>
-        <Pressable style={[styles.itemRow, styles.actionRow]} onPress={onCreateNote}>
+        <Pressable
+          style={[styles.itemRow, styles.actionRow, creatingNote && styles.actionRowDisabled]}
+          onPress={onCreateNote}
+          disabled={creatingNote}
+        >
           <View style={[styles.iconBubble, styles.actionIconBubble]}>
-            <Icon source="square-edit-outline" size={16} color="#6D5DFB" />
+            {creatingNote ? (
+              <ActivityIndicator size={16} color="#6D5DFB" />
+            ) : (
+              <Icon source="square-edit-outline" size={16} color="#6D5DFB" />
+            )}
           </View>
           <View style={styles.itemCopy}>
             <Text numberOfLines={1} style={[styles.itemTitle, { color: colors.text.primary }]}>新建笔记</Text>
-            <Text numberOfLines={1} style={[styles.itemSubtitle, { color: colors.text.tertiary }]}>创建空白笔记</Text>
+            <Text numberOfLines={1} style={[styles.itemSubtitle, { color: colors.text.tertiary }]}>
+              {creatingNote ? '正在创建…' : '创建空白笔记'}
+            </Text>
           </View>
-          <Icon source="chevron-right" size={18} color={colors.text.tertiary} />
+          {!creatingNote && <Icon source="chevron-right" size={18} color={colors.text.tertiary} />}
         </Pressable>
         {loading ? (
           <View style={styles.emptyRow}>
@@ -265,6 +286,7 @@ const styles = StyleSheet.create({
   emptyRowCompact: { minHeight: 48, alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
   itemRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8, paddingVertical: 10 },
   actionRow: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(109,93,251,0.12)' },
+  actionRowDisabled: { opacity: 0.7 },
   iconBubble: {
     width: 32,
     height: 32,

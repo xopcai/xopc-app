@@ -32,6 +32,13 @@ export function buildWebchatSessionKey(agentId: string, chatId: string): string 
   return `agent:${id}:webchat:default:direct:${peerId}`;
 }
 
+export function extractAgentIdFromWebchatSessionKey(sessionKey: string): string | null {
+  const parts = sessionKey.trim().toLowerCase().split(':').filter(Boolean);
+  if (parts.length < 6 || parts[0] !== 'agent') return null;
+  if (parts[2] !== 'webchat' || parts[3] !== 'default' || parts[4] !== 'direct') return null;
+  return parts[1] || null;
+}
+
 export function extractChatIdFromWebchatSessionKey(sessionKey: string): string | null {
   const parts = sessionKey.trim().toLowerCase().split(':').filter(Boolean);
   if (parts.length < 6 || parts[0] !== 'agent') return null;

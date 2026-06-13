@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Platform,
@@ -43,6 +43,10 @@ import { refreshNotesList } from '../../query/infinite-list-sync';
 import { useGatewayConfigured } from '../../query/sessions';
 import { useTheme, FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
 
+import { useNoteTagsStore } from '../../stores/note-tags-store';
+import { NoteTagPickerSheet } from './NoteTagPickerSheet';
+import { NoteTagTabs } from './NoteTagTabs';
+import { collectTagsFromNotes, noteMatchesTagFilter, type NoteTagFilter } from './note-tag-utils';
 import { NoteCard } from './NoteCard';
 import { SwipeableNoteCard, type SwipeAction } from './SwipeableNoteCard';
 import { flushPendingNotes, queueNote } from './notes-sync';
@@ -78,10 +82,16 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
   const initialKind = (params.kind as KindFilter) || 'all';
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [kindFilter, setKindFilter] = useState<KindFilter>(initialKind);
+  const [tagFilter, setTagFilter] = useState<NoteTagFilter>('all');
+  const [showTagPicker, setShowTagPicker] = useState(false);
+  const [focusTagCreate, setFocusTagCreate] = useState(false);
   const [captureText, setCaptureText] = useState('');
   const [snackMsg, setSnackMsg] = useState('');
   const [recording, setRecording] = useState(false);
   const recordingRef = useRef<ExpoRecording | null>(null);
+  const noteTags = useNoteTagsStore((s) => s.tags);
+  const addNoteTag = useNoteTagsStore((s) => s.addTag);
+  const ensureNoteTags = useNoteTagsStore((s) => s.ensureTags);
 
   const notesListQueryKey = useMemo(
     () => [...queryKeys.notesAll, statusFilter, kindFilter] as const,
@@ -208,6 +218,34 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
 
   const notes = notesQuery.data?.pages.flatMap((page) => page.items) ?? [];
 
+  useEffect(() => {
+    ensureNoteTags(collectTagsFromNotes(notes));
+  }, [ensureNoteTags, notes]);
+
+  const filteredNotes = useMemo(
+    () => notes.filter((note) => noteMatchesTagFilter(note, tagFilter)),
+    [notes, tagFilter],
+  );
+
+  const handleOpenCreateTag = useCallback(() => {
+    setFocusTagCreate(true);
+    setShowTagPicker(true);
+  }, []);
+
+  const handleCreateTag = useCallback(
+    (raw: string) => {
+      const created = addNoteTag(raw);
+      if (!created) return null;
+      setTagFilter(created);
+      return created;
+    },
+    [addNoteTag],
+  );
+
+  const handleSelectTagFromPicker = useCallback((tag: string | null) => {
+    if (tag) setTagFilter(tag);
+  }, []);
+
   const handleLoadMore = useCallback(() => {
     if (!notesQuery.hasNextPage || notesQuery.isFetchingNextPage) return;
     void notesQuery.fetchNextPage();
@@ -259,6 +297,13 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
       <FloatingHeader title={pm.title} onBack={embedded ? undefined : handleBack} />
 
+      <NoteTagTabs
+        tags={noteTags}
+        activeTag={tagFilter}
+        onSelect={setTagFilter}
+        onAddPress={handleOpenCreateTag}
+      />
+
       {/* Filters — single row, horizontally scrollable */}
       <ScrollView
         horizontal
@@ -286,7 +331,7 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
           </View>
         ) : (
           <FlatList
-            data={notes}
+            data={filteredNotes}
             keyExtractor={(item) => item.id}
             renderItem={renderNote}
             onEndReached={onEndReached}
@@ -302,8 +347,12 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
                 <View style={[styles.emptyIconWrap, { backgroundColor: colors.accent.selectionBg }]}>
                   <Icon source="note-text-outline" size={40} color={colors.accent.primary} />
                 </View>
-                <Text style={{ color: colors.text.secondary, marginTop: 12, fontSize: 16, fontWeight: '600' }}>{pm.empty}</Text>
-                <Text style={{ color: colors.text.tertiary, fontSize: 13, textAlign: 'center', maxWidth: 240 }}>{pm.emptyHint}</Text>
+                <Text style={{ color: colors.text.secondary, marginTop: 12, fontSize: 16, fontWeight: '600' }}>
+                  {tagFilter === 'all' ? pm.empty : pm.tagEmptyFiltered}
+                </Text>
+                <Text style={{ color: colors.text.tertiary, fontSize: 13, textAlign: 'center', maxWidth: 240 }}>
+                  {tagFilter === 'all' ? pm.emptyHint : pm.tagEmptyFilteredHint}
+                </Text>
               </View>
             }
           />
@@ -412,6 +461,19 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
       <Snackbar visible={Boolean(snackMsg)} onDismiss={() => setSnackMsg('')} duration={2500}>
         {snackMsg}
       </Snackbar>
+
+      <NoteTagPickerSheet
+        visible={showTagPicker}
+        tags={noteTags}
+        selectedTag={tagFilter === 'all' ? null : tagFilter}
+        onSelect={handleSelectTagFromPicker}
+        onCreateTag={handleCreateTag}
+        onDismiss={() => {
+          setShowTagPicker(false);
+          setFocusTagCreate(false);
+        }}
+        focusCreate={focusTagCreate}
+      />
     </View>
   );
 }

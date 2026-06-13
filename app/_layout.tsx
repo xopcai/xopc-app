@@ -22,11 +22,13 @@ import {
   subscribeSystemAppearance,
   usePreferencesStore,
 } from '../src/stores/preferences-store';
+import { useNoteTagsStore } from '../src/stores/note-tags-store';
 
 export default function RootLayout() {
   const router = useRouter();
   const resolvedTheme = usePreferencesStore((s) => s.resolvedTheme);
   const hydratePrefs = usePreferencesStore((s) => s.hydrate);
+  const hydrateNoteTags = useNoteTagsStore((s) => s.hydrate);
   const hydrateGateway = useGatewayStore((s) => s.hydrateFromStorage);
   const m = useMessages();
   const configured = useGatewayConfigured();
@@ -55,8 +57,9 @@ export default function RootLayout() {
     void refreshNetworkSnapshotWithDeadline(150);
     hydrateGateway();
     hydratePrefs();
+    hydrateNoteTags();
     return subscribeSystemAppearance();
-  }, [hydrateGateway, hydratePrefs]);
+  }, [hydrateGateway, hydrateNoteTags, hydratePrefs]);
   useEffect(() => {
     if (configured) setUserDismissedConnect(false);
   }, [configured]);

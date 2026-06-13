@@ -561,6 +561,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       streamRecoveryRef.current.cancelRecovery();
       setAwaitingSessionRefresh(false);
       try {
+        await ensureOptimisticSessionRegistered(sessionKey);
         await senderRef.current.sendVoiceMessage(
           payload,
           sessionKey,

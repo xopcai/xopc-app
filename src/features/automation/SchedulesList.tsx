@@ -1,29 +1,35 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, Linking, RefreshControl, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Button, Chip, Icon, Snackbar, Text } from 'react-native-paper';
+import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Button, Chip, Icon, IconButton, Snackbar, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
 import { useResolvedIsDark } from '../../lib/stack-screen-theme';
 import {
-  cronJobPromptPreview,
+  cronJobMessage,
   fetchCronJobs,
+  isEditableCronJob,
   runCronJobNow,
+  RUNS_HISTORY_LIMIT,
   toggleCronJob,
-  type CronJobRow,
+  type CronJob,
 } from '../../query/cron';
 import { queryKeys } from '../../query/keys';
 import { useGatewayConfigured } from '../../query/sessions';
+import { usePreferencesStore } from '../../stores/preferences-store';
 
-const DOCS_URL = 'https://xopcai.github.io/xopc/cron';
-const RUNS_LIMIT = 50;
+import { formatScheduleLabel } from './cron-schedule';
 
 export function SchedulesList() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const isDark = useResolvedIsDark();
   const configured = useGatewayConfigured();
   const m = useMessages();
   const pm = m.schedulesPage;
+  const lang = usePreferencesStore((s) => s.language);
+  const locale = lang === 'zh' ? 'zh-CN' : 'en-US';
   const [snackbarMessage, setSnackbarMessage] = useState('');
 
   const jobsQuery = useQuery({
@@ -49,7 +55,7 @@ export function SchedulesList() {
       setSnackbarMessage(pm.runStartedToast);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.cronJobs }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.cronRunsHistory(RUNS_LIMIT) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.cronRunsHistory(RUNS_HISTORY_LIMIT) }),
       ]);
     },
     onError: (error) => {
@@ -65,14 +71,34 @@ export function SchedulesList() {
   const enabledColor = isDark ? '#86EFAC' : '#16A34A';
   const disabledColor = isDark ? '#FCA5A5' : '#DC2626';
 
+  const scheduleLabels = {
+    every15Min: pm.every15Min,
+    every30Min: pm.every30Min,
+    everyHour: pm.everyHour,
+    dailyAt: pm.dailyAt,
+    weekdaysAt: pm.weekdaysAt,
+  };
+
   const onRefresh = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.cronJobs });
   }, [queryClient]);
 
+  const openJob = useCallback(
+    (job: CronJob) => {
+      if (!isEditableCronJob(job)) {
+        setSnackbarMessage(pm.notEditable);
+        return;
+      }
+      router.push({ pathname: '/automation/form', params: { id: job.id } });
+    },
+    [pm.notEditable, router],
+  );
+
   const renderJob = useCallback(
-    ({ item }: { item: CronJobRow }) => {
-      const title = item.name?.trim() || item.id;
-      const preview = cronJobPromptPreview(item);
+    ({ item }: { item: CronJob }) => {
+      const title = item.name?.trim() || pm.unnamedJob;
+      const preview = cronJobMessage(item);
+      const scheduleText = formatScheduleLabel(item.schedule, locale, scheduleLabels);
       const statusText = item.enabled ? pm.enabled : pm.disabled;
       const statusColor = item.enabled ? enabledColor : disabledColor;
       const actionInFlight = toggleMutation.isPending || runMutation.isPending;
@@ -80,15 +106,18 @@ export function SchedulesList() {
       const isRunningThisJob = runMutation.isPending && runMutation.variables === item.id;
 
       return (
-        <View style={[styles.card, { backgroundColor: cardBg }]}>
+        <Pressable
+          onPress={() => openJob(item)}
+          style={[styles.card, { backgroundColor: cardBg }]}
+        >
           <View style={styles.cardHeader}>
             <Icon source="clock-outline" size={24} color={textSecondary} />
             <View style={styles.cardTitleArea}>
               <Text style={[styles.cardTitle, { color: textPrimary }]} numberOfLines={1}>
                 {title}
               </Text>
-              <Text style={[styles.mono, { color: textSecondary }]} numberOfLines={1}>
-                {item.id}
+              <Text style={[styles.scheduleText, { color: textSecondary }]} numberOfLines={1}>
+                {scheduleText}
               </Text>
             </View>
             <View style={[styles.badge, { backgroundColor: item.enabled ? 'rgba(22,163,74,0.12)' : 'rgba(220,38,38,0.12)' }]}>
@@ -98,11 +127,6 @@ export function SchedulesList() {
             </View>
           </View>
 
-          <Text style={[styles.label, { color: textSecondary }]}>
-            {pm.schedule}: <Text style={{ color: textPrimary }}>{item.schedule}</Text>
-            {item.timezone ? ` (${item.timezone})` : ''}
-          </Text>
-
           {item.next_run ? (
             <Text style={[styles.label, { color: textSecondary }]}>
               {pm.nextRun}:{' '}
@@ -111,8 +135,8 @@ export function SchedulesList() {
           ) : null}
 
           {preview ? (
-            <Text style={[styles.preview, { color: textSecondary }]} numberOfLines={3}>
-              {pm.prompt}: {preview}
+            <Text style={[styles.preview, { color: textSecondary }]} numberOfLines={2}>
+              {preview}
             </Text>
           ) : null}
 
@@ -137,24 +161,36 @@ export function SchedulesList() {
             >
               {item.enabled ? pm.disable : pm.enable}
             </Button>
+            {isEditableCronJob(item) ? (
+              <IconButton
+                icon="pencil-outline"
+                size={20}
+                onPress={() => openJob(item)}
+                disabled={actionInFlight}
+              />
+            ) : null}
           </View>
-        </View>
+        </Pressable>
       );
     },
-    [cardBg, disabledColor, enabledColor, pm, runMutation, textPrimary, textSecondary, toggleMutation],
+    [
+      cardBg,
+      disabledColor,
+      enabledColor,
+      locale,
+      openJob,
+      pm,
+      runMutation,
+      scheduleLabels,
+      textPrimary,
+      textSecondary,
+      toggleMutation,
+    ],
   );
 
   const listHeader = (
     <View style={styles.headerBlock}>
       <Text style={[styles.subtitle, { color: textSecondary }]}>{pm.subtitle}</Text>
-    </View>
-  );
-
-  const listFooter = (
-    <View style={styles.footer}>
-      <Button mode="text" compact icon="open-in-new" onPress={() => void Linking.openURL(DOCS_URL)}>
-        {pm.openDocs}
-      </Button>
     </View>
   );
 
@@ -184,7 +220,6 @@ export function SchedulesList() {
         keyExtractor={(item) => item.id}
         renderItem={renderJob}
         ListHeaderComponent={listHeader}
-        ListFooterComponent={listFooter}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl refreshing={jobsQuery.isFetching && !jobsQuery.isLoading} onRefresh={onRefresh} />
@@ -194,6 +229,9 @@ export function SchedulesList() {
             <Chip icon="timer-off-outline" mode="outlined">
               {pm.empty}
             </Chip>
+            <Button mode="contained" icon="plus" onPress={() => router.push('/automation/form')} style={styles.emptyCta}>
+              {pm.createFirst}
+            </Button>
           </View>
         }
       />
@@ -225,7 +263,7 @@ const styles = StyleSheet.create({
   },
   cardTitleArea: { flex: 1, minWidth: 0 },
   cardTitle: { fontSize: 16, fontWeight: '600' },
-  mono: { fontSize: 11, fontFamily: 'monospace', marginTop: 2 },
+  scheduleText: { fontSize: 13, marginTop: 2 },
   badge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -236,9 +274,10 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    alignItems: 'center',
+    gap: 4,
     marginTop: 4,
   },
-  footer: { alignItems: 'center', paddingVertical: 16 },
-  empty: { alignItems: 'center', paddingVertical: 32 },
+  empty: { alignItems: 'center', paddingVertical: 32, gap: 16 },
+  emptyCta: { marginTop: 4 },
 });

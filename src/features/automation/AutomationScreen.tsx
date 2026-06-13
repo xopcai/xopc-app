@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import PagerView from 'react-native-pager-view';
 import { Text } from 'react-native-paper';
 
 import { FloatingHeader } from '../../components/FloatingHeader';
@@ -14,6 +15,11 @@ import { SchedulesList } from './SchedulesList';
 
 type AutomationTab = 'schedules' | 'runs';
 
+const TAB_INDEX: Record<AutomationTab, number> = {
+  schedules: 0,
+  runs: 1,
+};
+
 export function AutomationScreen() {
   const router = useRouter();
   useDismissOnHardwareBack(router);
@@ -22,6 +28,7 @@ export function AutomationScreen() {
   const m = useMessages();
   const pm = m.automationPage;
   const [tab, setTab] = useState<AutomationTab>('schedules');
+  const pagerRef = useRef<PagerView>(null);
 
   const screenBg = isDark ? '#111827' : '#F9FAFB';
   const tabBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)';
@@ -29,9 +36,23 @@ export function AutomationScreen() {
   const tabText = isDark ? '#9CA3AF' : '#6B7280';
   const activeTabText = isDark ? '#F9FAFB' : '#111827';
 
+  const selectTab = useCallback((next: AutomationTab) => {
+    setTab(next);
+    pagerRef.current?.setPage(TAB_INDEX[next]);
+  }, []);
+
+  const onPageSelected = useCallback((position: number) => {
+    setTab(position === 0 ? 'schedules' : 'runs');
+  }, []);
+
   return (
     <View style={[styles.screen, { backgroundColor: screenBg }]}>
-      <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
+      <FloatingHeader
+        title={pm.title}
+        onBack={() => dismissOrHome(router)}
+        rightIcon={tab === 'schedules' ? 'plus' : undefined}
+        onRightPress={tab === 'schedules' ? () => router.push('/automation/form') : undefined}
+      />
 
       {!configured ? (
         <View style={styles.center}>
@@ -43,7 +64,7 @@ export function AutomationScreen() {
             <TabButton
               label={pm.schedulesTab}
               active={tab === 'schedules'}
-              onPress={() => setTab('schedules')}
+              onPress={() => selectTab('schedules')}
               activeBg={activeTabBg}
               textColor={tabText}
               activeTextColor={activeTabText}
@@ -51,15 +72,25 @@ export function AutomationScreen() {
             <TabButton
               label={pm.runsTab}
               active={tab === 'runs'}
-              onPress={() => setTab('runs')}
+              onPress={() => selectTab('runs')}
               activeBg={activeTabBg}
               textColor={tabText}
               activeTextColor={activeTabText}
             />
           </View>
-          <View style={styles.content}>
-            {tab === 'schedules' ? <SchedulesList /> : <CronRunsList />}
-          </View>
+          <PagerView
+            ref={pagerRef}
+            style={styles.content}
+            initialPage={TAB_INDEX.schedules}
+            onPageSelected={(e) => onPageSelected(e.nativeEvent.position)}
+          >
+            <View key="schedules" style={styles.page} collapsable={false}>
+              <SchedulesList />
+            </View>
+            <View key="runs" style={styles.page} collapsable={false}>
+              <CronRunsList />
+            </View>
+          </PagerView>
         </>
       )}
     </View>
@@ -127,6 +158,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   content: {
+    flex: 1,
+  },
+  page: {
     flex: 1,
   },
 });

@@ -31,6 +31,7 @@ import {
   type Note,
 } from '../../query/notes';
 import { createSession } from '../../query/sessions';
+import { useNoteTagsStore } from '../../stores/note-tags-store';
 import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding, useTheme } from '../../theme';
 
 import { NoteAiPanel } from '../notes/ai/NoteAiPanel';
@@ -45,6 +46,8 @@ import type { NoteEditorAttachment } from '../notes/editor/note-attachment.types
 import { useDebouncedCallback } from '../notes/editor/useDebouncedCallback';
 import type { UnifiedEditor } from '../notes/editor/types';
 import { NoteDetailHeader, type NoteScreenMode } from '../notes/NoteDetailHeader';
+import { NoteTagPickerSheet } from '../notes/NoteTagPickerSheet';
+import { getNoteTags, getTagColors } from '../notes/note-tag-utils';
 import { NoteViewActionBar } from '../notes/NoteViewActionBar';
 import { mergeRemoteWithLocal } from '../notes/merge-remote-local';
 import {
@@ -93,6 +96,9 @@ export function PageScreen() {
   const insets = useSafeAreaInsets();
   const m = useMessages();
   const pm = m.notesPage;
+  const noteTags = useNoteTagsStore((s) => s.tags);
+  const addNoteTag = useNoteTagsStore((s) => s.addTag);
+  const ensureNoteTags = useNoteTagsStore((s) => s.ensureTags);
 
   const [localNote, setLocalNote] = useState<LocalNoteSnapshot | null>(
     () => (id ? readLocalNote(id) : null),
@@ -115,6 +121,7 @@ export function PageScreen() {
   const [catalystLoading, setCatalystLoading] = useState(false);
   const [catalystTaskLoading, setCatalystTaskLoading] = useState(false);
   const [catalystChatLoading, setCatalystChatLoading] = useState(false);
+  const [showTagPicker, setShowTagPicker] = useState(false);
   const lastSeedKeyRef = useRef('');
 
   const blocksRef = useRef<NoteBlock[]>([]);
@@ -481,6 +488,30 @@ export function PageScreen() {
     }
   }, [note, pm.actionFailed, pm.updated, queryClient]);
 
+  const handleApplyTags = useCallback(
+    async (tags: string[]) => {
+      if (!note) return;
+      ensureNoteTags(tags);
+      try {
+        const updated = await updateNote(note.id, { tags });
+        const merged = { ...note, ...updated, tags };
+        queryClient.setQueryData(queryKeys.note(note.id), merged);
+        upsertNoteInListCaches(queryClient, noteToIndexEntry(merged));
+        setLocalNote((prev) => (prev ? { ...prev, tags } : prev));
+        noteRef.current = merged;
+        setSnackMsg(pm.tagUpdated);
+      } catch (err) {
+        setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
+      }
+    },
+    [ensureNoteTags, note, pm.actionFailed, pm.tagUpdated, queryClient],
+  );
+
+  const handleCreateTag = useCallback(
+    (raw: string) => addNoteTag(raw),
+    [addNoteTag],
+  );
+
   const handleDelete = useCallback(async () => {
     if (!note) return;
     try {
@@ -565,6 +596,12 @@ export function PageScreen() {
     : '';
 
   const charCountLabel = t(pm.charCount, { count: countNoteCharacters(blocks) });
+  const activeNoteTags = getNoteTags(note ?? { tags: undefined });
+
+  useEffect(() => {
+    if (activeNoteTags.length) ensureNoteTags(activeNoteTags);
+  }, [activeNoteTags, ensureNoteTags]);
+
   const showLoading = noteQuery.isLoading && !note;
   const showError = noteQuery.isError && !note;
   const showEditor = Boolean(note && id && editorSeed);
@@ -638,17 +675,33 @@ export function PageScreen() {
                 </Pressable>
               )}
 
-              <View style={styles.metaRow}>
-                <View style={[styles.tagChip, { backgroundColor: '#FDE68A' }]}> 
-                  <Text style={[styles.tagText, { color: '#92400E' }]}> 
-                    {note?.tags?.[0] ?? pm.defaultTag}
-                  </Text>
-                  <Icon source="chevron-down" size={14} color="#92400E" />
+              <Pressable
+                style={styles.metaRow}
+                onPress={() => setShowTagPicker(true)}
+                accessibilityRole="button"
+                accessibilityLabel={pm.tagPickerTitleMulti}
+              >
+                <View style={styles.tagChipRow}>
+                  {activeNoteTags.length === 0 ? (
+                    <View style={[styles.tagChip, { backgroundColor: '#FDE68A' }]}>
+                      <Text style={[styles.tagText, { color: '#92400E' }]}>{pm.defaultTag}</Text>
+                    </View>
+                  ) : (
+                    activeNoteTags.map((tag) => {
+                      const palette = getTagColors(tag, noteTags);
+                      return (
+                        <View key={tag} style={[styles.tagChip, { backgroundColor: palette.bg }]}>
+                          <Text style={[styles.tagText, { color: palette.fg }]}>{tag}</Text>
+                        </View>
+                      );
+                    })
+                  )}
+                  <Icon source="chevron-down" size={14} color={colors.text.tertiary} />
                 </View>
-                <Text style={[styles.metaTime, { color: colors.text.tertiary }]}> 
+                <Text style={[styles.metaTime, { color: colors.text.tertiary }]}>
                   {formattedDate}
                 </Text>
-              </View>
+              </Pressable>
               {isEditing ? (
                 <NoteVoiceInputBar
                   phase={voiceInput.phase}
@@ -881,6 +934,16 @@ export function PageScreen() {
       >
         {snackMsg}
       </Snackbar>
+
+      <NoteTagPickerSheet
+        visible={showTagPicker}
+        mode="multi"
+        tags={noteTags}
+        selectedTags={activeNoteTags}
+        onApplyTags={(tags) => void handleApplyTags(tags)}
+        onCreateTag={handleCreateTag}
+        onDismiss={() => setShowTagPicker(false)}
+      />
     </View>
   );
 }
@@ -909,6 +972,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginBottom: 14,
+  },
+  tagChipRow: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
   },
   tagChip: {
     flexDirection: 'row',

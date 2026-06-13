@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildWebchatSessionKey,
+  extractAgentIdFromWebchatSessionKey,
   extractChatIdFromWebchatSessionKey,
   generateNewChatId,
   normalizeAgentId,
@@ -27,5 +28,11 @@ describe('session-key', () => {
     const chatId = 'chat_123_abc';
     const key = buildWebchatSessionKey('main', chatId);
     expect(extractChatIdFromWebchatSessionKey(key)).toBe(chatId);
+  });
+
+  it('extractAgentIdFromWebchatSessionKey round-trips', () => {
+    const chatId = 'chat_123_abc';
+    const key = buildWebchatSessionKey('research', chatId);
+    expect(extractAgentIdFromWebchatSessionKey(key)).toBe('research');
   });
 });
