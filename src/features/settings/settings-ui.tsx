@@ -1,18 +1,18 @@
 import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
-import { useResolvedIsDark } from '../../lib/stack-screen-theme';
+import { useTheme } from '../../theme';
 
 export function useSettingsColors() {
-  const isDark = useResolvedIsDark();
+  const { colors } = useTheme();
   return {
-    pageBg: isDark ? '#000000' : '#F5F7FA',
-    card: isDark ? '#1C1C1E' : '#FFFFFF',
-    text: isDark ? '#F5F5F7' : '#1C1C1E',
-    textMuted: isDark ? '#8E8E93' : '#8E8E93',
-    border: isDark ? '#38383A' : '#E5E5EA',
-    accent: '#007AFF',
-    sectionLabel: isDark ? '#8E8E93' : '#8E8E93',
+    pageBg: colors.surface.base,
+    card: colors.surface.panel,
+    text: colors.text.primary,
+    textMuted: colors.text.tertiary,
+    border: colors.border.default,
+    accent: colors.accent.primary,
+    sectionLabel: colors.text.tertiary,
   };
 }
 
@@ -46,17 +46,18 @@ type SettingsRowProps = {
 
 export function SettingsRow({
   icon,
-  iconColor = '#007AFF',
+  iconColor,
   label,
   value,
   showChevron = true,
   onPress,
 }: SettingsRowProps) {
   const colors = useSettingsColors();
+  const resolvedIconColor = iconColor ?? colors.accent;
   const content = (
     <View style={styles.row}>
-      <View style={[styles.iconWrap, { backgroundColor: `${iconColor}18` }]}>
-        <Icon source={icon} size={18} color={iconColor} />
+      <View style={[styles.iconWrap, { backgroundColor: `${resolvedIconColor}18` }]}>
+        <Icon source={icon} size={18} color={resolvedIconColor} />
       </View>
       <Text style={[styles.rowLabel, { color: colors.text }]} numberOfLines={1}>
         {label}
@@ -142,7 +143,7 @@ export function SettingsAgentRow({
         onPress={onSelect}
         style={({ pressed }) => [styles.agentRowMain, pressed && styles.rowPressed]}
       >
-        <View style={[styles.iconWrap, { backgroundColor: '#007AFF18' }]}>
+        <View style={[styles.iconWrap, { backgroundColor: `${colors.accent}18` }]}>
           <Icon source="robot-outline" size={18} color={colors.accent} />
         </View>
         <View style={styles.optionText}>

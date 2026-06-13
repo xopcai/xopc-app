@@ -19,11 +19,11 @@ interface BatchActionBarProps {
 }
 
 export function BatchActionBar({ items }: BatchActionBarProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const barBg = isDark ? colors.surface.panel : '#FFFFFF';
-  const defaultIcon = isDark ? colors.text.secondary : '#8E8E93';
-  const defaultLabel = isDark ? colors.text.tertiary : '#AEAEB2';
+  const barBg = colors.surface.panel;
+  const defaultIcon = colors.text.secondary;
+  const defaultLabel = colors.text.tertiary;
 
   return (
     <View style={[styles.wrap, { paddingBottom: floatingBottomPadding(insets.bottom) }]}>

@@ -250,8 +250,19 @@ export async function syncNote(request: NoteSyncRequest): Promise<NoteSyncResult
     method: 'POST',
     body: JSON.stringify(request),
   });
-  if (!res.ok) throw await readError(res);
-  return res.json() as Promise<NoteSyncResult>;
+  const data = await res.json().catch(() => ({})) as Partial<NoteSyncResult> & {
+    error?: string;
+    message?: string;
+  };
+  // Gateway returns 409 with `{ conflict, note }` when baseRemoteVersion is stale.
+  if (res.status === 409 && data.note) {
+    return { conflict: true, note: data.note };
+  }
+  if (!res.ok) {
+    throw new Error(data.error || data.message || `HTTP ${res.status}`);
+  }
+  if (!data.note) throw new Error('Invalid note sync response');
+  return { conflict: Boolean(data.conflict), note: data.note };
 }
 
 // ── Task / Open / Move ─────────────────────────────────────────────

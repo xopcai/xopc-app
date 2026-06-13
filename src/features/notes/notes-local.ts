@@ -7,7 +7,7 @@
  */
 import { createOfflineQueue, type OfflineQueue, type QueuedOperation } from '../../sync';
 import { storage } from '../../storage/mmkv';
-import { syncNote, updateNote, type Note } from '../../query/notes';
+import { syncNote, updateNote, type Note, type NoteSyncResult } from '../../query/notes';
 
 import { blocksToReadableText, type NoteBlock } from './note-blocks';
 import { editorAttachmentToSync, type NoteEditorAttachment } from './editor/note-attachment.types';
@@ -55,11 +55,42 @@ interface EditSyncPayload {
   attachments?: NoteEditorAttachment[];
 }
 
+async function syncNoteEdit(payload: EditSyncPayload): Promise<NoteSyncResult> {
+  const request = {
+    noteId: payload.noteId,
+    blocks: payload.blocks,
+    text: payload.text,
+    localVersion: payload.localVersion,
+    baseRemoteVersion: payload.baseRemoteVersion,
+  };
+  const first = await syncNote(request);
+  if (!first.conflict) return first;
+
+  // Server bumped remoteVersion (e.g. recordNoteOpen) — retry once with fresh base.
+  const retry = await syncNote({
+    ...request,
+    baseRemoteVersion: first.note.remoteVersion,
+  });
+  if (retry.conflict) {
+    throw new Error('Note sync conflict');
+  }
+  return retry;
+}
+
+function enqueueNoteEdit(payload: EditSyncPayload): void {
+  for (const op of editQueue.pending()) {
+    if (op.payload.noteId === payload.noteId) {
+      editQueue.remove(op.id);
+    }
+  }
+  editQueue.enqueue(payload);
+}
+
 const editQueue: OfflineQueue<EditSyncPayload> = createOfflineQueue<EditSyncPayload>({
   namespace: 'notes:edit',
   processor: async (operation: QueuedOperation<EditSyncPayload>) => {
-    const { noteId, blocks, text, localVersion, baseRemoteVersion, attachments } = operation.payload;
-    const syncResult = await syncNote({ noteId, blocks, text, localVersion, baseRemoteVersion });
+    const { noteId, blocks, text, localVersion, attachments } = operation.payload;
+    const syncResult = await syncNoteEdit(operation.payload);
     let mergedNote = syncResult.note;
     if (attachments?.length) {
       mergedNote = await updateNote(noteId, {
@@ -82,34 +113,51 @@ const editQueue: OfflineQueue<EditSyncPayload> = createOfflineQueue<EditSyncPayl
 
 // ── Public API ──────────────────────────────────────────────
 
+/** True when block body text matches the last local snapshot (ignore block id churn). */
+export function noteBlocksContentEqual(a: NoteBlock[], b: NoteBlock[]): boolean {
+  return blocksToReadableText(a) === blocksToReadableText(b);
+}
+
 /**
  * Save a local edit immediately and queue the sync operation.
- * Returns the updated local snapshot for optimistic UI.
+ * Returns null when content is unchanged from the last synced snapshot.
  */
 export function saveLocalNoteEdit(
   note: Note,
   blocks: NoteBlock[],
   attachments?: NoteEditorAttachment[],
-): LocalNoteSnapshot {
+): LocalNoteSnapshot | null {
   const previous = readLocalNote(note.id);
+  const nextAttachmentCount = attachments?.length ?? previous?.pendingAttachments?.length ?? 0;
+  const prevAttachmentCount = previous?.pendingAttachments?.length ?? 0;
+  if (
+    previous?.syncState === 'synced' &&
+    noteBlocksContentEqual(blocks, previous.blocks) &&
+    nextAttachmentCount === prevAttachmentCount
+  ) {
+    return previous;
+  }
+
   const localVersion = (previous?.localVersion ?? 0) + 1;
+  const baseRemoteVersion = previous?.remoteVersion ?? note.remoteVersion;
   const snapshot: LocalNoteSnapshot = {
     ...note,
     blocks,
     text: blocksToReadableText(blocks),
     updatedAt: Date.now(),
     localVersion,
+    remoteVersion: baseRemoteVersion,
     syncState: 'pending',
     pendingAttachments: attachments ?? previous?.pendingAttachments,
   };
   writeLocalNote(snapshot);
 
-  editQueue.enqueue({
+  enqueueNoteEdit({
     noteId: note.id,
     blocks,
     text: snapshot.text ?? '',
     localVersion,
-    baseRemoteVersion: note.remoteVersion,
+    baseRemoteVersion,
     attachments: snapshot.pendingAttachments,
   });
 

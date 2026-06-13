@@ -4,11 +4,11 @@ import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
+import { PaperProvider } from 'react-native-paper';
 
 import { tryConsumeGatewayDeeplink } from '../src/features/gateway/apply-gateway-deeplink';
 import { themedStackScreenOptions } from '../src/lib/stack-screen-theme';
-import { getColors } from '../src/theme';
+import { createPaperTheme, getColors } from '../src/theme';
 import { GatewayConnectLandingContext } from '../src/features/gateway/gateway-connect-context';
 import { GatewayConnectLandingModal } from '../src/features/gateway/GatewayConnectLandingModal';
 import { useGatewayConnectionWatch } from '../src/features/gateway/use-gateway-connection-watch';
@@ -39,7 +39,7 @@ export default function RootLayout() {
   useGatewayConnectionWatch(configured);
 
   const isDark = resolvedTheme === 'dark';
-  const paperTheme = isDark ? MD3DarkTheme : MD3LightTheme;
+  const paperTheme = useMemo(() => createPaperTheme(isDark), [isDark]);
   const stackScreenOptions = useMemo(
     () => ({
       headerShown: false,

@@ -60,6 +60,7 @@ import {
   blocksToHtml,
   blocksToMarkdown,
   blocksToPlainText,
+  blocksToReadableText,
   htmlToBlocks,
   noteToBlocks,
   type NoteAiPatch,
@@ -141,9 +142,14 @@ export function PageScreen() {
   const noteQuery = useQuery({
     queryKey: id ? queryKeys.note(id) : ['note', 'missing'],
     queryFn: async () => {
-      const note = await fetchNote(id!);
-      void recordNoteOpen(id!);
-      return note;
+      // recordNoteOpen can bump remoteVersion on the server; refetch so sync uses a fresh base.
+      await fetchNote(id!);
+      try {
+        await recordNoteOpen(id!);
+      } catch {
+        // Opening is best-effort — still show the note if this fails.
+      }
+      return fetchNote(id!);
     },
     enabled: Boolean(id),
     retry: 1,
@@ -224,8 +230,17 @@ export function PageScreen() {
     if (!currentNote) return;
     latestHtmlRef.current = html;
     const nextBlocks = htmlToBlocks(html, blocksRef.current);
+    const local = readLocalNote(currentNote.id);
+    if (
+      local?.syncState === 'synced' &&
+      blocksToReadableText(nextBlocks) === blocksToReadableText(local.blocks)
+    ) {
+      setBlocks(nextBlocks);
+      return;
+    }
     setBlocks(nextBlocks);
     const snapshot = saveLocalNoteEdit(currentNote, nextBlocks, attachmentsRef.current);
+    if (!snapshot) return;
     setLocalNote(snapshot);
     noteRef.current = snapshot;
     queryClient.setQueryData(queryKeys.note(currentNote.id), snapshot);
@@ -236,6 +251,7 @@ export function PageScreen() {
     const currentNote = noteRef.current;
     if (!currentNote) return;
     const snapshot = saveLocalNoteEdit(currentNote, blocksRef.current, nextAttachments);
+    if (!snapshot) return;
     setLocalNote(snapshot);
     noteRef.current = snapshot;
     queryClient.setQueryData(queryKeys.note(currentNote.id), snapshot);
@@ -257,10 +273,10 @@ export function PageScreen() {
     if (liveEditor) {
       try {
         const html = await liveEditor.getHTML();
-        if (typeof html === 'string' && html !== latestHtmlRef.current) {
+        if (typeof html === 'string') {
           saveHtmlNow(html);
-          return;
         }
+        return;
       } catch {
         // Editor may already be torn down.
       }

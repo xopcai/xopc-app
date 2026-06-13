@@ -1,6 +1,6 @@
 # AGENTS.md — xopc-app
 
-面向 AI 编码助手与协作者的项目规范。人类可读概览见 [README.md](./README.md)；视觉与组件样式见 [DESIGN.md](./DESIGN.md)。
+面向 AI 编码助手与协作者的项目规范。人类可读概览见 [README.md](./README.md)；视觉与组件样式见 [DESIGN.md](./DESIGN.md)（色阶与 [xopc 桌面端 DESIGN.md](https://github.com/xopcai/xopc/blob/main/DESIGN.md) 对齐）。
 
 ---
 
@@ -34,7 +34,7 @@ xopc-app 是 [xopc](https://github.com/xopcai/xopc) gateway 的 **Expo 移动客
 | 服务端状态 | @tanstack/react-query |
 | 客户端状态 | zustand（`src/stores/`） |
 | 持久化 | react-native-mmkv（`src/storage/mmkv.ts`）；Web 回退 localStorage |
-| UI | react-native-paper + 自研主题（`src/theme/`） |
+| UI | react-native-paper + 自研主题（`src/theme/`：`tokens.ts`、`paper-theme.ts`、`useTheme`） |
 | 手势 / 动画 | react-native-gesture-handler、react-native-reanimated |
 | 键盘 | react-native-keyboard-controller（`KeyboardStickyView` 等） |
 | 列表性能 | @shopify/flash-list（长列表，如 Chat） |
@@ -49,7 +49,8 @@ xopc-app 是 [xopc](https://github.com/xopcai/xopc) gateway 的 **Expo 移动客
 - **列表手势**：不要为列表再写第三套左滑组件 — 使用 `SwipeableRow`。
 - **列表长按**：不要长按弹出 Action Sheet / Dropdown Menu 承载左滑已有操作 — 长按统一进多选。
 - **触控**：优先 `Pressable`，避免 `TouchableOpacity`。
-- **样式**：不要硬编码色值、间距、圆角 — 使用 `useTheme()` 与 `src/theme/tokens.ts`。
+- **样式**：不要硬编码色值、间距、圆角 — 使用 `useTheme()` 与 `src/theme/tokens.ts`；勿用 `#E5E5EA`、`#007AFF` 等旧色替代 token。
+- **Paper 主题**：不要直接使用 `MD3LightTheme` / `MD3DarkTheme` 默认值 — 根布局经 `createPaperTheme()`（`src/theme/paper-theme.ts`）映射 token。
 - **文案**：不要硬编码面向用户的字符串 — 使用 `useMessages()` 与 `src/i18n/locales/`。
 - **原生配置**：不要手写 `android/` / `ios/` 补丁替代 config plugin — 自定义插件在 `plugins/`，改后需 `expo prebuild`。
 - **Git**：仅在用户明确要求时 commit / 开 PR。
@@ -92,7 +93,7 @@ src/
   query/                # React Query keys、fetchers、cache 工具
   stores/               # zustand
   storage/              # MMKV / Web storage 抽象
-  theme/                # tokens、useTheme、浮动底栏布局常量
+  theme/                # tokens、useTheme、paper-theme、浮动底栏 layout 常量
   i18n/                 # en / zh MessageBundle
   motion/               # haptics、动画 token
   api/                  # gateway HTTP 客户端
@@ -114,7 +115,9 @@ plugins/                # Expo config plugins（Maven / CocoaPods 镜像等）
 
 ### UI 与设计系统
 
-- 色值、字号、间距、圆角、阴影：遵循 [DESIGN.md](./DESIGN.md)，通过 `useTheme()` 消费。
+- 色值、字号、间距、圆角、阴影：遵循 [DESIGN.md](./DESIGN.md)，通过 `useTheme()` 消费；与 xopc Gateway 共用同一套灰阶与 `#2563EB` 品牌蓝（light）/ `#3B82F6`（dark）。
+- **主题架构**：`tokens.ts` 为唯一色值来源 → `useTheme()` / `getColors()` 供业务组件 → `createPaperTheme()` 同步 react-native-paper（`app/_layout.tsx` 的 `PaperProvider`）。
+- 浮动面板边框：light 用 `colors.border.default`（`#D2D2D7`），勿用更淡的 `rgba(15,23,42,0.10)`。
 - 触控目标最小 **44×44**。
 - 浮动底栏：`FLOATING_BOTTOM_OFFSET`、`floatingBottomPadding`（`src/theme/layout`）。
 - Safe area：`react-native-safe-area-context`。

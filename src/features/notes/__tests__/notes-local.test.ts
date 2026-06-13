@@ -28,6 +28,7 @@ import {
   flushPendingNoteOperations,
   readLocalNote,
   saveLocalNoteEdit,
+  writeLocalNote,
 } from '../notes-local';
 
 function createNote(overrides: Partial<Note> = {}): Note {
@@ -143,6 +144,65 @@ describe('notes-local', () => {
       remoteVersion: 4,
     });
     expect(snapshot?.pendingAttachments).toBeUndefined();
+  });
+
+  it('retries sync once when the server reports a version conflict', async () => {
+    const blocks = [paragraph('block-1', '冲突后同步')];
+    saveLocalNoteEdit(createNote(), blocks);
+    syncNoteMock
+      .mockResolvedValueOnce({
+        conflict: true,
+        note: createNote({ text: '服务端', blocks, localVersion: 0, remoteVersion: 3 }),
+      })
+      .mockResolvedValueOnce({
+        conflict: false,
+        note: createNote({ text: '冲突后同步', blocks, localVersion: 1, remoteVersion: 4 }),
+      });
+
+    const flushed = await flushPendingNoteOperations();
+
+    expect(flushed).toBe(1);
+    expect(syncNoteMock).toHaveBeenCalledTimes(2);
+    expect(syncNoteMock.mock.calls[1]?.[0]).toMatchObject({ baseRemoteVersion: 3 });
+    expect(readLocalNote('note-1')).toMatchObject({
+      text: '冲突后同步',
+      remoteVersion: 4,
+      syncState: 'synced',
+    });
+  });
+
+  it('coalesces rapid saves into one pending sync operation', async () => {
+    saveLocalNoteEdit(createNote(), [paragraph('block-1', '第一版')]);
+    saveLocalNoteEdit(createNote(), [paragraph('block-1', '最终版')]);
+    syncNoteMock.mockResolvedValueOnce({
+      conflict: false,
+      note: createNote({ text: '最终版', localVersion: 2, remoteVersion: 3 }),
+    });
+
+    const flushed = await flushPendingNoteOperations();
+
+    expect(flushed).toBe(1);
+    expect(syncNoteMock).toHaveBeenCalledTimes(1);
+    expect(syncNoteMock.mock.calls[0]?.[0]).toMatchObject({
+      text: '最终版',
+      localVersion: 2,
+      baseRemoteVersion: 2,
+    });
+  });
+
+  it('skips enqueue when content matches the synced snapshot', () => {
+    const blocks = [paragraph('block-1', '已同步')];
+    writeLocalNote({
+      ...createNote(),
+      blocks,
+      text: '已同步',
+      localVersion: 0,
+      syncState: 'synced',
+    });
+
+    const snapshot = saveLocalNoteEdit(createNote(), blocks);
+
+    expect(snapshot).toMatchObject({ syncState: 'synced', localVersion: 0 });
   });
 
   it('keeps failed operations pending and marks snapshot failed', async () => {

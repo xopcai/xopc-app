@@ -62,14 +62,14 @@ export function AppToast({
       marginHorizontal: spacing.lg,
       borderRadius: radii.xxl,
       borderWidth: StyleSheet.hairlineWidth,
-      borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.10)',
+      borderColor: isDark ? 'rgba(255,255,255,0.10)' : colors.border.default,
       shadowColor: '#000',
       shadowOpacity: isDark ? 0.18 : 0.06,
       shadowRadius: 8,
       shadowOffset: { width: 0, height: 2 },
       elevation: 3,
     }),
-    [isDark],
+    [colors.border.default, isDark],
   );
 
   const contentStyle = useMemo(
