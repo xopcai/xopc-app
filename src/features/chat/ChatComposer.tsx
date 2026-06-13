@@ -26,7 +26,7 @@ import { typography, useTheme } from '../../theme';
 import { useOptionalWorkspaceTransition } from '../workspace/workspace-transition-context';
 import { ChatPendingFollowUpStack } from './ChatPendingFollowUpStack';
 import { canSendComposerDraft } from './composer-send-helpers';
-import type { WireAttachment } from './composer.types';
+import type { ComposerAttachment, WireAttachment } from './composer.types';
 import type { PendingFollowUp } from './pending-follow-up.types';
 import { wireFollowUpAttachmentsToComposer } from './follow-up-utils';
 import { useComposerActions } from './use-composer-actions';
@@ -85,6 +85,8 @@ export const ChatComposer = memo(function ChatComposer({
   placeholder,
   suggestionDraft,
   onConsumeSuggestionDraft,
+  prefillAttachments,
+  onConsumePrefillAttachments,
   keyboardVisible = false,
   onAddPendingFollowUp,
   pendingFollowUps = [],
@@ -109,6 +111,8 @@ export const ChatComposer = memo(function ChatComposer({
   placeholder?: string;
   suggestionDraft?: string;
   onConsumeSuggestionDraft?: () => void;
+  prefillAttachments?: ComposerAttachment[];
+  onConsumePrefillAttachments?: () => void;
   keyboardVisible?: boolean;
   onAddPendingFollowUp?: (text: string, attachments?: WireAttachment[]) => void | Promise<void>;
   pendingFollowUps?: PendingFollowUp[];
@@ -198,6 +202,7 @@ export const ChatComposer = memo(function ChatComposer({
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const lastLoadedEditFollowUpIdRef = useRef<string | null>(null);
+  const lastLoadedPrefillAttachmentsRef = useRef<ComposerAttachment[] | null>(null);
   const restoredDraftSessionKeyRef = useRef<string | null>(null);
   const skipDraftPersistSessionKeyRef = useRef<string | null>(null);
 
@@ -318,6 +323,15 @@ export const ChatComposer = memo(function ChatComposer({
     onConsumeSuggestionDraft?.();
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [suggestionDraft, onConsumeSuggestionDraft, updateDraft]);
+
+  useEffect(() => {
+    if (!prefillAttachments?.length) return;
+    if (prefillAttachments === lastLoadedPrefillAttachmentsRef.current) return;
+    lastLoadedPrefillAttachmentsRef.current = prefillAttachments;
+    att.restoreAttachments(prefillAttachments);
+    setMode('text');
+    onConsumePrefillAttachments?.();
+  }, [att, onConsumePrefillAttachments, prefillAttachments]);
 
   useEffect(() => {
     if (!editingFollowUpId) {

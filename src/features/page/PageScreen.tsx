@@ -53,9 +53,15 @@ import { useDebouncedCallback } from '../notes/editor/useDebouncedCallback';
 import type { UnifiedEditor } from '../notes/editor/types';
 import { NoteDetailHeader, type NoteScreenMode } from '../notes/NoteDetailHeader';
 import { NoteTagPickerSheet } from '../notes/NoteTagPickerSheet';
+import { mergeRemoteWithLocal } from '../notes/merge-remote-local';
 import { getNoteTags, getTagColors } from '../notes/note-tag-utils';
 import { NoteViewActionBar } from '../notes/NoteViewActionBar';
-import { mergeRemoteWithLocal } from '../notes/merge-remote-local';
+import { writeNoteChatPrefill } from '../chat/note-chat-prefill-storage';
+import {
+  buildNoteChatContextText,
+  collectNoteAttachmentsForChat,
+  extractVoiceTranscripts,
+} from '../notes/note-to-chat-payload';
 import {
   blocksToHtml,
   blocksToMarkdown,
@@ -681,7 +687,19 @@ export function PageScreen() {
     setCatalystChatLoading(true);
     try {
       await flushPendingSave();
-      const noteText = blocksToMarkdown(blocksRef.current).trim();
+      const { attachments, droppedCount } = await collectNoteAttachmentsForChat(
+        blocksRef.current,
+        attachmentsRef.current,
+        note.attachments,
+      );
+      const noteText = buildNoteChatContextText(
+        blocksRef.current,
+        {
+          imagePlaceholder: (alt) => t(pm.noteChatImagePlaceholder, { alt }),
+          voiceTranscript: (text) => t(pm.noteChatVoiceTranscript, { text }),
+        },
+        { voiceTranscripts: extractVoiceTranscripts(note.attachments) },
+      ).trim();
       const messageParts = [
         pm.catalystChatPrompt,
         '',
@@ -691,15 +709,19 @@ export function PageScreen() {
       if (catalystSuggestion) {
         messageParts.push('', `${pm.catalystChatSuggestionTitle}:`, catalystSuggestion);
       }
+      const text = messageParts.filter(Boolean).join('\n');
       const sessionKey = await createSession(undefined, { forceNew: true });
+      if (attachments.length > 0 || droppedCount > 0) {
+        writeNoteChatPrefill(sessionKey, { text, attachments, droppedCount });
+      }
       invalidateSessionLists(queryClient);
-      openChat(router, sessionKey, { msg: messageParts.filter(Boolean).join('\n') });
+      openChat(router, sessionKey, { msg: text });
     } catch (err) {
       setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
     } finally {
       setCatalystChatLoading(false);
     }
-  }, [catalystChatLoading, catalystSuggestion, flushPendingSave, note, pm.actionFailed, pm.catalystChatNoteTitle, pm.catalystChatPrompt, pm.catalystChatSuggestionTitle, pm.untitledNote, queryClient, router, viewTitle]);
+  }, [catalystChatLoading, catalystSuggestion, flushPendingSave, note, pm.actionFailed, pm.catalystChatNoteTitle, pm.catalystChatPrompt, pm.catalystChatSuggestionTitle, pm.noteChatImagePlaceholder, pm.noteChatVoiceTranscript, pm.untitledNote, queryClient, router, viewTitle]);
 
   const formattedDate = note
     ? new Date(note.createdAt).toLocaleString(undefined, {

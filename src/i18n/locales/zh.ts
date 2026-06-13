@@ -708,6 +708,8 @@ export const zh: MessageBundle = {
     catalystChatPrompt: '请基于下面这条笔记，帮我把想法推进成可执行方案。先判断最关键的下一步，再给出行动清单。',
     catalystChatNoteTitle: '笔记标题',
     catalystChatSuggestionTitle: 'AI 下一步建议',
+    noteChatImagePlaceholder: '[图片: {{alt}}]',
+    noteChatVoiceTranscript: '[语音转写: {{text}}]',
     catalystInstruction: '你是一个想法催化助手。请阅读这条笔记，只输出最值得用户现在推进的下一步建议。要求：1）用中文；2）短而具体；3）优先给出一个可执行动作；4）如适合，附 2-3 个子步骤；5）不要改写原笔记。',
     // Block editor
     editorBlockParagraph: '正文',

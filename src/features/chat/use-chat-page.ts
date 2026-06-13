@@ -30,12 +30,14 @@ import { getColors } from '../../theme';
 
 import { EMPTY_CHAT_GOAL_PREFILL } from './chat-empty-shortcuts';
 import { buildUserResendPayload, findPrecedingUserMessage } from './composer-send-helpers';
-import type { WireAttachment } from './composer.types';
+import type { ComposerAttachment, WireAttachment } from './composer.types';
 import type { Message } from './messages.types';
 import { MAX_PENDING_FOLLOW_UPS } from './pending-follow-up.types';
 import { sendOrQueueMessage } from './send-or-queue';
 import { parseSessionMessages, dedupeWireMessages } from './session-message-parser';
 import { takeOptimisticSessionKey } from './session-prefetch';
+import { consumeNoteChatPrefill } from './note-chat-prefill-storage';
+import { MAX_CHAT_ATTACHMENTS } from './chat-limits';
 import { useChatPageBootstrap } from './use-chat-page-bootstrap';
 import { useChatSession } from './use-chat-session';
 import { useSessionHistory } from './use-session-history';
@@ -300,6 +302,7 @@ export function useChatPage(options: UseChatPageOptions = {}) {
   const handleStarterSend = useCallback((text: string) => queueFollowUpOrSend(text), [queueFollowUpOrSend]);
 
   const [composerSuggestion, setComposerSuggestion] = useState<string | undefined>(undefined);
+  const [composerPrefillAttachments, setComposerPrefillAttachments] = useState<ComposerAttachment[] | undefined>();
 
   // Consume prefill message from URL params (e.g. from Notes → Chat)
   useEffect(() => {
@@ -307,6 +310,20 @@ export function useChatPage(options: UseChatPageOptions = {}) {
       setComposerSuggestion(urlPrefillMessage);
     }
   }, [urlPrefillMessage]);
+
+  useEffect(() => {
+    if (!sessionKey) return;
+    const snap = consumeNoteChatPrefill(sessionKey);
+    if (!snap) return;
+    if (snap.attachments.length) {
+      setComposerPrefillAttachments(snap.attachments);
+    }
+    if (snap.droppedCount) {
+      chatSession.setSnackMsg(
+        t(m.chat.maxAttachmentsTruncated, { dropped: snap.droppedCount, max: MAX_CHAT_ATTACHMENTS }),
+      );
+    }
+  }, [sessionKey, chatSession, m.chat.maxAttachmentsTruncated]);
 
   const handleGoalShortcutPress = useCallback(() => {
     if (bootstrap.bootstrapError && !sessionKey) return;
@@ -439,6 +456,8 @@ export function useChatPage(options: UseChatPageOptions = {}) {
     composerDisabled,
     composerSuggestion,
     setComposerSuggestion,
+    composerPrefillAttachments,
+    setComposerPrefillAttachments,
 
     // Bootstrap
     bootstrap,

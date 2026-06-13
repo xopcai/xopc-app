@@ -708,6 +708,8 @@ export const en = {
     catalystChatPrompt: 'Based on the note below, help me turn this idea into an executable plan. Start with the most important next step, then give me an action checklist.',
     catalystChatNoteTitle: 'Note title',
     catalystChatSuggestionTitle: 'AI next-step suggestion',
+    noteChatImagePlaceholder: '[Image: {{alt}}]',
+    noteChatVoiceTranscript: '[Voice transcript: {{text}}]',
     catalystInstruction: 'You are an idea catalyst. Read this note and output only the most valuable next step for the user to take now. Requirements: 1) be concise and specific; 2) prioritize one executable action; 3) include 2-3 substeps when useful; 4) do not rewrite the original note.',
     // Block editor
     editorBlockParagraph: 'Text',

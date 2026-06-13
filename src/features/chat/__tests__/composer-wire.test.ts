@@ -40,6 +40,29 @@ describe('composerAttachmentsToWire', () => {
       },
     ]);
   });
+
+  it('omits empty data when workspaceRelativePath is present', () => {
+    const wire = composerAttachmentsToWire([
+      {
+        id: 'a2',
+        type: 'document',
+        name: 'doc.pdf',
+        mimeType: 'application/pdf',
+        size: 100,
+        content: '',
+        workspaceRelativePath: 'inbound/n/doc.pdf',
+      },
+    ]);
+    expect(wire).toEqual([
+      {
+        type: 'document',
+        mimeType: 'application/pdf',
+        name: 'doc.pdf',
+        size: 100,
+        workspaceRelativePath: 'inbound/n/doc.pdf',
+      },
+    ]);
+  });
 });
 
 describe('capAttachments', () => {

@@ -70,6 +70,8 @@ export function ChatScreen({ embedded = false, overlay = false, onRequestHome }:
     composerDisabled,
     composerSuggestion,
     setComposerSuggestion,
+    composerPrefillAttachments,
+    setComposerPrefillAttachments,
     bootstrap,
     chat,
     gatewayProfiles,
@@ -254,6 +256,8 @@ export function ChatScreen({ embedded = false, overlay = false, onRequestHome }:
             placeholder={m.chat.inputPlaceholder}
             suggestionDraft={composerSuggestion}
             onConsumeSuggestionDraft={() => setComposerSuggestion(undefined)}
+            prefillAttachments={composerPrefillAttachments}
+            onConsumePrefillAttachments={() => setComposerPrefillAttachments(undefined)}
             onAddPendingFollowUp={(text, atts) => chat.followUp.addPendingFollowUp(text, atts)}
             pendingFollowUps={chat.followUp.pendingFollowUps}
             editingFollowUpId={chat.followUp.editingFollowUpId}
