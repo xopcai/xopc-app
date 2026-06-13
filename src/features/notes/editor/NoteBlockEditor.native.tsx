@@ -37,10 +37,18 @@ const SLASH_DETECT_JS = `
 })();
 `;
 
-const FOCUS_END_JS = `
+const FOCUS_START_JS = `
 (function () {
   if (!window.editor) return true;
-  window.editor.commands.focus('end');
+  window.editor.commands.focus('start');
+  return true;
+})();
+`;
+
+const RESET_SCROLL_JS = `
+(function () {
+  var scroller = document.querySelector('#root > div:nth-of-type(1)');
+  if (scroller) scroller.scrollTop = 0;
   return true;
 })();
 `;
@@ -73,7 +81,7 @@ function buildEditorCss(colors: ReturnType<typeof useTheme>['colors']): string {
     h1 { font-size: 26px; font-weight: 700; margin: 12px 0 4px; }
     h2 { font-size: 22px; font-weight: 700; margin: 10px 0 4px; }
     h3 { font-size: 18px; font-weight: 600; margin: 8px 0 4px; }
-    p { margin: 2px 0; min-height: 1.4em; }
+    p { margin: 2px 0; }
     blockquote {
       border-left: 3px solid ${colors.accent.primary};
       padding-left: 12px;
@@ -118,6 +126,12 @@ function buildEditorCss(colors: ReturnType<typeof useTheme>['colors']): string {
     ul[data-type="taskList"] li[data-checked="true"] > div > p {
       text-decoration: line-through;
       opacity: 0.6;
+    }
+    #root div .ProseMirror {
+      min-height: auto;
+    }
+    .ProseMirror p.is-editor-empty:first-child > br {
+      display: none;
     }
     .ProseMirror:focus { outline: none; }
     .ProseMirror p.is-editor-empty:first-child::before {
@@ -248,6 +262,10 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     return unsubscribe;
   }, [editor, handleContentChange]);
 
+  const resetEditorScroll = useCallback(() => {
+    editor.injectJS(RESET_SCROLL_JS);
+  }, [editor]);
+
   useEffect(() => {
     if (loadedKeyRef.current === contentKey) return;
     loadedKeyRef.current = contentKey;
@@ -255,18 +273,25 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     editor.setContent(initialHtml);
     setTimeout(() => {
       isExternalUpdateRef.current = false;
+      resetEditorScroll();
     }, 100);
-  }, [contentKey, initialHtml, editor]);
+  }, [contentKey, initialHtml, editor, resetEditorScroll]);
+
+  useEffect(() => {
+    if (editable) return;
+    resetEditorScroll();
+  }, [editable, resetEditorScroll]);
 
   useEffect(() => {
     editor.injectCSS(buildEditorCss(colors), 'xopc-editor-theme');
   }, [colors, editor]);
 
   const applyEditorFocus = useCallback(() => {
-    editor.focus('end');
-    editor.injectJS(FOCUS_END_JS);
+    editor.focus('start');
+    editor.injectJS(FOCUS_START_JS);
+    resetEditorScroll();
     onFocusApplied?.();
-  }, [editor, onFocusApplied]);
+  }, [editor, onFocusApplied, resetEditorScroll]);
 
   useEffect(() => {
     if (!editable || !focusOnEnable) return;
@@ -333,6 +358,9 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
         exclusivelyUseCustomOnMessage={false}
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
+        onLoad={() => {
+          resetEditorScroll();
+        }}
         style={[styles.richText, { backgroundColor: 'transparent' }]}
       />
       <SlashMenu

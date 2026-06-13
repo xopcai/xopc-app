@@ -146,7 +146,7 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
   useEffect(() => {
     if (!editor || !editable || !focusOnEnable) return;
     const timer = window.setTimeout(() => {
-      editor.chain().focus('end').run();
+      editor.chain().focus('start').run();
       onFocusApplied?.();
     }, 0);
     return () => window.clearTimeout(timer);
@@ -252,7 +252,7 @@ function buildEditorCss(colors: ReturnType<typeof useTheme>['colors']): string {
     .xopc-editor-container .tiptap h1 { font-size: 26px; font-weight: 700; margin: 12px 0 4px; }
     .xopc-editor-container .tiptap h2 { font-size: 22px; font-weight: 700; margin: 10px 0 4px; }
     .xopc-editor-container .tiptap h3 { font-size: 18px; font-weight: 600; margin: 8px 0 4px; }
-    .xopc-editor-container .tiptap p { margin: 2px 0; min-height: 1.4em; }
+    .xopc-editor-container .tiptap p { margin: 2px 0; }
     .xopc-editor-container .tiptap blockquote {
       border-left: 3px solid ${colors.accent.primary};
       padding-left: 12px;
@@ -299,6 +299,9 @@ function buildEditorCss(colors: ReturnType<typeof useTheme>['colors']): string {
     .xopc-editor-container .tiptap ul[data-type="taskList"] li[data-checked="true"] > div > p {
       text-decoration: line-through;
       opacity: 0.6;
+    }
+    .xopc-editor-container .tiptap p.is-editor-empty:first-child > br {
+      display: none;
     }
     .xopc-editor-container .tiptap p.is-editor-empty:first-child::before {
       content: attr(data-placeholder);
