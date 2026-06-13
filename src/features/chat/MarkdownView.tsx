@@ -10,6 +10,7 @@ import { memo, useCallback, useMemo } from 'react';
 import { Linking, Platform, Text } from 'react-native';
 
 import { ChatRenderErrorBoundary } from './ChatRenderErrorBoundary';
+import { markdownNeedsPlainFallback } from './markdown-render-safety';
 import { typography, useTheme, type ColorScheme } from '../../theme';
 
 function createMarkdownStyle(themeColors: ColorScheme, isDark: boolean) {
@@ -215,7 +216,7 @@ export const MarkdownView = memo(function MarkdownView({
 
   if (!content?.trim()) return null;
 
-  if (!Enriched) {
+  if (!Enriched || markdownNeedsPlainFallback(content)) {
     return <PlainMarkdownFallback content={content} themeColors={colors} />;
   }
 

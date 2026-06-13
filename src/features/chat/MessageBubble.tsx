@@ -468,7 +468,7 @@ export const MessageBubble = memo(function MessageBubble({
       {!isUser && message.usage?.totalTokens ? (
         <Text variant="labelSmall" style={styles.usage}>
           {message.usage.totalTokens.toLocaleString()} tokens
-          {message.usage.cost != null ? ` · $${message.usage.cost.toFixed(4)}` : ''}
+          {typeof message.usage.cost === 'number' ? ` · $${message.usage.cost.toFixed(4)}` : ''}
         </Text>
       ) : null}
     </View>

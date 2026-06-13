@@ -43,6 +43,7 @@ export type WireMessage = {
   content?: unknown;
   timestamp?: string | number;
   attachments?: unknown;
+  usage?: unknown;
   tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
   toolCalls?: Array<{ id?: string; name: string; args?: Record<string, unknown> }>;
   tool_call_id?: string;
@@ -330,7 +331,8 @@ function mergeConsecutiveAssistantMessages(messages: Message[]): Message[] {
     if (prev?.role === 'assistant') {
       prev.content = mergeAssistantContentFragments(prev.content, m.content);
       if (m.timestamp != null) prev.timestamp = m.timestamp;
-      if (m.usage) prev.usage = m.usage;
+      const mergedUsage = normalizeWireUsage(m.usage);
+      if (mergedUsage) prev.usage = mergedUsage;
     } else {
       out.push({ ...m, content: [...m.content] });
     }
@@ -339,6 +341,35 @@ function mergeConsecutiveAssistantMessages(messages: Message[]): Message[] {
 }
 
 // ── Attachment helpers ─────────────────────────────────────
+
+/** Normalize gateway wire usage (input/output vs inputTokens, nested cost object). */
+export function normalizeWireUsage(raw: unknown): Message['usage'] | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const u = raw as Record<string, unknown>;
+  const inputTokens =
+    typeof u.inputTokens === 'number' ? u.inputTokens
+      : typeof u.input === 'number' ? u.input
+        : undefined;
+  const outputTokens =
+    typeof u.outputTokens === 'number' ? u.outputTokens
+      : typeof u.output === 'number' ? u.output
+        : undefined;
+  const totalTokens = typeof u.totalTokens === 'number' ? u.totalTokens : undefined;
+
+  let cost: number | undefined;
+  const rawCost = u.cost;
+  if (typeof rawCost === 'number') {
+    cost = rawCost;
+  } else if (rawCost && typeof rawCost === 'object') {
+    const nested = rawCost as Record<string, unknown>;
+    if (typeof nested.total === 'number') cost = nested.total;
+  }
+
+  if (inputTokens == null && outputTokens == null && totalTokens == null && cost == null) {
+    return undefined;
+  }
+  return { inputTokens, outputTokens, totalTokens, cost };
+}
 
 function parseTimestamp(raw: string | number | undefined): number | undefined {
   if (typeof raw === 'number') return raw;
@@ -450,6 +481,7 @@ export function parseSessionMessages(raw: Array<Record<string, unknown>>): Messa
         role: 'assistant',
         content: appendAudioAttachments(buildAssistantContent(m), attachments),
         attachments,
+        usage: normalizeWireUsage(m.usage),
         timestamp: parseTimestamp(m.timestamp),
       });
       continue;

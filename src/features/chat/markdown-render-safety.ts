@@ -1,0 +1,35 @@
+/**
+ * Heuristics for when to avoid the native GFM markdown renderer.
+ * `react-native-enriched-markdown` can hard-crash on some table shapes
+ * (e.g. empty header cells, emoji-heavy cells) — fall back to plain Text.
+ */
+
+function isGfmTableSeparatorLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed.includes('|') || !trimmed.includes('-')) return false;
+  return /^[\s|:-]+$/.test(trimmed);
+}
+
+function isGfmTableRowLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed.includes('|')) return false;
+  return trimmed.split('|').filter((cell) => cell.trim().length > 0).length >= 2;
+}
+
+/** True when content likely contains a GFM pipe table. */
+export function markdownContainsPipeTable(content: string): boolean {
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length - 1; i++) {
+    const row = lines[i] ?? '';
+    const sep = lines[i + 1] ?? '';
+    if (!isGfmTableRowLine(row) || !isGfmTableSeparatorLine(sep)) continue;
+    return true;
+  }
+  return false;
+}
+
+/** Prefer plain Text fallback instead of native EnrichedMarkdownText. */
+export function markdownNeedsPlainFallback(content: string): boolean {
+  if (!content?.trim()) return false;
+  return markdownContainsPipeTable(content);
+}
