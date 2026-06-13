@@ -15,6 +15,7 @@ import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingHeader } from '../../components/FloatingHeader';
+import { openNoteDetail } from '../../lib/navigation';
 import { sessionDisplayName } from '../../lib/session-helpers';
 import { queryKeys } from '../../query/keys';
 import { fetchNotes, type NoteIndexEntry } from '../../query/notes';
@@ -82,7 +83,7 @@ export function WorkspaceSearchOverlay({ visible, onClose }: WorkspaceSearchOver
   const openResult = useCallback((item: SearchResult) => {
     onClose();
     if (item.type === 'note') {
-      router.push(`/notes/${item.note.id}`);
+      openNoteDetail(router, item.note.id);
       return;
     }
     router.push(`/chat/${item.session.key}`);

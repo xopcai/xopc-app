@@ -796,9 +796,8 @@ export const en = {
 
   listInteraction: {
     select: 'Select',
+    moreMenu: 'More actions',
     selectedCount: '{{count}} selected',
-    swipeHint: 'Swipe left for quick archive',
-    undo: 'Undo',
     batchDeleteTitle: 'Delete selected',
     batchDeleteMessage: 'Delete {{count}} items? This cannot be undone.',
     batchDeleteConfirm: 'Delete',

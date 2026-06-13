@@ -28,7 +28,7 @@ function truncateText(text: string, maxLen: number): string {
 /** Plain body text for list/search rows; prefers index snippet, then cached blocks/text. */
 export function resolvePlainTextFromEntry(
   entry: Pick<NoteIndexEntry, 'snippet'>,
-  cachedNote?: Pick<Note, 'text' | 'blocks'> | null,
+  cachedNote?: Pick<Note, 'text' | 'blocks' | 'attachments'> | null,
 ): string {
   const snippet = entry.snippet?.trim();
   if (snippet) return snippet;
@@ -93,7 +93,7 @@ export function resolveNoteListTitle(
 
 export function resolveNoteListSnippet(
   entry: Pick<NoteIndexEntry, 'snippet'>,
-  cachedNote?: Pick<Note, 'text' | 'blocks'> | null,
+  cachedNote?: Pick<Note, 'text' | 'blocks' | 'attachments'> | null,
   maxLen = DEFAULT_LIST_SNIPPET_MAX,
 ): string {
   return truncateText(resolvePlainTextFromEntry(entry, cachedNote), maxLen);

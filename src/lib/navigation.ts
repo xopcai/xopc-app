@@ -20,6 +20,11 @@ export function openChat(
   else router.push(href);
 }
 
+/** Canonical note detail route — always `/items/:id` (not legacy `/notes/:id` redirect). */
+export function openNoteDetail(router: ImperativeRouter, noteId: string): void {
+  router.push(`/items/${noteId}`);
+}
+
 /**
  * Leave a modal (or any screen) without assuming a parent route exists.
  * Cold start / deep links can mount only `settings`, so `router.back()` throws LogBox "GO_BACK was not handled".

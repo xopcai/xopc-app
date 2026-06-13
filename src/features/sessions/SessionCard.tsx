@@ -1,12 +1,11 @@
 /**
- * Session list card — tap to open, long-press for multi-select.
+ * Session list card — tap to open; multi-select via header menu.
  */
 import { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
 import { ListSelectionCheckbox } from '../../components/ListSelectionCheckbox';
-import { LIST_DELAY_LONG_PRESS } from '../../constants/list-interaction';
 import { t, useMessages } from '../../i18n/messages';
 import { sessionDisplayName } from '../../lib/session-helpers';
 import type { SessionListItem } from '../../query/sessions';
@@ -31,7 +30,6 @@ function relativeTime(dateStr: string): string {
 type SessionCardProps = {
   session: SessionListItem;
   onPress: () => void;
-  onLongPress: () => void;
   selectionMode?: boolean;
   selected?: boolean;
 };
@@ -39,7 +37,6 @@ type SessionCardProps = {
 export const SessionCard = memo(function SessionCard({
   session,
   onPress,
-  onLongPress,
   selectionMode = false,
   selected = false,
 }: SessionCardProps) {
@@ -52,13 +49,10 @@ export const SessionCard = memo(function SessionCard({
   const time = useMemo(() => relativeTime(session.updatedAt), [session.updatedAt]);
 
   const handlePress = useCallback(() => onPress(), [onPress]);
-  const handleLongPress = useCallback(() => onLongPress(), [onLongPress]);
 
   return (
     <Pressable
       onPress={handlePress}
-      onLongPress={handleLongPress}
-      delayLongPress={LIST_DELAY_LONG_PRESS}
       android_ripple={{ color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}
       accessibilityState={selectionMode ? { selected } : undefined}
       style={({ pressed }) => [

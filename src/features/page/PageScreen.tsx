@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppToast } from '../../components/AppToast';
 import { TOAST_DURATION_SHORT } from '../../constants/toast';
 import { useMessages, t } from '../../i18n/messages';
-import { openChat } from '../../lib/navigation';
+import { dismissOrHome, openChat, useDismissOnHardwareBack } from '../../lib/navigation';
 import { queryKeys } from '../../query/keys';
 import { noteToIndexEntry, upsertNoteInListCaches } from '../../query/note-list-cache';
 import { invalidateNoteLists, invalidateSessionLists } from '../../query/workspace-sync';
@@ -491,8 +491,10 @@ export function PageScreen() {
     void commitTitle
       .then(() => flushPendingSave())
       .then(() => syncEditsInBackground())
-      .finally(() => router.back());
+      .finally(() => dismissOrHome(router));
   }, [flushPendingSave, handleSubmitTitle, router, syncEditsInBackground, titleEditing, voiceInput]);
+
+  useDismissOnHardwareBack(router);
 
   const handleFlush = useCallback(async () => {
     await flushPendingSave();
@@ -585,7 +587,7 @@ export function PageScreen() {
       await flushPendingSave();
       await deleteNote(note.id);
       await invalidateNoteLists(queryClient);
-      router.back();
+      dismissOrHome(router);
     } catch (err) {
       setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
     }
@@ -968,7 +970,7 @@ export function PageScreen() {
                   await updateNote(note.id, { status: 'archived' });
                   await invalidateNoteLists(queryClient);
                   setSnackMsg(pm.updated);
-                  router.back();
+                  dismissOrHome(router);
                 } catch (err) {
                   setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
                 }

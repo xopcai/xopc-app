@@ -6,6 +6,7 @@ import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingHeader } from '../../components/FloatingHeader';
+import { openNoteDetail } from '../../lib/navigation';
 
 import { queryKeys } from '../../query/keys';
 import { fetchHome } from '../../query/home';
@@ -69,11 +70,7 @@ export function WorkspaceHomeScreen() {
     homeQuery.isLoading || (needsRecentNotesFallback && recentNotesFallbackQuery.isLoading);
 
   const handleNotePress = useCallback((item: NoteIndexEntry) => {
-    if (item.kind === 'task') {
-      router.push(`/items/${item.id}`);
-      return;
-    }
-    router.push(`/items/${item.id}`);
+    openNoteDetail(router, item.id);
   }, [router]);
 
   const handleSessionPress = useCallback((sessionKey: string) => {
@@ -97,7 +94,7 @@ export function WorkspaceHomeScreen() {
     try {
       const { note } = await createBlankNote();
       upsertNoteInListCaches(queryClient, blankNoteIndexEntry(note.id));
-      router.push(`/notes/${note.id}`);
+      openNoteDetail(router, note.id);
     } catch {
       router.push('/notes');
     } finally {

@@ -19,11 +19,8 @@ import { AppToast } from '../../components/AppToast';
 import { FloatingHeader } from '../../components/FloatingHeader';
 import { BatchActionBar } from '../../components/BatchActionBar';
 import { BatchDeleteConfirmDialog } from '../../components/BatchDeleteConfirmDialog';
-import { SwipeableRow, type SwipeRowAction } from '../../components/SwipeableRow';
-import { SwipeHintBanner } from '../../components/SwipeHintBanner';
-import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_DEFAULT, TOAST_DURATION_UNDO } from '../../constants/toast';
+import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_DEFAULT } from '../../constants/toast';
 import { useListSelection } from '../../hooks/use-list-selection';
-import { useNoteDeleteWithUndo } from '../../hooks/use-note-delete-with-undo';
 
 import { pickAttachmentFromSource } from '../chat/attachment-file-io';
 import {
@@ -65,8 +62,6 @@ import { flushPendingNotes, queueMediaCapture, queueNote } from './notes-sync';
 import { captureIntentBadgeKey, parseCaptureIntent } from './capture-parser';
 import type { ComposerAttachment } from '../chat/composer.types';
 
-type NoteSwipeAction = 'pin' | 'unpin' | 'archive' | 'delete';
-
 type CapturePayload =
   | { type: 'text'; text: string }
   | { type: 'attachment'; attachment: ComposerAttachment }
@@ -96,14 +91,11 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
     selectedIds,
     selectedCount,
     exitSelectionMode,
-    enterSelection,
     startSelection,
     toggleSelected,
   } = useListSelection<string>();
-  const { deleteWithUndo } = useNoteDeleteWithUndo(queryClient);
   const [showBatchDelete, setShowBatchDelete] = useState(false);
   const [batchTagPicker, setBatchTagPicker] = useState(false);
-  const [snackUndo, setSnackUndo] = useState<{ label: string; onPress: () => void } | null>(null);
 
   const handleBack = useCallback(() => {
     if (onRequestHome) {
@@ -251,35 +243,16 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
     router.push(`/items/${note.id}`);
   }, [router, selectionMode, toggleSelected]);
 
-  const handleNoteLongPress = useCallback((note: NoteIndexEntry) => {
-    if (selectionMode) {
-      toggleSelected(note.id);
-      return;
-    }
-    enterSelection(note.id);
-  }, [enterSelection, selectionMode, toggleSelected]);
-
-  const handleSwipeAction = useCallback(
-    async (note: NoteIndexEntry, action: NoteSwipeAction) => {
-      try {
-        if (action === 'delete') {
-          const snack = deleteWithUndo(note);
-          setSnackMsg(snack.message);
-          setSnackUndo({ label: snack.undoLabel, onPress: snack.onUndo });
-          return;
-        }
-        if (action === 'pin') await updateNote(note.id, { pinned: true });
-        else if (action === 'unpin') await updateNote(note.id, { pinned: false });
-        else if (action === 'archive') await updateNote(note.id, { status: 'archived' });
-        await refreshList();
-        setSnackMsg(pm.updated);
-        setSnackUndo(null);
-      } catch (err) {
-        setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
-        setSnackUndo(null);
-      }
-    },
-    [deleteWithUndo, pm, refreshList],
+  const headerOverflowMenu = useMemo(
+    () => [
+      {
+        key: 'select',
+        icon: 'checkbox-multiple-marked-outline',
+        label: li.select,
+        onPress: startSelection,
+      },
+    ],
+    [li.select, startSelection],
   );
 
   const runBatchMutation = useCallback(
@@ -341,38 +314,6 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
       }
     },
     [exitSelectionMode, pm.actionFailed, pm.tagUpdated, refreshList, selectedCount, selectedIds],
-  );
-
-  const buildNoteSwipeActions = useCallback(
-    (note: NoteIndexEntry): SwipeRowAction[] => {
-      const pinAction: NoteSwipeAction = note.pinned ? 'unpin' : 'pin';
-      const pinIcon = note.pinned ? 'pin-off' : 'pin';
-      const pinLabel = note.pinned ? pm.unpin : pm.pin;
-      return [
-        {
-          key: pinAction,
-          icon: pinIcon,
-          label: pinLabel,
-          color: 'green',
-          onPress: () => void handleSwipeAction(note, pinAction),
-        },
-        {
-          key: 'archive',
-          icon: 'archive-arrow-down-outline',
-          label: pm.archive,
-          color: 'blue',
-          onPress: () => void handleSwipeAction(note, 'archive'),
-        },
-        {
-          key: 'delete',
-          icon: 'trash-can-outline',
-          label: pm.delete,
-          color: 'red',
-          onPress: () => void handleSwipeAction(note, 'delete'),
-        },
-      ];
-    },
-    [handleSwipeAction, pm.archive, pm.delete, pm.pin, pm.unpin],
   );
 
   const notes = notesQuery.data?.pages.flatMap((page) => page.items) ?? [];
@@ -477,33 +418,15 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
   ], [handleBatchArchive, handleBatchPin, li.addTags, pm.archive, pm.delete, pm.pin, pm.unpin, selectedCount]);
 
   const renderNote = useCallback(
-    ({ item }: { item: NoteIndexEntry }) => {
-      const selected = selectedIds.has(item.id);
-      const card = (
-        <NoteCard
-          note={item}
-          onPress={handleNotePress}
-          onLongPress={handleNoteLongPress}
-          selectionMode={selectionMode}
-          selected={selected}
-        />
-      );
-      return (
-        <SwipeableRow
-          actions={buildNoteSwipeActions(item)}
-          enabled={!selectionMode}
-        >
-          {card}
-        </SwipeableRow>
-      );
-    },
-    [
-      buildNoteSwipeActions,
-      handleNoteLongPress,
-      handleNotePress,
-      selectedIds,
-      selectionMode,
-    ],
+    ({ item }: { item: NoteIndexEntry }) => (
+      <NoteCard
+        note={item}
+        onPress={handleNotePress}
+        selectionMode={selectionMode}
+        selected={selectedIds.has(item.id)}
+      />
+    ),
+    [handleNotePress, selectedIds, selectionMode],
   );
 
   const listBottomPadding = selectionMode
@@ -526,8 +449,8 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
       <FloatingHeader
         title={selectionMode ? t(li.selectedCount, { count: selectedCount }) : pm.title}
         onBack={selectionMode ? exitSelectionMode : embedded ? undefined : handleBack}
-        rightLabel={selectionMode ? undefined : li.select}
-        onRightLabelPress={selectionMode ? undefined : startSelection}
+        overflowMenuItems={selectionMode ? undefined : headerOverflowMenu}
+        overflowMenuA11yLabel={li.moreMenu}
       />
 
       {!selectionMode ? (
@@ -560,9 +483,6 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
         </ScrollView>
       ) : null}
 
-      <SwipeHintBanner hasItems={!selectionMode && filteredNotes.length > 0} />
-
-      {/* List */}
       <View style={styles.listArea}>
         {notesQuery.isLoading ? (
           <View style={styles.center}>
@@ -688,13 +608,9 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
 
       <AppToast
         visible={Boolean(snackMsg)}
-        onDismiss={() => {
-          setSnackMsg('');
-          setSnackUndo(null);
-        }}
-        duration={snackUndo ? TOAST_DURATION_UNDO : TOAST_DURATION_DEFAULT}
+        onDismiss={() => setSnackMsg('')}
+        duration={TOAST_DURATION_DEFAULT}
         bottomLift={TOAST_BOTTOM_LIFT_ABOVE_BAR}
-        action={snackUndo ? { label: snackUndo.label, onPress: snackUndo.onPress } : undefined}
       >
         {snackMsg}
       </AppToast>

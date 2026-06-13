@@ -9,8 +9,6 @@ import { AppToast } from '../../components/AppToast';
 import { BatchActionBar } from '../../components/BatchActionBar';
 import { BatchDeleteConfirmDialog } from '../../components/BatchDeleteConfirmDialog';
 import { FloatingHeader } from '../../components/FloatingHeader';
-import { SwipeableRow, type SwipeRowAction } from '../../components/SwipeableRow';
-import { SwipeHintBanner } from '../../components/SwipeHintBanner';
 import { TOAST_DURATION_SHORT } from '../../constants/toast';
 import { useListSelection } from '../../hooks/use-list-selection';
 import { useMessages, t } from '../../i18n/messages';
@@ -32,13 +30,10 @@ import {
 } from '../../query/sessions';
 import { useTheme } from '../../theme';
 
-import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { RenameDialog } from './RenameDialog';
 import { SessionCard } from './SessionCard';
 
 const PAGE_SIZE = 20;
-
-type SessionSwipeAction = 'archive' | 'unarchive' | 'delete';
 
 export function SessionsScreen() {
   const router = useRouter();
@@ -53,14 +48,12 @@ export function SessionsScreen() {
   const configured = useGatewayConfigured();
   const [snackMsg, setSnackMsg] = useState('');
   const [renameTarget, setRenameTarget] = useState<SessionListItem | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<SessionListItem | null>(null);
   const [showBatchDelete, setShowBatchDelete] = useState(false);
   const {
     selectionMode,
     selectedIds,
     selectedCount,
     exitSelectionMode,
-    enterSelection,
     startSelection,
     toggleSelected,
   } = useListSelection<string>();
@@ -111,21 +104,6 @@ export function SessionsScreen() {
     exitSelectionMode();
   }, [allSessions, exitSelectionMode, refreshList, sa.sessionPinned, selectedIds]);
 
-  const archiveMutation = useMutation({
-    mutationFn: async ({ session, action }: { session: SessionListItem; action: 'archive' | 'unarchive' }) => {
-      if (action === 'archive') await archiveSession(session.key);
-      else await unarchiveSession(session.key);
-    },
-    onSuccess: async (_data, variables) => {
-      await refreshList();
-      setSnackMsg(variables.action === 'archive' ? sa.sessionArchived : sa.sessionUnarchived);
-    },
-    onError: (error, variables) => {
-      const msg = variables.action === 'archive' ? sa.failedToArchive : sa.failedToUnarchive;
-      setSnackMsg(error instanceof Error ? error.message : msg);
-    },
-  });
-
   const renameMutation = useMutation({
     mutationFn: ({ key, name }: { key: string; name: string }) => renameSession(key, name),
     onSuccess: async () => {
@@ -135,16 +113,6 @@ export function SessionsScreen() {
       exitSelectionMode();
     },
     onError: (error) => setSnackMsg(error instanceof Error ? error.message : sa.failedToRename),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (key: string) => deleteSession(key),
-    onSuccess: async () => {
-      setDeleteTarget(null);
-      await refreshList();
-      setSnackMsg(sa.sessionDeleted);
-    },
-    onError: (error) => setSnackMsg(error instanceof Error ? error.message : sa.failedToDelete),
   });
 
   const batchDeleteMutation = useMutation({
@@ -172,45 +140,17 @@ export function SessionsScreen() {
     handleOpenSession(session);
   }, [handleOpenSession, selectionMode, toggleSelected]);
 
-  const handleSessionLongPress = useCallback((session: SessionListItem) => {
-    if (selectionMode) {
-      toggleSelected(session.key);
-      return;
-    }
-    enterSelection(session.key);
-  }, [enterSelection, selectionMode, toggleSelected]);
-
-  const handleSwipeAction = useCallback((session: SessionListItem, action: SessionSwipeAction) => {
-    if (action === 'delete') {
-      setDeleteTarget(session);
-      return;
-    }
-    archiveMutation.mutate({
-      session,
-      action: action === 'unarchive' ? 'unarchive' : 'archive',
-    });
-  }, [archiveMutation]);
-
-  const buildSwipeActions = useCallback((session: SessionListItem): SwipeRowAction[] => {
-    const isArchived = session.status === 'archived';
-    const archiveAction: SessionSwipeAction = isArchived ? 'unarchive' : 'archive';
-    return [
+  const headerOverflowMenu = useMemo(
+    () => [
       {
-        key: archiveAction,
-        icon: isArchived ? 'archive-arrow-up-outline' : 'archive-arrow-down-outline',
-        label: isArchived ? sa.unarchive : sa.archive,
-        color: 'blue',
-        onPress: () => handleSwipeAction(session, archiveAction),
+        key: 'select',
+        icon: 'checkbox-multiple-marked-outline',
+        label: li.select,
+        onPress: startSelection,
       },
-      {
-        key: 'delete',
-        icon: 'trash-can-outline',
-        label: sa.delete,
-        color: 'red',
-        onPress: () => handleSwipeAction(session, 'delete'),
-      },
-    ];
-  }, [handleSwipeAction, sa.archive, sa.delete, sa.unarchive]);
+    ],
+    [li.select, startSelection],
+  );
 
   const handleBatchRename = useCallback(() => {
     if (selectedCount !== 1) return;
@@ -273,26 +213,14 @@ export function SessionsScreen() {
     void refreshList();
   }, [refreshList]);
 
-  const renderSession = useCallback(({ item }: { item: SessionListItem }) => {
-    const selected = selectedIds.has(item.key);
-    return (
-      <SwipeableRow actions={buildSwipeActions(item)} borderRadius={12} enabled={!selectionMode}>
-        <SessionCard
-          session={item}
-          onPress={() => handleSessionPress(item)}
-          onLongPress={() => handleSessionLongPress(item)}
-          selectionMode={selectionMode}
-          selected={selected}
-        />
-      </SwipeableRow>
-    );
-  }, [
-    buildSwipeActions,
-    handleSessionLongPress,
-    handleSessionPress,
-    selectedIds,
-    selectionMode,
-  ]);
+  const renderSession = useCallback(({ item }: { item: SessionListItem }) => (
+    <SessionCard
+      session={item}
+      onPress={() => handleSessionPress(item)}
+      selectionMode={selectionMode}
+      selected={selectedIds.has(item.key)}
+    />
+  ), [handleSessionPress, selectedIds, selectionMode]);
 
   const renderListFooter = useCallback(() => {
     if (sessionsQuery.isFetchingNextPage) {
@@ -308,10 +236,9 @@ export function SessionsScreen() {
       <FloatingHeader
         title={selectionMode ? t(li.selectedCount, { count: selectedCount }) : sm.title}
         onBack={selectionMode ? exitSelectionMode : () => dismissOrHome(router)}
-        rightLabel={selectionMode ? undefined : li.select}
-        onRightLabelPress={selectionMode ? undefined : startSelection}
-        rightIcon={selectionMode ? undefined : 'robot-outline'}
-        onRightPress={selectionMode ? undefined : () => router.push('/ai/agents')}
+        rightActions={selectionMode ? undefined : [{ icon: 'robot-outline', onPress: () => router.push('/ai/agents') }]}
+        overflowMenuItems={selectionMode ? undefined : headerOverflowMenu}
+        overflowMenuA11yLabel={li.moreMenu}
       />
 
       {!configured ? (
@@ -325,33 +252,30 @@ export function SessionsScreen() {
           <ActivityIndicator />
         </View>
       ) : (
-        <>
-          <SwipeHintBanner hasItems={!selectionMode && allSessions.length > 0} />
-          <FlatList
-            data={allSessions}
-            keyExtractor={(item) => item.key}
-            renderItem={renderSession}
-            onEndReached={onEndReached}
-            onEndReachedThreshold={0.5}
-            onMomentumScrollBegin={onMomentumScrollBegin}
-            ListFooterComponent={renderListFooter}
-            extraData={{ selectionMode, selectedCount, selectedKey: [...selectedIds].join('|') }}
-            refreshControl={
-              <RefreshControl
-                refreshing={sessionsQuery.isFetching && !sessionsQuery.isLoading && !sessionsQuery.isFetchingNextPage}
-                onRefresh={handleRefresh}
-              />
-            }
-            contentContainerStyle={[styles.list, { paddingBottom: listBottomPadding }]}
-            ListEmptyComponent={
-              <View style={styles.center}>
-                <Icon source="message-processing-outline" size={42} color={colors.text.tertiary} />
-                <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>{sm.empty}</Text>
-                <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>{sm.emptyHint}</Text>
-              </View>
-            }
-          />
-        </>
+        <FlatList
+          data={allSessions}
+          keyExtractor={(item) => item.key}
+          renderItem={renderSession}
+          onEndReached={onEndReached}
+          onEndReachedThreshold={0.5}
+          onMomentumScrollBegin={onMomentumScrollBegin}
+          ListFooterComponent={renderListFooter}
+          extraData={{ selectionMode, selectedCount, selectedKey: [...selectedIds].join('|') }}
+          refreshControl={
+            <RefreshControl
+              refreshing={sessionsQuery.isFetching && !sessionsQuery.isLoading && !sessionsQuery.isFetchingNextPage}
+              onRefresh={handleRefresh}
+            />
+          }
+          contentContainerStyle={[styles.list, { paddingBottom: listBottomPadding }]}
+          ListEmptyComponent={
+            <View style={styles.center}>
+              <Icon source="message-processing-outline" size={42} color={colors.text.tertiary} />
+              <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>{sm.empty}</Text>
+              <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>{sm.emptyHint}</Text>
+            </View>
+          }
+        />
       )}
 
       {selectionMode ? <BatchActionBar items={batchActions} /> : null}
@@ -364,17 +288,6 @@ export function SessionsScreen() {
         onRename={(name) => {
           if (!renameTarget) return;
           renameMutation.mutate({ key: renameTarget.key, name });
-        }}
-      />
-
-      <DeleteConfirmDialog
-        visible={Boolean(deleteTarget)}
-        sessionName={deleteTarget ? sessionDisplayName(deleteTarget) : ''}
-        loading={deleteMutation.isPending}
-        onDismiss={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (!deleteTarget) return;
-          deleteMutation.mutate(deleteTarget.key);
         }}
       />
 

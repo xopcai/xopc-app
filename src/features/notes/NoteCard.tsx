@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
 import { ListSelectionCheckbox } from '../../components/ListSelectionCheckbox';
-import { LIST_DELAY_LONG_PRESS } from '../../constants/list-interaction';
 import { useMessages } from '../../i18n/messages';
 import type { NoteIndexEntry, NoteStatus } from '../../query/notes';
 import { useTheme } from '../../theme';
@@ -31,7 +30,6 @@ function statusLabel(
 export type NoteCardProps = {
   note: NoteIndexEntry;
   onPress: (note: NoteIndexEntry) => void;
-  onLongPress: (note: NoteIndexEntry) => void;
   selectionMode?: boolean;
   selected?: boolean;
 };
@@ -39,7 +37,6 @@ export type NoteCardProps = {
 export function NoteCard({
   note,
   onPress,
-  onLongPress,
   selectionMode = false,
   selected = false,
 }: NoteCardProps) {
@@ -70,7 +67,6 @@ export function NoteCard({
   });
 
   const handlePress = useCallback(() => onPress(note), [note, onPress]);
-  const handleLongPress = useCallback(() => onLongPress(note), [note, onLongPress]);
 
   return (
     <Pressable
@@ -85,8 +81,6 @@ export function NoteCard({
         },
       ]}
       onPress={handlePress}
-      onLongPress={handleLongPress}
-      delayLongPress={LIST_DELAY_LONG_PRESS}
       accessibilityState={selectionMode ? { selected } : undefined}
     >
       <View style={styles.topRow}>

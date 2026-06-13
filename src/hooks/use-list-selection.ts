@@ -11,12 +11,6 @@ export function useListSelection<TId extends string>() {
     setSelectedIds(new Set());
   }, []);
 
-  const enterSelection = useCallback((id: TId) => {
-    hapticSelectionEnter();
-    setSelectionMode(true);
-    setSelectedIds(new Set([id]));
-  }, []);
-
   const startSelection = useCallback(() => {
     hapticSelectionEnter();
     setSelectionMode(true);
@@ -38,7 +32,6 @@ export function useListSelection<TId extends string>() {
     selectedIds,
     selectedCount: selectedIds.size,
     exitSelectionMode,
-    enterSelection,
     startSelection,
     toggleSelected,
   };

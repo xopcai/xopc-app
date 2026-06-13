@@ -11,12 +11,9 @@ import { BatchDeleteConfirmDialog } from '../../components/BatchDeleteConfirmDia
 import { AppToast } from '../../components/AppToast';
 import { FloatingHeader } from '../../components/FloatingHeader';
 import { ListSelectionCheckbox } from '../../components/ListSelectionCheckbox';
-import { SwipeableRow, type SwipeRowAction } from '../../components/SwipeableRow';
-import { SwipeHintBanner } from '../../components/SwipeHintBanner';
-import { LIST_DELAY_LONG_PRESS } from '../../constants/list-interaction';
-import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_SHORT, TOAST_DURATION_UNDO } from '../../constants/toast';
+import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_SHORT } from '../../constants/toast';
+import { dismissOrHome } from '../../lib/navigation';
 import { useListSelection } from '../../hooks/use-list-selection';
-import { useNoteDeleteWithUndo } from '../../hooks/use-note-delete-with-undo';
 import { useMessages, t } from '../../i18n/messages';
 import { pickAttachmentFromSource, type AttachmentPickSource } from '../chat/attachment-file-io';
 import type { ComposerAttachment } from '../chat/composer.types';
@@ -51,18 +48,15 @@ export function InboxScreen() {
   const li = m.listInteraction;
   const [captureText, setCaptureText] = useState('');
   const [snackMsg, setSnackMsg] = useState('');
-  const [snackUndo, setSnackUndo] = useState<{ label: string; onPress: () => void } | null>(null);
   const [showBatchDelete, setShowBatchDelete] = useState(false);
   const {
     selectionMode,
     selectedIds,
     selectedCount,
     exitSelectionMode,
-    enterSelection,
     startSelection,
     toggleSelected,
   } = useListSelection<string>();
-  const { deleteWithUndo } = useNoteDeleteWithUndo(queryClient);
 
   const inboxQuery = useQuery({
     queryKey: queryKeys.notes('inbox'),
@@ -176,42 +170,16 @@ export function InboxScreen() {
     router.push(`/items/${item.id}`);
   }, [router, selectionMode, toggleSelected]);
 
-  const handleItemLongPress = useCallback((item: NoteIndexEntry) => {
-    if (selectionMode) {
-      toggleSelected(item.id);
-      return;
-    }
-    enterSelection(item.id);
-  }, [enterSelection, selectionMode, toggleSelected]);
-
-  const handleSwipeAction = useCallback((item: NoteIndexEntry, action: 'archive' | 'delete') => {
-    if (action === 'archive') {
-      archiveMutation.mutate([item.id]);
-      return;
-    }
-    const snack = deleteWithUndo(item);
-    setSnackMsg(snack.message);
-    setSnackUndo({ label: snack.undoLabel, onPress: snack.onUndo });
-  }, [archiveMutation, deleteWithUndo]);
-
-  const buildSwipeActions = useCallback(
-    (item: NoteIndexEntry): SwipeRowAction[] => [
+  const headerOverflowMenu = useMemo(
+    () => [
       {
-        key: 'archive',
-        icon: 'archive-arrow-down-outline',
-        label: pm.archive,
-        color: 'blue',
-        onPress: () => handleSwipeAction(item, 'archive'),
-      },
-      {
-        key: 'delete',
-        icon: 'trash-can-outline',
-        label: pm.delete,
-        color: 'red',
-        onPress: () => handleSwipeAction(item, 'delete'),
+        key: 'select',
+        icon: 'checkbox-multiple-marked-outline',
+        label: li.select,
+        onPress: startSelection,
       },
     ],
-    [handleSwipeAction, pm.archive, pm.delete],
+    [li.select, startSelection],
   );
 
   const batchActions = useMemo(() => [
@@ -236,7 +204,7 @@ export function InboxScreen() {
 
   const renderItem = useCallback(({ item }: { item: NoteIndexEntry }) => {
     const selected = selectedIds.has(item.id);
-    const card = (
+    return (
       <Pressable
         style={[
           styles.itemCard,
@@ -246,8 +214,6 @@ export function InboxScreen() {
           },
         ]}
         onPress={() => handleItemPress(item)}
-        onLongPress={() => handleItemLongPress(item)}
-        delayLongPress={LIST_DELAY_LONG_PRESS}
         accessibilityState={selectionMode ? { selected } : undefined}
       >
         {selectionMode ? (
@@ -260,19 +226,11 @@ export function InboxScreen() {
         <InboxItemContent note={item} />
       </Pressable>
     );
-
-    return (
-      <SwipeableRow actions={buildSwipeActions(item)} borderRadius={20} enabled={!selectionMode}>
-        {card}
-      </SwipeableRow>
-    );
   }, [
-    buildSwipeActions,
     colors.accent.primary,
     colors.accent.selectionBg,
     colors.border.subtle,
     colors.surface.panel,
-    handleItemLongPress,
     handleItemPress,
     selectedIds,
     selectionMode,
@@ -286,12 +244,10 @@ export function InboxScreen() {
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
       <FloatingHeader
         title={selectionMode ? t(li.selectedCount, { count: selectedCount }) : im.title}
-        onBack={selectionMode ? exitSelectionMode : () => router.back()}
-        rightLabel={selectionMode ? undefined : li.select}
-        onRightLabelPress={selectionMode ? undefined : startSelection}
+        onBack={selectionMode ? exitSelectionMode : () => dismissOrHome(router)}
+        overflowMenuItems={selectionMode ? undefined : headerOverflowMenu}
+        overflowMenuA11yLabel={li.moreMenu}
       />
-
-      <SwipeHintBanner hasItems={!selectionMode && items.length > 0} />
 
       <FlatList
         data={items}
@@ -348,13 +304,9 @@ export function InboxScreen() {
 
       <AppToast
         visible={!!snackMsg}
-        onDismiss={() => {
-          setSnackMsg('');
-          setSnackUndo(null);
-        }}
-        duration={snackUndo ? TOAST_DURATION_UNDO : TOAST_DURATION_SHORT}
+        onDismiss={() => setSnackMsg('')}
+        duration={TOAST_DURATION_SHORT}
         bottomLift={TOAST_BOTTOM_LIFT_ABOVE_BAR}
-        action={snackUndo ? { label: snackUndo.label, onPress: snackUndo.onPress } : undefined}
       >
         {snackMsg}
       </AppToast>

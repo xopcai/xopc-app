@@ -3,6 +3,7 @@ import { Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '../theme';
+import { ListOverflowMenu, type OverflowMenuItem } from './ListOverflowMenu';
 import { XopcLogo } from './XopcLogo';
 
 type FloatingHeaderAction = {
@@ -17,8 +18,8 @@ interface FloatingHeaderProps {
   rightIcon?: string;
   onRightPress?: () => void;
   rightActions?: FloatingHeaderAction[];
-  rightLabel?: string;
-  onRightLabelPress?: () => void;
+  overflowMenuItems?: OverflowMenuItem[];
+  overflowMenuA11yLabel?: string;
   searchPlaceholder?: string;
   onSearchPress?: () => void;
 }
@@ -30,8 +31,8 @@ export function FloatingHeader({
   rightIcon,
   onRightPress,
   rightActions,
-  rightLabel,
-  onRightLabelPress,
+  overflowMenuItems,
+  overflowMenuA11yLabel,
   searchPlaceholder,
   onSearchPress,
 }: FloatingHeaderProps) {
@@ -39,7 +40,8 @@ export function FloatingHeader({
   const insets = useSafeAreaInsets();
   const backgroundColor = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.05)';
   const actions = rightActions ?? (rightIcon && onRightPress ? [{ icon: rightIcon, onPress: onRightPress }] : []);
-  const showRightCluster = Boolean(rightLabel) || actions.length > 0;
+  const hasOverflowMenu = (overflowMenuItems?.length ?? 0) > 0;
+  const showRightCluster = actions.length > 0 || hasOverflowMenu;
 
   return (
     <View style={[styles.wrap, { paddingTop: insets.top + 8 }]}>
@@ -75,23 +77,17 @@ export function FloatingHeader({
 
       {showRightCluster ? (
         <View style={styles.actionsRow}>
-          {rightLabel && onRightLabelPress ? (
-            <Pressable
-              style={[styles.labelButton, { backgroundColor }]}
-              onPress={onRightLabelPress}
-              accessibilityRole="button"
-              accessibilityLabel={rightLabel}
-            >
-              <Text numberOfLines={1} style={[styles.rightLabel, { color: colors.accent.primary }]}>
-                {rightLabel}
-              </Text>
-            </Pressable>
-          ) : null}
           {actions.map((action) => (
             <Pressable key={action.icon} style={[styles.iconButton, { backgroundColor }]} onPress={action.onPress}>
               <Icon source={action.icon} size={22} color={colors.text.secondary} />
             </Pressable>
           ))}
+          {hasOverflowMenu ? (
+            <ListOverflowMenu
+              items={overflowMenuItems ?? []}
+              accessibilityLabel={overflowMenuA11yLabel ?? 'More'}
+            />
+          ) : null}
         </View>
       ) : (
         <View style={styles.iconPlaceholder} />
@@ -150,16 +146,5 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontWeight: '500',
-  },
-  labelButton: {
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-  },
-  rightLabel: {
-    fontSize: 15,
-    fontWeight: '600',
   },
 });
