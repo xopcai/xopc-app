@@ -640,6 +640,18 @@ export const zh: MessageBundle = {
     emptyTitle: 'Inbox 已清空',
     emptyHint: '新想法会先进入这里，再由你整理归类。',
     capturePlaceholder: '快速记录一条想法…',
+    itemHints: {
+      voice: '点击听取或补充转写',
+      media: '点击查看附件',
+      bookmark: '点击打开链接',
+      default: '点击打开并补充内容',
+    },
+    time: {
+      justNow: '刚刚',
+      minutes: '{{n}} 分钟前',
+      hours: '{{n}} 小时前',
+      days: '{{n}} 天前',
+    },
   },
 
   notesPage: {

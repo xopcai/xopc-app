@@ -1,6 +1,6 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query';
 
-import { blocksToPlainText } from '../features/notes/note-blocks';
+import { normalizeNoteIndexEntry } from '../features/notes/note-title';
 
 import type { HomeData } from './home';
 import { queryKeys } from './keys';
@@ -20,10 +20,7 @@ function upsertAtFront(items: NoteIndexEntry[], entry: NoteIndexEntry): NoteInde
 }
 
 export function noteToIndexEntry(note: Note): NoteIndexEntry {
-  const plain =
-    note.text?.trim() ||
-    (note.blocks?.length ? blocksToPlainText(note.blocks).trim() : '');
-  return {
+  return normalizeNoteIndexEntry({
     id: note.id,
     title: note.title,
     kind: note.kind,
@@ -32,12 +29,13 @@ export function noteToIndexEntry(note: Note): NoteIndexEntry {
     updatedAt: note.updatedAt,
     pinned: note.pinned,
     tags: note.tags,
-    snippet: plain ? plain.slice(0, 200) : undefined,
     groupId: note.groupId,
     lastOpenedAt: note.lastOpenedAt,
     taskDone: note.taskMeta?.done,
     taskDueAt: note.taskMeta?.dueAt,
-  };
+    text: note.text,
+    blocks: note.blocks,
+  });
 }
 
 export function blankNoteIndexEntry(id: string, now = Date.now()): NoteIndexEntry {

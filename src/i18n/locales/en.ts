@@ -640,6 +640,18 @@ export const en = {
     emptyTitle: 'Inbox is clear',
     emptyHint: 'New ideas land here first — sort them when you are ready.',
     capturePlaceholder: 'Capture a thought…',
+    itemHints: {
+      voice: 'Tap to listen or add a transcript',
+      media: 'Tap to view the attachment',
+      bookmark: 'Tap to open the link',
+      default: 'Tap to open and add details',
+    },
+    time: {
+      justNow: 'just now',
+      minutes: '{{n}}m ago',
+      hours: '{{n}}h ago',
+      days: '{{n}}d ago',
+    },
   },
 
   notesPage: {

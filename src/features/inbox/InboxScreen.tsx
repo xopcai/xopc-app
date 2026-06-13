@@ -11,9 +11,10 @@ import { FloatingHeader } from '../../components/FloatingHeader';
 import { useMessages, t } from '../../i18n/messages';
 import { pickAttachmentFromSource, type AttachmentPickSource } from '../chat/attachment-file-io';
 import type { ComposerAttachment } from '../chat/composer.types';
-import { deleteNote, fetchNotes, captureNote, updateNote, type NoteIndexEntry, type NoteKind } from '../../query/notes';
+import { deleteNote, fetchNotes, captureNote, updateNote, type NoteIndexEntry } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
 import { invalidateHomeFeed } from '../../query/workspace-sync';
+import { NOTE_KIND_ICONS } from '../notes/note-list-display';
 import { useTheme, FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
 import {
   captureNoteWithComposerAttachment,
@@ -23,22 +24,13 @@ import {
 import { parseCaptureIntent } from '../notes/capture-parser';
 import { flushPendingNotes, queueMediaCapture, queueNote } from '../notes/notes-sync';
 import { QuickCaptureComposer } from '../notes/QuickCaptureComposer';
+import { InboxItemContent } from './InboxItemContent';
 import { InboxSwipeableItem } from './InboxSwipeableItem';
 
 type CapturePayload =
   | { type: 'text'; text: string }
   | { type: 'attachment'; attachment: ComposerAttachment }
   | { type: 'voice'; uri: string; durationMillis: number; mimeType: string };
-
-const INBOX_KIND_ICONS: Record<NoteKind, string> = {
-  thought: 'lightbulb-outline',
-  todo: 'checkbox-marked-outline',
-  voice: 'microphone',
-  media: 'image-outline',
-  bookmark: 'link',
-  mixed: 'lightbulb-outline',
-  task: 'checkbox-marked-circle-outline',
-};
 
 export function InboxScreen() {
   const router = useRouter();
@@ -242,19 +234,10 @@ export function InboxScreen() {
           </View>
         ) : (
           <View style={styles.itemIcon}>
-            <Icon source={INBOX_KIND_ICONS[item.kind] ?? 'lightbulb-outline'} size={20} color="#6D5DFB" />
+            <Icon source={NOTE_KIND_ICONS[item.kind] ?? 'lightbulb-outline'} size={20} color="#6D5DFB" />
           </View>
         )}
-        <View style={styles.itemCopy}>
-          <Text numberOfLines={1} style={[styles.itemTitle, { color: colors.text.primary }]}>
-            {item.snippet || '无标题'}
-          </Text>
-          {!!item.snippet && (
-            <Text numberOfLines={2} style={[styles.itemSummary, { color: colors.text.tertiary }]}>
-              {item.snippet}
-            </Text>
-          )}
-        </View>
+        <InboxItemContent note={item} />
       </Pressable>
     );
 
@@ -275,8 +258,6 @@ export function InboxScreen() {
     colors.border.subtle,
     colors.surface.panel,
     colors.text.inverse,
-    colors.text.primary,
-    colors.text.tertiary,
     handleItemLongPress,
     handleItemPress,
     handleSwipeAction,
@@ -362,7 +343,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 14,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
   },
   itemIcon: {
@@ -372,6 +353,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(109,93,251,0.14)',
+    marginTop: 2,
   },
   checkbox: {
     width: 36,
@@ -381,10 +363,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(120,120,128,0.36)',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 2,
   },
-  itemCopy: { flex: 1, gap: 3 },
-  itemTitle: { fontSize: 15, fontWeight: '600' },
-  itemSummary: { fontSize: 12, fontWeight: '400', lineHeight: 17 },
   emptyWrap: {
     alignItems: 'center',
     justifyContent: 'center',

@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { apiFetch } from '../api/client';
 import { notesListResponseSchema } from '../config/schema';
 import { createTextBlock, type NoteAiPatch, type NoteBlock } from '../features/notes/note-blocks';
+import { normalizeNoteIndexEntry } from '../features/notes/note-title';
 
 export type { NoteBlock, NoteAiPatch } from '../features/notes/note-blocks';
 
@@ -132,7 +133,8 @@ export async function fetchNotes(query?: NotesListQuery): Promise<NotesListResul
   if (!parsed.success) throw new Error('Invalid notes list response');
   const limit = parsed.data.limit ?? query?.limit ?? 20;
   const offset = parsed.data.offset ?? query?.offset ?? 0;
-  const items = parsed.data.items as NoteIndexEntry[];
+  const items = (parsed.data.items as Array<NoteIndexEntry & { text?: string; blocks?: NoteBlock[] }>)
+    .map(normalizeNoteIndexEntry);
   const hasMore = parsed.data.hasMore ?? offset + items.length < parsed.data.total;
   return {
     items,
