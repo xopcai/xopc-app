@@ -161,6 +161,10 @@ interface SlashDetectMessage {
   to?: number;
 }
 
+interface SegmentFocusMessage {
+  type: 'xopc-segment-focus';
+}
+
 export const NoteBlockEditor = memo(function NoteBlockEditor({
   contentKey,
   initialHtml,
@@ -171,6 +175,9 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
   editable = true,
   focusOnEnable = false,
   onFocusApplied,
+  embedded = false,
+  onSegmentFocus,
+  segmentKey,
 }: NoteBlockEditorProps) {
   const { colors } = useTheme();
   const m = useMessages();
@@ -195,7 +202,8 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     initialContent: initialHtml,
     autofocus: false,
     editable,
-    avoidIosKeyboard: true,
+    avoidIosKeyboard: !embedded,
+    dynamicHeight: embedded,
     bridgeExtensions: [
       ...TenTapStartKit,
       PlaceholderBridge.configureExtension({
@@ -231,6 +239,7 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
       );
     },
     insertImage: (src: string, alt?: string) => {
+      if (embedded) return;
       if (typeof editor.setImage === 'function') {
         editor.setImage(src);
         return;
@@ -298,14 +307,14 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     editor.setContent(initialHtml);
     setTimeout(() => {
       isExternalUpdateRef.current = false;
-      resetEditorScroll();
+      if (!embedded) resetEditorScroll();
     }, 100);
-  }, [contentKey, initialHtml, editor, resetEditorScroll]);
+  }, [contentKey, embedded, initialHtml, editor, resetEditorScroll]);
 
   useEffect(() => {
-    if (editable) return;
+    if (editable || embedded) return;
     resetEditorScroll();
-  }, [editable, resetEditorScroll]);
+  }, [editable, embedded, resetEditorScroll]);
 
   useEffect(() => {
     try {
@@ -322,9 +331,9 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     } catch {
       // WebView may be torn down during navigation.
     }
-    resetEditorScroll();
+    if (!embedded) resetEditorScroll();
     onFocusApplied?.();
-  }, [editor, onFocusApplied, resetEditorScroll]);
+  }, [editor, embedded, onFocusApplied, resetEditorScroll]);
 
   useEffect(() => {
     if (!editable || !focusOnEnable) return;
@@ -333,7 +342,11 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
 
   const handleWebViewMessage = useCallback((event: WebViewMessageEvent) => {
     try {
-      const data = JSON.parse(event.nativeEvent.data) as SlashDetectMessage;
+      const data = JSON.parse(event.nativeEvent.data) as SlashDetectMessage | SegmentFocusMessage;
+      if (data.type === 'xopc-segment-focus') {
+        onSegmentFocus?.();
+        return;
+      }
       if (data.type !== 'xopc-slash') return;
       if (data.active && data.from != null && data.to != null) {
         setSlashMenu({
@@ -348,7 +361,7 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     } catch {
       // Ignore non-JSON messages from TenTap
     }
-  }, [manualSlashOpen]);
+  }, [manualSlashOpen, onSegmentFocus]);
 
   useEffect(() => {
     if (slashMenuOpen) setManualSlashOpen(true);
@@ -366,13 +379,31 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     onSlashMenuClose?.();
   }, [editor, onSlashMenuClose, slashMenu, unifiedEditor]);
 
+  useEffect(() => {
+    if (!embedded) return;
+    try {
+      editor.injectJS(`
+        (function () {
+          if (window.__xopcSegmentFocusBound) return true;
+          window.__xopcSegmentFocusBound = true;
+          document.addEventListener('focusin', function () {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'xopc-segment-focus' }));
+          }, true);
+          return true;
+        })();
+      `);
+    } catch {
+      // WebView may be torn down during navigation.
+    }
+  }, [editor, embedded, segmentKey]);
+
   const slashVisible = editable && Boolean(slashMenu || manualSlashOpen);
   const menuItems = manualSlashOpen && !slashMenu
     ? slashItems
     : filteredSlashItems;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, embedded && styles.containerEmbedded]}>
       {keyboardSeed ? (
         <TextInput
           autoFocus
@@ -392,9 +423,9 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
         onLoad={() => {
-          resetEditorScroll();
+          if (!embedded) resetEditorScroll();
         }}
-        style={[styles.richText, { backgroundColor: 'transparent' }]}
+        style={[styles.richText, embedded && styles.richTextEmbedded, { backgroundColor: 'transparent' }]}
       />
       <SlashMenu
         items={menuItems}
@@ -413,7 +444,9 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
 
 const styles = StyleSheet.create({
   container: { flex: 1, minHeight: 200 },
+  containerEmbedded: { flex: 0, minHeight: 48 },
   richText: { flex: 1 },
+  richTextEmbedded: { flex: 0, minHeight: 48 },
   hiddenInput: {
     display: 'none',
     width: 0,

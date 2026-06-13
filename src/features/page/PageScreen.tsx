@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
 import { ActivityIndicator, Button, Icon, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -41,7 +42,8 @@ import { readUriAsBase64 } from '../chat/attachment-file-io';
 import { composerAttachmentFromBase64 } from '../chat/attachment-file-io-core';
 import { pickAttachmentFromSource } from '../chat/attachment-file-io';
 import { ComposerAttachmentStrip } from '../chat/composer-attachment-strip';
-import { NoteBlockEditor } from '../notes/editor/NoteBlockEditor';
+import { HybridNoteEditor } from '../notes/editor/HybridNoteEditor';
+import type { HybridNoteEditorHandle } from '../notes/editor/types';
 import { EditorActionBar } from '../notes/editor/EditorActionBar';
 import { EditorInsertMenu } from '../notes/editor/EditorInsertMenu';
 import { NoteVoiceInputBar } from '../notes/editor/NoteVoiceInputBar';
@@ -63,11 +65,9 @@ import {
   extractVoiceTranscripts,
 } from '../notes/note-to-chat-payload';
 import {
-  blocksToHtml,
   blocksToMarkdown,
   blocksToPlainText,
   blocksToReadableText,
-  htmlToBlocks,
   noteToBlocks,
   type NoteAiPatch,
   type NoteBlock,
@@ -124,7 +124,6 @@ export function PageScreen() {
   const [blocks, setBlocks] = useState<NoteBlock[]>([]);
   const [editor, setEditor] = useState<UnifiedEditor | null>(null);
   const [contentRevision, setContentRevision] = useState(0);
-  const [editorSeed, setEditorSeed] = useState<{ key: string; html: string } | null>(null);
   const [snackMsg, setSnackMsg] = useState('');
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
@@ -144,10 +143,10 @@ export function PageScreen() {
   const lastSeedKeyRef = useRef('');
 
   const blocksRef = useRef<NoteBlock[]>([]);
-  const latestHtmlRef = useRef('');
   const attachmentsRef = useRef<NoteEditorAttachment[]>([]);
   const noteRef = useRef<Note | undefined>(undefined);
   const editorRef = useRef<UnifiedEditor | null>(null);
+  const hybridEditorRef = useRef<HybridNoteEditorHandle>(null);
   const syncInFlightRef = useRef(false);
   blocksRef.current = blocks;
 
@@ -216,9 +215,8 @@ export function PageScreen() {
 
   useEffect(() => {
     lastSeedKeyRef.current = '';
-    latestHtmlRef.current = '';
     setContentRevision(0);
-    setEditorSeed(null);
+    setBlocks([]);
     setEditor(null);
     editorRef.current = null;
     setScreenMode('view');
@@ -240,9 +238,6 @@ export function PageScreen() {
     lastSeedKeyRef.current = seedKey;
 
     const nextBlocks = noteToBlocks(note);
-    const html = blocksToHtml(nextBlocks);
-    latestHtmlRef.current = html;
-    setEditorSeed({ key: seedKey, html });
     setBlocks(nextBlocks);
 
     if (contentRevision === 0 && !readLocalNote(id)) {
@@ -260,11 +255,9 @@ export function PageScreen() {
     refreshViewTitle();
   }, [note?.id, contentRevision, screenMode, refreshViewTitle, note]);
 
-  const saveHtmlNow = useCallback((html: string) => {
+  const saveBlocksNow = useCallback((nextBlocks: NoteBlock[]) => {
     const currentNote = noteRef.current;
     if (!currentNote) return;
-    latestHtmlRef.current = html;
-    const nextBlocks = htmlToBlocks(html, blocksRef.current);
     const local = readLocalNote(currentNote.id);
     if (
       local?.syncState === 'synced' &&
@@ -292,35 +285,19 @@ export function PageScreen() {
     queryClient.setQueryData(queryKeys.note(currentNote.id), snapshot);
   }, [queryClient]);
 
-  const persistHtmlDebounced = useDebouncedCallback((html: string) => {
-    saveHtmlNow(html);
+  const persistBlocksDebounced = useDebouncedCallback((nextBlocks: NoteBlock[]) => {
+    saveBlocksNow(nextBlocks);
   }, 400);
 
-  const handleEditorChange = useCallback((html: string) => {
-    latestHtmlRef.current = html;
-    persistHtmlDebounced(html);
-  }, [persistHtmlDebounced]);
+  const handleBlocksChange = useCallback((nextBlocks: NoteBlock[]) => {
+    blocksRef.current = nextBlocks;
+    setBlocks(nextBlocks);
+    persistBlocksDebounced(nextBlocks);
+  }, [persistBlocksDebounced]);
 
   const flushPendingSave = useCallback(async () => {
-    persistHtmlDebounced.flush();
-
-    const liveEditor = editorRef.current;
-    if (liveEditor) {
-      try {
-        const html = await liveEditor.getHTML();
-        if (typeof html === 'string') {
-          saveHtmlNow(html);
-        }
-        return;
-      } catch {
-        // Editor may already be torn down.
-      }
-    }
-
-    if (latestHtmlRef.current) {
-      saveHtmlNow(latestHtmlRef.current);
-    }
-  }, [persistHtmlDebounced, saveHtmlNow]);
+    persistBlocksDebounced.flush();
+  }, [persistBlocksDebounced]);
 
   useFocusEffect(
     useCallback(() => {
@@ -493,12 +470,12 @@ export function PageScreen() {
   ], [pm]);
 
   const handlePickImageSource = useCallback(async (source: 'camera' | 'photos' | 'document') => {
-    if (noteAttachments.isFull) {
-      setSnackMsg(pm.editorAttachmentMaxReached);
-      return;
-    }
     try {
       if (source === 'document') {
+        if (noteAttachments.isFull) {
+          setSnackMsg(pm.editorAttachmentMaxReached);
+          return;
+        }
         const added = await noteAttachments.addFromSource(source);
         if (added) {
           editorRef.current?.focus();
@@ -514,15 +491,13 @@ export function PageScreen() {
         setSnackMsg(pm.editorAttachmentLoadFailed.replace('{{name}}', picked.name));
         return;
       }
-      editorRef.current?.insertImage(dataUri, picked.name);
-      editorRef.current?.focus();
-      persistAttachments([...attachmentsRef.current, picked]);
+      hybridEditorRef.current?.insertImageBlock(dataUri, picked.name);
       setSnackMsg(pm.editorAttachmentAdded);
     } catch (error) {
       const message = noteAttachments.mapPickError(error);
       if (message) setSnackMsg(message);
     }
-  }, [noteAttachments, persistAttachments, pm]);
+  }, [noteAttachments, pm]);
 
   const handleAttachmentPress = useCallback(() => {
     void handlePickImageSource('document');
@@ -567,7 +542,6 @@ export function PageScreen() {
       noteRef.current = snapshot;
       queryClient.setQueryData(queryKeys.note(note.id), snapshot);
       setBlocks(nextBlocks);
-      latestHtmlRef.current = blocksToHtml(nextBlocks);
       setContentRevision((revision) => revision + 1);
       if (screenMode === 'view') {
         setViewTitle(resolveDisplayTitle(note, nextBlocks, pm.untitledNote));
@@ -741,8 +715,14 @@ export function PageScreen() {
 
   const showLoading = noteQuery.isLoading && !note;
   const showError = noteQuery.isError && !note;
-  const showEditor = Boolean(note && id && editorSeed);
+  const showEditor = Boolean(note && id);
   const viewBottomPadding = floatingBottomPadding(insets.bottom) + FLOATING_BOTTOM_OFFSET + VIEW_BOTTOM_BAR_HEIGHT;
+  const fileAttachments = useMemo(
+    () => noteAttachments.attachments.filter(
+      (att) => att.type !== 'image' && !att.mimeType.startsWith('image/'),
+    ),
+    [noteAttachments.attachments],
+  );
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
@@ -756,7 +736,8 @@ export function PageScreen() {
 
       <KeyboardAvoidingView
         style={styles.keyboardAvoid}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        enabled={!isEditing}
       >
         {showLoading ? (
           <View style={styles.center}>
@@ -775,11 +756,14 @@ export function PageScreen() {
           </View>
         ) : showEditor ? (
           <>
-            <View
-              style={[
-                styles.editorWrap,
+            <KeyboardAwareScrollView
+              style={styles.scroll}
+              contentContainerStyle={[
+                styles.scrollContent,
                 !isEditing && { paddingBottom: viewBottomPadding },
               ]}
+              keyboardShouldPersistTaps="handled"
+              bottomOffset={isEditing ? 56 : 0}
             >
               {titleEditing ? (
                 <TextInput
@@ -850,22 +834,26 @@ export function PageScreen() {
                 />
               ) : null}
 
-              {noteAttachments.attachments.length > 0 ? (
+              {fileAttachments.length > 0 ? (
                 <ComposerAttachmentStrip
-                  attachments={noteAttachments.attachments}
-                  onRemove={noteAttachments.removeAttachment}
+                  attachments={fileAttachments}
+                  onRemove={(index) => {
+                    const target = fileAttachments[index];
+                    const fullIndex = noteAttachments.attachments.indexOf(target);
+                    if (fullIndex >= 0) noteAttachments.removeAttachment(fullIndex);
+                  }}
                   removeLabel={pm.editorAttachmentRemove}
                   readOnly={!isEditing}
                 />
               ) : null}
 
-              <View style={styles.editorPressable}>
-                {editorHostReady && editorSeed ? (
-                  <NoteBlockEditor
-                    key={editorSeed.key}
-                    contentKey={editorSeed.key}
-                    initialHtml={editorSeed.html}
-                    onChange={handleEditorChange}
+              <View style={styles.editorBody}>
+                {editorHostReady ? (
+                  <HybridNoteEditor
+                    ref={hybridEditorRef}
+                    contentKey={`${id}:${contentRevision}`}
+                    blocks={blocks}
+                    onBlocksChange={handleBlocksChange}
                     onEditorReady={handleEditorReady}
                     slashMenuOpen={showSlashMenu}
                     onSlashMenuClose={() => setShowSlashMenu(false)}
@@ -893,10 +881,11 @@ export function PageScreen() {
                   {charCountLabel}
                 </Text>
               ) : null}
-            </View>
+            </KeyboardAwareScrollView>
 
             {isEditing ? (
-              <EditorActionBar
+              <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
+                <EditorActionBar
                 editor={editor}
                 onAiPress={() => setShowAiPanel(true)}
                 onSlashPress={() => setShowSlashMenu(true)}
@@ -910,6 +899,7 @@ export function PageScreen() {
                 voiceDisabled={!editor || voiceInput.phase === 'transcribing'}
                 voiceLabel={voiceInput.phase === 'recording' ? pm.editorVoiceStop : pm.editorVoiceStart}
               />
+              </KeyboardStickyView>
             ) : null}
 
             <EditorInsertMenu
@@ -1096,10 +1086,11 @@ export function PageScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   keyboardAvoid: { flex: 1 },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 4, flexGrow: 1 },
   modalKeyboardAvoid: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 24 },
-  editorWrap: { flex: 1, paddingHorizontal: 16, paddingTop: 4 },
-  editorPressable: { flex: 1, minHeight: 120, position: 'relative' },
+  editorBody: { minHeight: 120, position: 'relative' },
   editorOverlay: {
     ...StyleSheet.absoluteFill,
   },

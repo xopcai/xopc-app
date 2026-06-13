@@ -24,6 +24,9 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
   editable = true,
   focusOnEnable = false,
   onFocusApplied,
+  embedded = false,
+  onSegmentFocus,
+  segmentKey,
 }: NoteBlockEditorProps) {
   const { colors } = useTheme();
   const m = useMessages();
@@ -105,7 +108,7 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
       }),
       TaskList,
       TaskItem.configure({ nested: true }),
-      Image.configure({ inline: false, allowBase64: true }),
+      ...(embedded ? [] : [Image.configure({ inline: false, allowBase64: true })]),
       slashExtension,
     ],
     content: initialHtml,
@@ -135,6 +138,7 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
       focus: () => { editor.chain().focus().run(); },
       insertText: (text) => { editor.chain().focus().insertContent(text).run(); },
       insertImage: (src, alt) => {
+        if (embedded) return;
         editor.chain().focus().setImage({ src, alt: alt ?? '' }).run();
       },
       getHTML: () => editor.getHTML(),
@@ -200,8 +204,15 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     [],
   );
 
+  useEffect(() => {
+    if (!editor || !embedded) return;
+    const handleFocus = () => onSegmentFocus?.();
+    editor.view.dom.addEventListener('focusin', handleFocus);
+    return () => editor.view.dom.removeEventListener('focusin', handleFocus);
+  }, [editor, embedded, onSegmentFocus, segmentKey]);
+
   return (
-    <div className="xopc-editor-container" style={containerStyle}>
+    <div className="xopc-editor-container" style={embedded ? embeddedContainerStyle : containerStyle}>
       <style>{buildEditorCss(colors)}</style>
       {editor && <EditorContent editor={editor} style={editorContentStyle} />}
       {slashState && (
@@ -227,6 +238,11 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
 const containerStyle: React.CSSProperties = {
   flex: 1,
   minHeight: 200,
+};
+
+const embeddedContainerStyle: React.CSSProperties = {
+  flex: 0,
+  minHeight: 48,
 };
 
 const editorContentStyle: React.CSSProperties = {

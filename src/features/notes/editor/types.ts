@@ -4,6 +4,8 @@
  * Web uses @tiptap/react (Editor).
  */
 
+import type { NoteBlock } from '../note-blocks';
+
 export interface UnifiedEditor {
   toggleBold(): void;
   toggleItalic(): void;
@@ -44,4 +46,19 @@ export interface NoteBlockEditorProps {
   /** Focus editor (and keyboard) once editable becomes true — used when entering edit from view. */
   focusOnEnable?: boolean;
   onFocusApplied?: () => void;
+  /** Embedded in outer ScrollView: auto-height, no internal scroll, no inline images. */
+  embedded?: boolean;
+  /** Called when this segment receives editor focus (hybrid editor). */
+  onSegmentFocus?: () => void;
+  /** Segment key for stable identity inside hybrid editor. */
+  segmentKey?: string;
+}
+
+export interface HybridNoteEditorProps extends Omit<NoteBlockEditorProps, 'initialHtml' | 'onChange'> {
+  blocks: NoteBlock[];
+  onBlocksChange: (blocks: NoteBlock[]) => void;
+}
+
+export interface HybridNoteEditorHandle {
+  insertImageBlock: (src: string, alt?: string) => void;
 }
