@@ -171,7 +171,12 @@ export function SessionsScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
-      <FloatingHeader title={sm.title} onBack={() => dismissOrHome(router)} />
+      <FloatingHeader
+        title={sm.title}
+        onBack={() => dismissOrHome(router)}
+        rightIcon="robot-outline"
+        onRightPress={() => router.push('/ai/agents')}
+      />
 
       {!configured ? (
         <View style={styles.center}>

@@ -45,8 +45,22 @@ const FOCUS_END_JS = `
 })();
 `;
 
+const HIDE_SCROLLBAR_CSS = `
+  #root > div:nth-of-type(1) {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  #root > div:nth-of-type(1)::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+    background: transparent;
+  }
+`;
+
 function buildEditorCss(colors: ReturnType<typeof useTheme>['colors']): string {
   return `
+    ${HIDE_SCROLLBAR_CSS}
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 15px;
@@ -317,6 +331,8 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
         editor={editor}
         onMessage={handleWebViewMessage}
         exclusivelyUseCustomOnMessage={false}
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
         style={[styles.richText, { backgroundColor: 'transparent' }]}
       />
       <SlashMenu

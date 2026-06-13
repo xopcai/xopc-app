@@ -469,8 +469,9 @@ export const en = {
     title: 'Settings',
     sectionConnection: 'Connection',
     sectionPreferences: 'Preferences',
-    sectionGatewayManagement: 'Gateway management',
-    sectionGatewayFeatures: 'Gateway features',
+    sectionAi: 'AI',
+    sectionAutomation: 'Automation',
+    sectionSharing: 'Sharing',
     sectionAbout: 'About',
     about: 'About',
     aboutDescription: 'Mobile client for the xopc gateway — chat, agents, and scheduled tasks.',
@@ -497,8 +498,6 @@ export const en = {
     baseUrlInvalid: 'Must be a valid http(s) URL',
     token: 'Bearer token (optional)',
     save: 'Save',
-    gatewayFeatures: 'Gateway features',
-    gatewayFeaturesHint: 'Agents, schedules, and recent task runs open in separate screens.',
     // Appearance section
     appearance: 'Appearance',
     language: 'Language',
@@ -514,6 +513,18 @@ export const en = {
     agentListEmpty: 'No agents configured on the gateway.',
     agentLoadFailed: 'Failed to load agents.',
     retry: 'Retry',
+  },
+
+  automationPage: {
+    title: 'Automation',
+    subtitle: 'Scheduled jobs and their run history on this gateway.',
+    schedulesTab: 'Schedules',
+    runsTab: 'Run history',
+  },
+
+  workspaceHome: {
+    automationSection: 'Automation',
+    automationHint: 'Manage cron schedules and view recent runs.',
   },
 
   // ── Agents page ──────────────────────────────────────────
@@ -546,9 +557,9 @@ export const en = {
     openDocs: 'Gateway cron docs',
   },
 
-  tasksPage: {
-    title: 'Tasks',
-    subtitle: 'Recent cron executions from GET /api/cron/runs/history.',
+  cronRunsPage: {
+    title: 'Run history',
+    subtitle: 'Recent scheduled job executions from this gateway.',
     empty: 'No recent runs.',
     loadFailed: 'Failed to load run history.',
     job: 'Job',
@@ -587,6 +598,7 @@ export const en = {
     title: 'All chats',
     empty: 'No chats yet',
     emptyHint: 'Start a chat and it will appear here.',
+    manageAgents: 'Manage agents',
   },
 
   inboxPage: {
@@ -755,6 +767,7 @@ export const en = {
     qrSubtitle: 'Anyone on the same screen can scan and open the share',
     close: 'Close',
     openTunnelSettings: 'Open tunnel settings',
+    manageAll: 'Manage all share links',
     reachabilityBlocker: 'Friends cannot open this link yet — your gateway has no public route.',
     previewTitle: 'Preview',
     previewLoading: 'Loading preview…',
@@ -762,8 +775,8 @@ export const en = {
     previewOpenExternal: 'Open in browser',
   },
 
-  // ── My Shares page ─────────────────────────────────────
-  mySharesPage: {
+  // ── Sharing page ─────────────────────────────────────────
+  sharingPage: {
     title: 'My shares',
     subtitle: 'Links you have created. Tap to preview, swipe right or use the menu for actions.',
     empty: 'No shares yet',

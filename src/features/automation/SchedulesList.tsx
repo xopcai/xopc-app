@@ -1,32 +1,24 @@
-/**
- * Schedules — lists and controls cron jobs from xopc gateway.
- */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Linking, RefreshControl, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, Chip, Icon, Snackbar, Text } from 'react-native-paper';
 
-import { FloatingHeader } from '../src/components/FloatingHeader';
-
-import { useMessages } from '../src/i18n/messages';
-import { dismissOrHome, useDismissOnHardwareBack } from '../src/lib/navigation';
-import { useResolvedIsDark } from '../src/lib/stack-screen-theme';
+import { useMessages } from '../../i18n/messages';
+import { useResolvedIsDark } from '../../lib/stack-screen-theme';
 import {
   cronJobPromptPreview,
   fetchCronJobs,
   runCronJobNow,
   toggleCronJob,
   type CronJobRow,
-} from '../src/query/cron';
-import { queryKeys } from '../src/query/keys';
-import { useGatewayConfigured } from '../src/query/sessions';
+} from '../../query/cron';
+import { queryKeys } from '../../query/keys';
+import { useGatewayConfigured } from '../../query/sessions';
 
 const DOCS_URL = 'https://xopcai.github.io/xopc/cron';
+const RUNS_LIMIT = 50;
 
-export default function SchedulesScreen() {
-  const router = useRouter();
-  useDismissOnHardwareBack(router);
+export function SchedulesList() {
   const queryClient = useQueryClient();
   const isDark = useResolvedIsDark();
   const configured = useGatewayConfigured();
@@ -57,7 +49,7 @@ export default function SchedulesScreen() {
       setSnackbarMessage(pm.runStartedToast);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.cronJobs }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.cronRunsHistory(50) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.cronRunsHistory(RUNS_LIMIT) }),
       ]);
     },
     onError: (error) => {
@@ -166,45 +158,27 @@ export default function SchedulesScreen() {
     </View>
   );
 
-  if (!configured) {
-    return (
-      <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
-        <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
-        <View style={styles.center}>
-          <Text style={{ opacity: 0.6 }}>{m.sessions.gatewayNotConfigured}</Text>
-        </View>
-      </View>
-    );
-  }
-
   if (jobsQuery.isLoading) {
     return (
-      <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
-        <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
-        <View style={styles.center}>
-          <ActivityIndicator size="large" />
-        </View>
+      <View style={styles.center}>
+        <ActivityIndicator size="large" />
       </View>
     );
   }
 
   if (jobsQuery.isError) {
     return (
-      <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
-        <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
-        <View style={styles.center}>
-          <Text style={{ opacity: 0.6, marginBottom: 12 }}>{pm.loadFailed}</Text>
-          <Button mode="outlined" onPress={() => void queryClient.invalidateQueries({ queryKey: queryKeys.cronJobs })}>
-            {m.common.retry}
-          </Button>
-        </View>
+      <View style={styles.center}>
+        <Text style={{ opacity: 0.6, marginBottom: 12 }}>{pm.loadFailed}</Text>
+        <Button mode="outlined" onPress={() => void queryClient.invalidateQueries({ queryKey: queryKeys.cronJobs })}>
+          {m.common.retry}
+        </Button>
       </View>
     );
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
-      <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
+    <>
       <FlatList
         data={jobs}
         keyExtractor={(item) => item.id}
@@ -230,12 +204,11 @@ export default function SchedulesScreen() {
       >
         {snackbarMessage}
       </Snackbar>
-    </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
   list: { padding: 16, paddingTop: 0, gap: 12, flexGrow: 1 },
   headerBlock: { marginBottom: 12 },

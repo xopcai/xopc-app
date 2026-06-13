@@ -467,8 +467,9 @@ export const zh: MessageBundle = {
     title: '设置',
     sectionConnection: '连接',
     sectionPreferences: '偏好设置',
-    sectionGatewayManagement: '网关管理',
-    sectionGatewayFeatures: '网关功能',
+    sectionAi: 'AI',
+    sectionAutomation: '自动化',
+    sectionSharing: '分享',
     sectionAbout: '关于',
     about: '关于',
     aboutDescription: 'xopc 网关移动端 — 对话、智能体与定时任务。',
@@ -495,8 +496,6 @@ export const zh: MessageBundle = {
     baseUrlInvalid: '必须是有效的 http(s) 链接',
     token: 'Bearer 令牌（可选）',
     save: '保存',
-    gatewayFeatures: '网关功能',
-    gatewayFeaturesHint: '智能体、定时安排与最近任务记录会在独立页面中打开。',
     // 外观
     appearance: '外观',
     language: '语言',
@@ -512,6 +511,18 @@ export const zh: MessageBundle = {
     agentListEmpty: '网关上未配置任何 Agent。',
     agentLoadFailed: '加载 Agent 失败。',
     retry: '重试',
+  },
+
+  automationPage: {
+    title: '自动化',
+    subtitle: '管理网关上的定时任务与运行记录。',
+    schedulesTab: '定时安排',
+    runsTab: '运行记录',
+  },
+
+  workspaceHome: {
+    automationSection: '自动化',
+    automationHint: '管理 Cron 定时任务，查看最近运行记录。',
   },
 
   // ── Agents 页面 ────────────────────────────────────────
@@ -546,9 +557,9 @@ export const zh: MessageBundle = {
     openDocs: 'Cron 文档',
   },
 
-  tasksPage: {
-    title: '任务',
-    subtitle: '近期 Cron 执行记录（/api/cron/runs/history）。',
+  cronRunsPage: {
+    title: '运行记录',
+    subtitle: '网关定时任务的最近执行历史。',
     empty: '暂无运行记录。',
     loadFailed: '加载运行历史失败。',
     job: '任务',
@@ -587,6 +598,7 @@ export const zh: MessageBundle = {
     title: '全部对话',
     empty: '还没有对话',
     emptyHint: '开始一次 AI 对话后会显示在这里。',
+    manageAgents: '管理智能体',
   },
 
   inboxPage: {
@@ -755,6 +767,7 @@ export const zh: MessageBundle = {
     qrSubtitle: '把屏幕给身边的人扫一下即可打开',
     close: '关闭',
     openTunnelSettings: '打开远程通道设置',
+    manageAll: '管理全部分享链接',
     reachabilityBlocker: '当前网关无公网入口，朋友打不开此链接。',
     previewTitle: '预览',
     previewLoading: '正在加载预览…',
@@ -762,8 +775,8 @@ export const zh: MessageBundle = {
     previewOpenExternal: '在浏览器中打开',
   },
 
-  // ── 我的分享 ───────────────────────────────────────────
-  mySharesPage: {
+  // ── 分享 ───────────────────────────────────────────────
+  sharingPage: {
     title: '我的分享',
     subtitle: '所有已创建的链接。点击预览，长按或菜单可执行操作。',
     empty: '还没有分享',

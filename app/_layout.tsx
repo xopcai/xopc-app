@@ -125,20 +125,21 @@ export default function RootLayout() {
                   }}
                 />
                 <Stack.Screen
-                  name="agents"
-                  options={{
-                    presentation: 'modal',
-                  }}
-                />
-                <Stack.Screen
-                  name="schedules"
+                  name="ai"
                   options={{
                     headerShown: false,
                     presentation: 'modal',
                   }}
                 />
                 <Stack.Screen
-                  name="tasks"
+                  name="automation"
+                  options={{
+                    headerShown: false,
+                    presentation: 'modal',
+                  }}
+                />
+                <Stack.Screen
+                  name="sharing"
                   options={{
                     headerShown: false,
                     presentation: 'modal',

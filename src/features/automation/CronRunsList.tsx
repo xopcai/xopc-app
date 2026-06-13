@@ -1,32 +1,23 @@
-/**
- * Tasks — recent cron executions from GET /api/cron/runs/history (gateway `hono/routes/cron.ts`).
- */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
 import { useCallback, useMemo } from 'react';
 import { FlatList, Linking, RefreshControl, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, Chip, Icon, Text } from 'react-native-paper';
 
-import { FloatingHeader } from '../src/components/FloatingHeader';
-
-import { useMessages } from '../src/i18n/messages';
-import { dismissOrHome, useDismissOnHardwareBack } from '../src/lib/navigation';
-import { useResolvedIsDark } from '../src/lib/stack-screen-theme';
-import { fetchCronRunsHistory, type CronRunRow } from '../src/query/cron';
-import { queryKeys } from '../src/query/keys';
-import { useGatewayConfigured } from '../src/query/sessions';
+import { useMessages } from '../../i18n/messages';
+import { useResolvedIsDark } from '../../lib/stack-screen-theme';
+import { fetchCronRunsHistory, type CronRunRow } from '../../query/cron';
+import { queryKeys } from '../../query/keys';
+import { useGatewayConfigured } from '../../query/sessions';
 
 const DOCS_URL = 'https://xopcai.github.io/xopc/cron';
 const RUNS_LIMIT = 50;
 
-export default function TasksScreen() {
-  const router = useRouter();
-  useDismissOnHardwareBack(router);
+export function CronRunsList() {
   const queryClient = useQueryClient();
   const isDark = useResolvedIsDark();
   const configured = useGatewayConfigured();
   const m = useMessages();
-  const pm = m.tasksPage;
+  const pm = m.cronRunsPage;
 
   const runsQuery = useQuery({
     queryKey: queryKeys.cronRunsHistory(RUNS_LIMIT),
@@ -120,7 +111,7 @@ export default function TasksScreen() {
         </View>
       );
     },
-    [cardBg, isDark, pm.started, statusColor, statusLabel, textPrimary, textSecondary],
+    [cardBg, isDark, pm.job, pm.started, statusColor, statusLabel, textPrimary, textSecondary],
   );
 
   const listHeader = (
@@ -137,72 +128,51 @@ export default function TasksScreen() {
     </View>
   );
 
-  if (!configured) {
-    return (
-      <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
-        <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
-        <View style={styles.center}>
-          <Text style={{ opacity: 0.6 }}>{m.sessions.gatewayNotConfigured}</Text>
-        </View>
-      </View>
-    );
-  }
-
   if (runsQuery.isLoading) {
     return (
-      <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
-        <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
-        <View style={styles.center}>
-          <ActivityIndicator size="large" />
-        </View>
+      <View style={styles.center}>
+        <ActivityIndicator size="large" />
       </View>
     );
   }
 
   if (runsQuery.isError) {
     return (
-      <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
-        <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
-        <View style={styles.center}>
-          <Text style={{ opacity: 0.6, marginBottom: 12 }}>{pm.loadFailed}</Text>
-          <Button
-            mode="outlined"
-            onPress={() => void queryClient.invalidateQueries({ queryKey: queryKeys.cronRunsHistory(RUNS_LIMIT) })}
-          >
-            {m.common.retry}
-          </Button>
-        </View>
+      <View style={styles.center}>
+        <Text style={{ opacity: 0.6, marginBottom: 12 }}>{pm.loadFailed}</Text>
+        <Button
+          mode="outlined"
+          onPress={() => void queryClient.invalidateQueries({ queryKey: queryKeys.cronRunsHistory(RUNS_LIMIT) })}
+        >
+          {m.common.retry}
+        </Button>
       </View>
     );
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: isDark ? '#111827' : '#F9FAFB' }]}>
-      <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
-      <FlatList
-        data={runs}
-        keyExtractor={(item) => item.id}
-        renderItem={renderRun}
-        ListHeaderComponent={listHeader}
-        ListFooterComponent={listFooter}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl refreshing={runsQuery.isFetching && !runsQuery.isLoading} onRefresh={onRefresh} />
-        }
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Chip icon="playlist-remove" mode="outlined">
-              {pm.empty}
-            </Chip>
-          </View>
-        }
-      />
-    </View>
+    <FlatList
+      data={runs}
+      keyExtractor={(item) => item.id}
+      renderItem={renderRun}
+      ListHeaderComponent={listHeader}
+      ListFooterComponent={listFooter}
+      contentContainerStyle={styles.list}
+      refreshControl={
+        <RefreshControl refreshing={runsQuery.isFetching && !runsQuery.isLoading} onRefresh={onRefresh} />
+      }
+      ListEmptyComponent={
+        <View style={styles.empty}>
+          <Chip icon="playlist-remove" mode="outlined">
+            {pm.empty}
+          </Chip>
+        </View>
+      }
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
   list: { padding: 16, paddingTop: 0, gap: 12, flexGrow: 1 },
   headerBlock: { marginBottom: 12 },

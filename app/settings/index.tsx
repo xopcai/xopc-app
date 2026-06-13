@@ -71,6 +71,40 @@ export default function SettingsIndexScreen() {
           />
         </SettingsSection>
 
+        {configured ? (
+          <>
+            <SettingsSection title={s.sectionAi}>
+              <SettingsRow
+                icon="robot-outline"
+                iconColor="#007AFF"
+                label={m.agentsPage.title}
+                isLast
+                onPress={() => router.push('/ai/agents')}
+              />
+            </SettingsSection>
+
+            <SettingsSection title={s.sectionAutomation}>
+              <SettingsRow
+                icon="clock-outline"
+                iconColor="#FF9500"
+                label={m.automationPage.title}
+                isLast
+                onPress={() => router.push('/automation')}
+              />
+            </SettingsSection>
+
+            <SettingsSection title={s.sectionSharing}>
+              <SettingsRow
+                icon="share-variant"
+                iconColor="#2563EB"
+                label={m.sharingPage.title}
+                isLast
+                onPress={() => router.push('/sharing')}
+              />
+            </SettingsSection>
+          </>
+        ) : null}
+
         <AppearanceSection />
 
         <SettingsSection title={s.sectionAbout}>

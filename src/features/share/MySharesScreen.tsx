@@ -69,7 +69,7 @@ export function MySharesScreen() {
   useDismissOnHardwareBack(router);
   const isDark = useResolvedIsDark();
   const m = useMessages();
-  const pm = m.mySharesPage;
+  const pm = m.sharingPage;
   const qc = useQueryClient();
   const list = useShareList();
   const token = useGatewayStore((s) => s.token);
@@ -220,7 +220,7 @@ function ShareRow({
   onRevoke: () => void;
   m: ReturnType<typeof useMessages>;
 }) {
-  const pm = m.mySharesPage;
+  const pm = m.sharingPage;
   const status = shareStatus(item);
   const expiryLabel = useMemo(() => formatExpiryLabel(item, pm), [item, pm]);
   const downloads = item.downloadCount;
@@ -294,7 +294,7 @@ function ShareRow({
 }
 
 function StatusChip({ status, m }: { status: ShareStatus; m: ReturnType<typeof useMessages> }) {
-  const pm = m.mySharesPage;
+  const pm = m.sharingPage;
   const palette: Record<ShareStatus, { bg: string; fg: string; label: string }> = {
     active: { bg: 'rgba(34,197,94,0.12)', fg: '#16A34A', label: pm.statusActive },
     expired: { bg: 'rgba(245,158,11,0.12)', fg: '#D97706', label: pm.statusExpired },
@@ -323,7 +323,7 @@ function ExtendDialog({
   onPick: (preset: ExtendPreset) => void;
   m: ReturnType<typeof useMessages>;
 }) {
-  const pm = m.mySharesPage;
+  const pm = m.sharingPage;
   return (
     <Portal>
       <Dialog visible={visible} onDismiss={onDismiss}>
@@ -364,7 +364,7 @@ function RevokeDialog({
   onConfirm: () => void;
   m: ReturnType<typeof useMessages>;
 }) {
-  const pm = m.mySharesPage;
+  const pm = m.sharingPage;
   return (
     <Portal>
       <Dialog visible={visible} onDismiss={onDismiss}>
@@ -390,7 +390,7 @@ function RevokeDialog({
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatExpiryLabel(item: ShareListItem, pm: ReturnType<typeof useMessages>['mySharesPage']): string {
+function formatExpiryLabel(item: ShareListItem, pm: ReturnType<typeof useMessages>['sharingPage']): string {
   const deltaMs = new Date(item.expiresAt).getTime() - Date.now();
   const formatted = formatRelativeDuration(deltaMs, pm);
   const tpl = deltaMs >= 0 ? pm.expiresIn : pm.expiredAgo;

@@ -16,6 +16,7 @@ import { useGatewayConfigured } from '../../query/sessions';
 import { useTheme } from '../../theme';
 
 import { WorkspaceSearchOverlay } from '../search/WorkspaceSearchOverlay';
+import { AutomationEntry } from './AutomationEntry';
 import { InboxPreview } from './InboxPreview';
 import { SpaceList } from './SpaceList';
 import { TodayBrief } from './TodayBrief';
@@ -156,6 +157,7 @@ export function WorkspaceHomeScreen() {
               onAskAiPressIn={prefetchAskAiSession}
               onViewAll={() => router.push('/sessions')}
             />
+            <AutomationEntry />
           </>
         )}
       </ScrollView>

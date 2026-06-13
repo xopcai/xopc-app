@@ -230,6 +230,16 @@ const editorContentStyle: React.CSSProperties = {
 
 function buildEditorCss(colors: ReturnType<typeof useTheme>['colors']): string {
   return `
+    .xopc-editor-container {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .xopc-editor-container::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
+      background: transparent;
+    }
     .xopc-editor-container .tiptap {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 15px;

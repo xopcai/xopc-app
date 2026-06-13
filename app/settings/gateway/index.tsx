@@ -18,7 +18,6 @@ import {
 } from '../../../src/features/gateway/use-gateway-connection-view';
 import { ConnectionLogCard } from '../../../src/features/gateway/ConnectionLogCard';
 import {
-  SettingsRow,
   SettingsSection,
   useSettingsColors,
 } from '../../../src/features/settings/settings-ui';
@@ -158,34 +157,6 @@ export default function GatewayListScreen() {
 
       {configured ? (
         <>
-          <SettingsSection title={s.sectionGatewayManagement}>
-            <SettingsRow
-              icon="robot-outline"
-              iconColor="#007AFF"
-              label={m.agentsPage.title}
-              onPress={() => router.push('/agents')}
-            />
-            <SettingsRow
-              icon="clock-outline"
-              iconColor="#FF9500"
-              label={m.schedulesPage.title}
-              onPress={() => router.push('/schedules')}
-            />
-            <SettingsRow
-              icon="checkbox-marked-outline"
-              iconColor="#34C759"
-              label={m.tasksPage.title}
-              onPress={() => router.push('/tasks')}
-            />
-            <SettingsRow
-              icon="share-variant"
-              iconColor="#2563EB"
-              label={m.mySharesPage.title}
-              isLast
-              onPress={() => router.push('/shares')}
-            />
-          </SettingsSection>
-
           <GatewayConnectionCard
             onSyncNotice={(message) => setSyncNotice(message)}
           />
