@@ -794,6 +794,19 @@ export const zh: MessageBundle = {
     error: '错误',
   },
 
+  listInteraction: {
+    select: '选择',
+    selectedCount: '已选 {{count}} 项',
+    swipeHint: '左滑可快速归档',
+    undo: '撤销',
+    batchDeleteTitle: '删除所选',
+    batchDeleteMessage: '确定删除 {{count}} 条？此操作不可恢复。',
+    batchDeleteConfirm: '删除',
+    batchDeleted: '已删除 {{count}} 条',
+    addTags: '标签',
+    rename: '重命名',
+  },
+
   // ── 分享面板 ────────────────────────────────────────────
   share: {
     sheetTitle: '分享链接',

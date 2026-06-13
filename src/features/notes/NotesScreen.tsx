@@ -16,6 +16,13 @@ import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingHeader } from '../../components/FloatingHeader';
+import { BatchActionBar } from '../../components/BatchActionBar';
+import { BatchDeleteConfirmDialog } from '../../components/BatchDeleteConfirmDialog';
+import { SwipeableRow, type SwipeRowAction } from '../../components/SwipeableRow';
+import { SwipeHintBanner } from '../../components/SwipeHintBanner';
+import { LIST_DELETE_UNDO_MS } from '../../constants/list-interaction';
+import { useListSelection } from '../../hooks/use-list-selection';
+import { useNoteDeleteWithUndo } from '../../hooks/use-note-delete-with-undo';
 
 import { pickAttachmentFromSource } from '../chat/attachment-file-io';
 import {
@@ -26,7 +33,7 @@ import {
   requestMicPermission,
   type ExpoRecording,
 } from '../chat/voiceRecording';
-import { useMessages } from '../../i18n/messages';
+import { useMessages, t } from '../../i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
 import { useFlatListEndReached } from '../../lib/use-flat-list-end-reached';
 import {
@@ -48,7 +55,6 @@ import { NoteTagPickerSheet } from './NoteTagPickerSheet';
 import { NoteTagTabs } from './NoteTagTabs';
 import { collectTagsFromNotes, noteMatchesTagFilter, type NoteTagFilter } from './note-tag-utils';
 import { NoteCard } from './NoteCard';
-import { SwipeableNoteCard, type SwipeAction } from './SwipeableNoteCard';
 import {
   captureNoteWithComposerAttachment,
   captureNoteWithVoice,
@@ -57,6 +63,8 @@ import {
 import { flushPendingNotes, queueMediaCapture, queueNote } from './notes-sync';
 import { captureIntentBadgeKey, parseCaptureIntent } from './capture-parser';
 import type { ComposerAttachment } from '../chat/composer.types';
+
+type NoteSwipeAction = 'pin' | 'unpin' | 'archive' | 'delete';
 
 type CapturePayload =
   | { type: 'text'; text: string }
@@ -80,7 +88,21 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
   const configured = useGatewayConfigured();
   const m = useMessages();
   const pm = m.notesPage;
+  const li = m.listInteraction;
   const insets = useSafeAreaInsets();
+  const {
+    selectionMode,
+    selectedIds,
+    selectedCount,
+    exitSelectionMode,
+    enterSelection,
+    startSelection,
+    toggleSelected,
+  } = useListSelection<string>();
+  const { deleteWithUndo } = useNoteDeleteWithUndo(queryClient);
+  const [showBatchDelete, setShowBatchDelete] = useState(false);
+  const [batchTagPicker, setBatchTagPicker] = useState(false);
+  const [snackUndo, setSnackUndo] = useState<{ label: string; onPress: () => void } | null>(null);
 
   const handleBack = useCallback(() => {
     if (onRequestHome) {
@@ -221,35 +243,136 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
   }, [captureMutation, pm]);
 
   const handleNotePress = useCallback((note: NoteIndexEntry) => {
-    router.push(`/notes/${note.id}`);
-  }, [router]);
+    if (selectionMode) {
+      toggleSelected(note.id);
+      return;
+    }
+    router.push(`/items/${note.id}`);
+  }, [router, selectionMode, toggleSelected]);
+
+  const handleNoteLongPress = useCallback((note: NoteIndexEntry) => {
+    if (selectionMode) {
+      toggleSelected(note.id);
+      return;
+    }
+    enterSelection(note.id);
+  }, [enterSelection, selectionMode, toggleSelected]);
 
   const handleSwipeAction = useCallback(
-    async (note: NoteIndexEntry, action: SwipeAction) => {
+    async (note: NoteIndexEntry, action: NoteSwipeAction) => {
       try {
+        if (action === 'delete') {
+          const snack = deleteWithUndo(note);
+          setSnackMsg(snack.message);
+          setSnackUndo({ label: snack.undoLabel, onPress: snack.onUndo });
+          return;
+        }
         if (action === 'pin') await updateNote(note.id, { pinned: true });
         else if (action === 'unpin') await updateNote(note.id, { pinned: false });
         else if (action === 'archive') await updateNote(note.id, { status: 'archived' });
-        else if (action === 'delete') await deleteNote(note.id);
         await refreshList();
-        setSnackMsg(action === 'delete' ? pm.deleted : pm.updated);
+        setSnackMsg(pm.updated);
+        setSnackUndo(null);
+      } catch (err) {
+        setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
+        setSnackUndo(null);
+      }
+    },
+    [deleteWithUndo, pm, refreshList],
+  );
+
+  const runBatchMutation = useCallback(
+    async (runner: () => Promise<unknown>, successMsg: string) => {
+      if (selectedCount === 0) return;
+      try {
+        await runner();
+        await refreshList();
+        setSnackMsg(successMsg);
+        exitSelectionMode();
       } catch (err) {
         setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
       }
     },
-    [pm, refreshList],
+    [exitSelectionMode, pm.actionFailed, refreshList, selectedCount],
   );
 
-  const handleAction = useCallback(
-    async (note: NoteIndexEntry, action: 'pin' | 'unpin' | 'archive' | 'delete') => {
-      void handleSwipeAction(note, action);
+  const handleBatchArchive = useCallback(() => {
+    void runBatchMutation(
+      () => Promise.all([...selectedIds].map((id) => updateNote(id, { status: 'archived' }))),
+      pm.updated,
+    );
+  }, [pm.updated, runBatchMutation, selectedIds]);
+
+  const handleBatchPin = useCallback(
+    (pinned: boolean) => {
+      void runBatchMutation(
+        () => Promise.all([...selectedIds].map((id) => updateNote(id, { pinned }))),
+        pm.updated,
+      );
     },
-    [handleSwipeAction],
+    [pm.updated, runBatchMutation, selectedIds],
   );
 
-  const [actionNote, setActionNote] = useState<NoteIndexEntry | null>(null);
-  const handleLongPress = useCallback((note: NoteIndexEntry) => setActionNote(note), []);
-  const dismissAction = useCallback(() => setActionNote(null), []);
+  const handleBatchDelete = useCallback(async () => {
+    if (selectedCount === 0) return;
+    try {
+      await Promise.all([...selectedIds].map((id) => deleteNote(id)));
+      await refreshList();
+      setSnackMsg(pm.deleted);
+      exitSelectionMode();
+      setShowBatchDelete(false);
+    } catch (err) {
+      setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
+    }
+  }, [exitSelectionMode, pm.actionFailed, pm.deleted, refreshList, selectedCount, selectedIds]);
+
+  const handleApplyBatchTags = useCallback(
+    async (tags: string[]) => {
+      if (selectedCount === 0) return;
+      try {
+        await Promise.all([...selectedIds].map((id) => updateNote(id, { tags })));
+        await refreshList();
+        setSnackMsg(pm.tagUpdated);
+        exitSelectionMode();
+        setBatchTagPicker(false);
+      } catch (err) {
+        setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
+      }
+    },
+    [exitSelectionMode, pm.actionFailed, pm.tagUpdated, refreshList, selectedCount, selectedIds],
+  );
+
+  const buildNoteSwipeActions = useCallback(
+    (note: NoteIndexEntry): SwipeRowAction[] => {
+      const pinAction: NoteSwipeAction = note.pinned ? 'unpin' : 'pin';
+      const pinIcon = note.pinned ? 'pin-off' : 'pin';
+      const pinLabel = note.pinned ? pm.unpin : pm.pin;
+      return [
+        {
+          key: pinAction,
+          icon: pinIcon,
+          label: pinLabel,
+          color: 'green',
+          onPress: () => void handleSwipeAction(note, pinAction),
+        },
+        {
+          key: 'archive',
+          icon: 'archive-arrow-down-outline',
+          label: pm.archive,
+          color: 'blue',
+          onPress: () => void handleSwipeAction(note, 'archive'),
+        },
+        {
+          key: 'delete',
+          icon: 'trash-can-outline',
+          label: pm.delete,
+          color: 'red',
+          onPress: () => void handleSwipeAction(note, 'delete'),
+        },
+      ];
+    },
+    [handleSwipeAction, pm.archive, pm.delete, pm.pin, pm.unpin],
+  );
 
   const notes = notesQuery.data?.pages.flatMap((page) => page.items) ?? [];
 
@@ -274,6 +397,11 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
       setTagFilter(created);
       return created;
     },
+    [addNoteTag],
+  );
+
+  const handleCreateTagOnly = useCallback(
+    (raw: string) => addNoteTag(raw),
     [addNoteTag],
   );
 
@@ -308,14 +436,78 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
     { key: 'media', label: pm.kindMedia },
   ], [pm]);
 
+  const batchActions = useMemo(() => [
+    {
+      key: 'pin',
+      icon: 'pin-outline',
+      label: pm.pin,
+      onPress: () => handleBatchPin(true),
+      disabled: selectedCount === 0,
+    },
+    {
+      key: 'unpin',
+      icon: 'pin-off-outline',
+      label: pm.unpin,
+      onPress: () => handleBatchPin(false),
+      disabled: selectedCount === 0,
+    },
+    {
+      key: 'archive',
+      icon: 'archive-arrow-down-outline',
+      label: pm.archive,
+      onPress: handleBatchArchive,
+      disabled: selectedCount === 0,
+    },
+    {
+      key: 'tags',
+      icon: 'tag-multiple-outline',
+      label: li.addTags,
+      onPress: () => setBatchTagPicker(true),
+      disabled: selectedCount === 0,
+    },
+    {
+      key: 'delete',
+      icon: 'trash-can-outline',
+      label: pm.delete,
+      destructive: true,
+      onPress: () => setShowBatchDelete(true),
+      disabled: selectedCount === 0,
+    },
+  ], [handleBatchArchive, handleBatchPin, li.addTags, pm.archive, pm.delete, pm.pin, pm.unpin, selectedCount]);
+
   const renderNote = useCallback(
-    ({ item }: { item: NoteIndexEntry }) => (
-      <SwipeableNoteCard note={item} onAction={handleSwipeAction}>
-        <NoteCard note={item} onPress={handleNotePress} onLongPress={handleLongPress} />
-      </SwipeableNoteCard>
-    ),
-    [handleNotePress, handleLongPress, handleSwipeAction],
+    ({ item }: { item: NoteIndexEntry }) => {
+      const selected = selectedIds.has(item.id);
+      const card = (
+        <NoteCard
+          note={item}
+          onPress={handleNotePress}
+          onLongPress={handleNoteLongPress}
+          selectionMode={selectionMode}
+          selected={selected}
+        />
+      );
+      return (
+        <SwipeableRow
+          actions={buildNoteSwipeActions(item)}
+          enabled={!selectionMode}
+        >
+          {card}
+        </SwipeableRow>
+      );
+    },
+    [
+      buildNoteSwipeActions,
+      handleNoteLongPress,
+      handleNotePress,
+      selectedIds,
+      selectionMode,
+    ],
   );
+
+  const listBottomPadding = selectionMode
+    ? insets.bottom + 120
+    : insets.bottom + 80;
 
   if (!configured) {
     return (
@@ -330,33 +522,44 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
-      <FloatingHeader title={pm.title} onBack={embedded ? undefined : handleBack} />
-
-      <NoteTagTabs
-        tags={noteTags}
-        activeTag={tagFilter}
-        onSelect={setTagFilter}
-        onAddPress={handleOpenCreateTag}
+      <FloatingHeader
+        title={selectionMode ? t(li.selectedCount, { count: selectedCount }) : pm.title}
+        onBack={selectionMode ? exitSelectionMode : embedded ? undefined : handleBack}
+        rightLabel={selectionMode ? undefined : li.select}
+        onRightLabelPress={selectionMode ? undefined : startSelection}
       />
 
+      {!selectionMode ? (
+        <NoteTagTabs
+          tags={noteTags}
+          activeTag={tagFilter}
+          onSelect={setTagFilter}
+          onAddPress={handleOpenCreateTag}
+        />
+      ) : null}
+
       {/* Filters — single row, horizontally scrollable */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterScroll}
-        style={styles.filterStrip}
-      >
-        {statusFilters.map((f) => (
-          <Chip key={f.key} selected={statusFilter === f.key} onPress={() => setStatusFilter(f.key)} compact mode="outlined">
-            {f.label}
-          </Chip>
-        ))}
-        {kindFilters.map((f) => (
-          <Chip key={f.key} selected={kindFilter === f.key} onPress={() => setKindFilter(f.key)} compact mode="outlined">
-            {f.label}
-          </Chip>
-        ))}
-      </ScrollView>
+      {!selectionMode ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterScroll}
+          style={styles.filterStrip}
+        >
+          {statusFilters.map((f) => (
+            <Chip key={f.key} selected={statusFilter === f.key} onPress={() => setStatusFilter(f.key)} compact mode="outlined">
+              {f.label}
+            </Chip>
+          ))}
+          {kindFilters.map((f) => (
+            <Chip key={f.key} selected={kindFilter === f.key} onPress={() => setKindFilter(f.key)} compact mode="outlined">
+              {f.label}
+            </Chip>
+          ))}
+        </ScrollView>
+      ) : null}
+
+      <SwipeHintBanner hasItems={!selectionMode && filteredNotes.length > 0} />
 
       {/* List */}
       <View style={styles.listArea}>
@@ -373,7 +576,8 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
             onEndReachedThreshold={0.5}
             onMomentumScrollBegin={onMomentumScrollBegin}
             ListFooterComponent={notesQuery.isFetchingNextPage ? <View style={styles.footerLoader}><ActivityIndicator size="small" /></View> : null}
-            contentContainerStyle={styles.list}
+            contentContainerStyle={[styles.list, { paddingBottom: listBottomPadding }]}
+            extraData={{ selectionMode, selectedCount, selectedKey: [...selectedIds].join('|') }}
             refreshControl={
               <RefreshControl refreshing={notesQuery.isFetching && !notesQuery.isLoading && !notesQuery.isFetchingNextPage} onRefresh={onRefresh} />
             }
@@ -395,11 +599,14 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
       </View>
 
       {/* Bottom composer — multiline with smart intent detection */}
-      <KeyboardStickyView
-        offset={{ closed: 0, opened: 0 }}
-        style={{ marginBottom: FLOATING_BOTTOM_OFFSET }}
-      >
-        <View style={[styles.composerWrap, { paddingBottom: floatingBottomPadding(insets.bottom) }]}>
+      {selectionMode ? (
+        <BatchActionBar items={batchActions} />
+      ) : (
+        <KeyboardStickyView
+          offset={{ closed: 0, opened: 0 }}
+          style={{ marginBottom: FLOATING_BOTTOM_OFFSET }}
+        >
+          <View style={[styles.composerWrap, { paddingBottom: floatingBottomPadding(insets.bottom) }]}>
           {/* Intent badge */}
           {captureText.trim().length > 0 && (() => {
             const intent = parseCaptureIntent(captureText);
@@ -468,32 +675,25 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
             </View>
           </View>
         </View>
-      </KeyboardStickyView>
-
-      {/* Action sheet for long-press */}
-      {actionNote && (
-        <Pressable style={styles.actionBackdrop} onPress={dismissAction}>
-          <View style={[styles.actionSheet, { backgroundColor: colors.surface.panel }]}>
-            <Pressable style={styles.actionItem} onPress={() => { void handleAction(actionNote, actionNote.pinned ? 'unpin' : 'pin'); dismissAction(); }}>
-              <Icon source={actionNote.pinned ? 'pin-off' : 'pin'} size={20} color={colors.text.primary} />
-              <Text style={{ color: colors.text.primary }}>{actionNote.pinned ? pm.unpin : pm.pin}</Text>
-            </Pressable>
-            <Pressable style={styles.actionItem} onPress={() => { void handleAction(actionNote, 'archive'); dismissAction(); }}>
-              <Icon source="archive" size={20} color={colors.text.primary} />
-              <Text style={{ color: colors.text.primary }}>{pm.archive}</Text>
-            </Pressable>
-            <Pressable style={styles.actionItem} onPress={() => { void handleAction(actionNote, 'delete'); dismissAction(); }}>
-              <Icon source="delete" size={20} color={colors.semantic.error} />
-              <Text style={{ color: colors.semantic.error }}>{pm.delete}</Text>
-            </Pressable>
-            <Pressable style={styles.actionItem} onPress={dismissAction}>
-              <Text style={{ color: colors.text.tertiary }}>{m.common.cancel}</Text>
-            </Pressable>
-          </View>
-        </Pressable>
+        </KeyboardStickyView>
       )}
 
-      <Snackbar visible={Boolean(snackMsg)} onDismiss={() => setSnackMsg('')} duration={2500}>
+      <BatchDeleteConfirmDialog
+        visible={showBatchDelete}
+        count={selectedCount}
+        onDismiss={() => setShowBatchDelete(false)}
+        onConfirm={() => void handleBatchDelete()}
+      />
+
+      <Snackbar
+        visible={Boolean(snackMsg)}
+        onDismiss={() => {
+          setSnackMsg('');
+          setSnackUndo(null);
+        }}
+        duration={snackUndo ? LIST_DELETE_UNDO_MS : 2500}
+        action={snackUndo ? { label: snackUndo.label, onPress: snackUndo.onPress } : undefined}
+      >
         {snackMsg}
       </Snackbar>
 
@@ -508,6 +708,16 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
           setFocusTagCreate(false);
         }}
         focusCreate={focusTagCreate}
+      />
+
+      <NoteTagPickerSheet
+        visible={batchTagPicker}
+        mode="multi"
+        tags={noteTags}
+        selectedTags={[]}
+        onApplyTags={(tags) => void handleApplyBatchTags(tags)}
+        onCreateTag={handleCreateTagOnly}
+        onDismiss={() => setBatchTagPicker(false)}
       />
     </View>
   );
@@ -590,28 +800,5 @@ const styles = StyleSheet.create({
   recordingBtn: {
     backgroundColor: '#EF4444',
     borderRadius: 18,
-  },
-  actionBackdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  actionSheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 16,
-    gap: 4,
-  },
-  actionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
   },
 });

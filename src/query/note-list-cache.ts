@@ -122,3 +122,72 @@ export function upsertNoteInListCaches(queryClient: QueryClient, entry: NoteInde
     },
   );
 }
+
+function removeFromItems(items: NoteIndexEntry[], noteId: string): {
+  items: NoteIndexEntry[];
+  removed: NoteIndexEntry | null;
+  hadEntry: boolean;
+} {
+  const removed = items.find((item) => item.id === noteId) ?? null;
+  if (!removed) {
+    return { items, removed: null, hadEntry: false };
+  }
+  return {
+    items: items.filter((item) => item.id !== noteId),
+    removed,
+    hadEntry: true,
+  };
+}
+
+/** Optimistically remove a note from list caches; returns removed entry for undo. */
+export function removeNoteFromListCaches(queryClient: QueryClient, noteId: string): NoteIndexEntry | null {
+  let removedEntry: NoteIndexEntry | null = null;
+
+  queryClient.setQueryData<HomeData>(queryKeys.home, (prev) => {
+    if (!prev) return prev;
+    const { items, removed } = removeFromItems(prev.recentlyOpened ?? [], noteId);
+    if (removed) removedEntry = removed;
+    const inboxCount =
+      removed?.status === 'inbox'
+        ? Math.max(0, (prev.inboxCount ?? 0) - 1)
+        : prev.inboxCount ?? 0;
+    return { ...prev, recentlyOpened: items, inboxCount };
+  });
+
+  queryClient.setQueriesData<NotesListResult>(
+    { queryKey: queryKeys.notesAll },
+    (prev) => {
+      if (!prev?.items) return prev;
+      const { items, removed, hadEntry } = removeFromItems(prev.items, noteId);
+      if (removed && !removedEntry) removedEntry = removed;
+      if (!hadEntry) return prev;
+      return {
+        ...prev,
+        items,
+        total: Math.max(0, prev.total - 1),
+      };
+    },
+  );
+
+  queryClient.setQueriesData<InfiniteData<NotesListResult>>(
+    { queryKey: queryKeys.notesAll },
+    (prev) => {
+      if (!prev?.pages?.length) return prev;
+      let changed = false;
+      const pages = prev.pages.map((page) => {
+        const { items, removed, hadEntry } = removeFromItems(page.items ?? [], noteId);
+        if (!hadEntry) return page;
+        if (removed && !removedEntry) removedEntry = removed;
+        changed = true;
+        return {
+          ...page,
+          items,
+          total: Math.max(0, page.total - 1),
+        };
+      });
+      return changed ? { ...prev, pages } : prev;
+    },
+  );
+
+  return removedEntry;
+}

@@ -25,7 +25,17 @@ export type CronRunRow = {
   duration?: number;
   error?: string;
   summary?: string;
+  sessionKey?: string;
+  sessionId?: string;
 };
+
+export function cronRunSessionKey(run: Pick<CronRunRow, 'sessionKey' | 'sessionId'>): string | null {
+  const sk = run.sessionKey?.trim();
+  if (sk) return sk;
+  const sid = run.sessionId?.trim();
+  if (sid) return sid;
+  return null;
+}
 
 export type CreateCronJobInput = {
   name: string;

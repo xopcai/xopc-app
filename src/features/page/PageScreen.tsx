@@ -349,17 +349,6 @@ export function PageScreen() {
     }
   }, [id, queryClient]);
 
-  const handleDoneEdit = useCallback(async () => {
-    if (voiceInput.isActive) {
-      await voiceInput.cancelRecording();
-    }
-    await flushPendingSave();
-    void syncEditsInBackground();
-    refreshViewTitle();
-    Keyboard.dismiss();
-    setScreenMode('view');
-  }, [flushPendingSave, refreshViewTitle, syncEditsInBackground, voiceInput]);
-
   const handleSubmitTitle = useCallback(async () => {
     const currentNote = noteRef.current;
     if (!currentNote) return;
@@ -422,6 +411,20 @@ export function PageScreen() {
     }
   }, [pm.actionFailed, pm.untitledNote, queryClient, refreshViewTitle, titleDraft]);
 
+  const handleDoneEdit = useCallback(async () => {
+    if (voiceInput.isActive) {
+      await voiceInput.cancelRecording();
+    }
+    if (titleEditing) {
+      await handleSubmitTitle();
+    }
+    await flushPendingSave();
+    void syncEditsInBackground();
+    refreshViewTitle();
+    Keyboard.dismiss();
+    setScreenMode('view');
+  }, [flushPendingSave, handleSubmitTitle, refreshViewTitle, syncEditsInBackground, titleEditing, voiceInput]);
+
   const noteAttachments = useNoteAttachments(note, {
     maxAttachmentsReached: pm.editorAttachmentMaxReached,
     attachmentFileTooLarge: pm.editorAttachmentTooLarge,
@@ -482,10 +485,12 @@ export function PageScreen() {
     if (voiceInput.isActive) {
       void voiceInput.cancelRecording();
     }
-    void flushPendingSave()
+    const commitTitle = titleEditing ? handleSubmitTitle() : Promise.resolve();
+    void commitTitle
+      .then(() => flushPendingSave())
       .then(() => syncEditsInBackground())
       .finally(() => router.back());
-  }, [flushPendingSave, router, syncEditsInBackground, voiceInput]);
+  }, [flushPendingSave, handleSubmitTitle, router, syncEditsInBackground, titleEditing, voiceInput]);
 
   const handleFlush = useCallback(async () => {
     await flushPendingSave();
@@ -720,7 +725,7 @@ export function PageScreen() {
               ) : (
                 <Pressable
                   onPress={() => {
-                    setTitleDraft(viewTitle);
+                    setTitleDraft(noteRef.current?.title?.trim() ?? '');
                     setTitleEditing(true);
                   }}
                   accessibilityRole="button"

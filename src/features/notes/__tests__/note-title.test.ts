@@ -19,6 +19,16 @@ describe('deriveNoteTitle', () => {
   it('returns fallback for empty content', () => {
     expect(deriveNoteTitle([createTextBlock('paragraph', '')], 10, '无标题')).toBe('无标题');
   });
+
+  it('skips image markdown and uses attachment transcript', () => {
+    const blocks = [
+      { id: 'img', type: 'image' as const, src: 'data:image/png;base64,abc', createdAt: 1, updatedAt: 1 },
+    ];
+    expect(deriveNoteTitle(blocks, 10, '无标题')).toBe('无标题');
+    expect(
+      deriveNoteTitle(blocks, 10, '无标题', [{ fileName: 'voice.m4a', transcript: '明天开会讨论方案' }]),
+    ).toBe('明天开会讨论方案');
+  });
 });
 
 describe('resolveNoteListTitle', () => {

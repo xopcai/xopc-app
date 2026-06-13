@@ -115,6 +115,22 @@ export function noteToBlocks(note?: Pick<Note, 'text' | 'blocks'> | null): NoteB
 
 // ── Serialization ──────────────────────────────────────────
 
+function blockReadableText(block: NoteBlock): string {
+  if (block.type === 'divider' || block.type === 'image') {
+    return block.type === 'image' ? (block.alt?.trim() ?? '') : '';
+  }
+  if (block.type === 'todo') return block.text.trim();
+  return block.text.trim();
+}
+
+/** Human-readable text for titles, snippets, and search — no markdown or data URIs. */
+export function blocksToReadableText(blocks: NoteBlock[]): string {
+  return blocks
+    .map(blockReadableText)
+    .filter((text) => text.length > 0)
+    .join('\n\n');
+}
+
 export function blocksToPlainText(blocks: NoteBlock[]): string {
   return blocks
     .map((block) => {

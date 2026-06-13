@@ -15,3 +15,9 @@ export function hapticAskAiDismiss(): void {
   if (Platform.OS === 'web') return;
   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 }
+
+/** Entering list multi-select mode */
+export function hapticSelectionEnter(): void {
+  if (Platform.OS === 'web') return;
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+}

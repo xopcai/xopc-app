@@ -1,15 +1,18 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { useCallback, useMemo } from 'react';
-import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, Chip, Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
+import { openChat } from '../../lib/navigation';
 import { useResolvedIsDark } from '../../lib/stack-screen-theme';
-import { fetchCronRunsHistory, RUNS_HISTORY_LIMIT, type CronRunRow } from '../../query/cron';
+import { cronRunSessionKey, fetchCronRunsHistory, RUNS_HISTORY_LIMIT, type CronRunRow } from '../../query/cron';
 import { queryKeys } from '../../query/keys';
 import { useGatewayConfigured } from '../../query/sessions';
 
 export function CronRunsList() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const isDark = useResolvedIsDark();
   const configured = useGatewayConfigured();
@@ -62,12 +65,22 @@ export function CronRunsList() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.cronRunsHistory(RUNS_HISTORY_LIMIT) });
   }, [queryClient]);
 
+  const openRunChat = useCallback(
+    (run: CronRunRow) => {
+      const key = cronRunSessionKey(run);
+      if (!key) return;
+      openChat(router, key);
+    },
+    [router],
+  );
+
   const renderRun = useCallback(
     ({ item }: { item: CronRunRow }) => {
       const jobTitle = item.jobName?.trim() || item.jobId;
       const color = statusColor(item.status);
-      return (
-        <View style={[styles.card, { backgroundColor: cardBg }]}>
+      const sessionKey = cronRunSessionKey(item);
+      const card = (
+        <>
           <View style={styles.cardHeader}>
             <Icon source="play-circle-outline" size={24} color={textSecondary} />
             <View style={styles.cardTitleArea}>
@@ -82,6 +95,7 @@ export function CronRunsList() {
             <View style={[styles.statusPill, { backgroundColor: `${color}18` }]}>
               <Text style={{ color, fontSize: 11, fontWeight: '700' }}>{statusLabel[item.status]}</Text>
             </View>
+            {sessionKey ? <Icon source="chevron-right" size={20} color={textSecondary} /> : null}
           </View>
 
           {item.summary ? (
@@ -95,10 +109,27 @@ export function CronRunsList() {
               {item.error}
             </Text>
           ) : null}
-        </View>
+        </>
+      );
+
+      if (!sessionKey) {
+        return <View style={[styles.card, { backgroundColor: cardBg }]}>{card}</View>;
+      }
+
+      return (
+        <Pressable
+          onPress={() => openRunChat(item)}
+          style={({ pressed }) => [
+            styles.card,
+            { backgroundColor: cardBg },
+            pressed && styles.cardPressed,
+          ]}
+        >
+          {card}
+        </Pressable>
       );
     },
-    [cardBg, isDark, statusColor, statusLabel, textPrimary, textSecondary],
+    [cardBg, isDark, openRunChat, statusColor, statusLabel, textPrimary, textSecondary],
   );
 
   const listHeader = (
@@ -159,6 +190,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 14,
     gap: 6,
+  },
+  cardPressed: {
+    opacity: 0.85,
   },
   cardHeader: {
     flexDirection: 'row',

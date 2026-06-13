@@ -1,6 +1,18 @@
-import type { Note, NoteIndexEntry } from '../../query/notes';
+import type { Note, NoteAttachment, NoteIndexEntry } from '../../query/notes';
 
-import { blocksToPlainText, noteToBlocks, type NoteBlock } from './note-blocks';
+import { blocksToReadableText, noteToBlocks, type NoteBlock } from './note-blocks';
+
+function attachmentPreviewText(
+  attachments?: Pick<NoteAttachment, 'transcript' | 'fileName'>[],
+): string {
+  if (!attachments?.length) return '';
+  for (const attachment of attachments) {
+    const transcript = attachment.transcript?.trim();
+    if (transcript) return transcript;
+  }
+  const named = attachments.find((attachment) => attachment.fileName?.trim());
+  return named?.fileName?.trim() ?? '';
+}
 
 const DEFAULT_LIST_TITLE_MAX = 48;
 const DEFAULT_LIST_SNIPPET_MAX = 160;
@@ -22,8 +34,10 @@ export function resolvePlainTextFromEntry(
   if (snippet) return snippet;
 
   if (cachedNote) {
-    const fromBlocks = blocksToPlainText(noteToBlocks(cachedNote)).trim();
+    const fromBlocks = blocksToReadableText(noteToBlocks(cachedNote)).trim();
     if (fromBlocks) return fromBlocks;
+    const fromAttachments = attachmentPreviewText(cachedNote.attachments);
+    if (fromAttachments) return fromAttachments;
     const text = cachedNote.text?.trim();
     if (text) return text;
   }
@@ -35,28 +49,30 @@ export function deriveNoteTitle(
   blocks: NoteBlock[],
   maxLen = 10,
   fallback = 'Untitled',
+  attachments?: Pick<NoteAttachment, 'transcript' | 'fileName'>[],
 ): string {
-  const plain = blocksToPlainText(blocks).replace(/\s+/g, ' ').trim();
-  if (!plain) return fallback;
-  return Array.from(plain).slice(0, maxLen).join('');
+  const plain = blocksToReadableText(blocks).replace(/\s+/g, ' ').trim();
+  const source = plain || attachmentPreviewText(attachments).replace(/\s+/g, ' ').trim();
+  if (!source) return fallback;
+  return Array.from(source).slice(0, maxLen).join('');
 }
 
 export function resolveDisplayTitle(
-  note: Pick<Note, 'title' | 'text' | 'blocks'> | undefined,
+  note: Pick<Note, 'title' | 'text' | 'blocks' | 'attachments'> | undefined,
   blocks: NoteBlock[],
   fallback: string,
   maxLen = 10,
 ): string {
   const explicitTitle = note?.title?.trim();
   if (explicitTitle) return explicitTitle;
-  return deriveNoteTitle(blocks, maxLen, fallback);
+  return deriveNoteTitle(blocks, maxLen, fallback, note?.attachments);
 }
 
 /** Title for list/index rows; falls back to cached note blocks when the index is stale. */
 export function resolveNoteListTitle(
   entry: Pick<NoteIndexEntry, 'title' | 'snippet'>,
   fallback: string,
-  cachedNote?: Pick<Note, 'title' | 'text' | 'blocks'> | null,
+  cachedNote?: Pick<Note, 'title' | 'text' | 'blocks' | 'attachments'> | null,
   maxLen = 10,
 ): string {
   const explicitTitle = entry.title?.trim();
@@ -65,7 +81,7 @@ export function resolveNoteListTitle(
   if (cachedNote) {
     const cachedTitle = cachedNote.title?.trim();
     if (cachedTitle) return cachedTitle;
-    const derived = deriveNoteTitle(noteToBlocks(cachedNote), maxLen, '');
+    const derived = deriveNoteTitle(noteToBlocks(cachedNote), maxLen, '', cachedNote.attachments);
     if (derived) return derived;
   }
 
@@ -93,7 +109,7 @@ export function resolveNoteListPreview(
   entry: Pick<NoteIndexEntry, 'title' | 'snippet'>,
   options: {
     untitled: string;
-    cachedNote?: Pick<Note, 'title' | 'text' | 'blocks'> | null;
+    cachedNote?: Pick<Note, 'title' | 'text' | 'blocks' | 'attachments'> | null;
     titleMaxLen?: number;
     snippetMaxLen?: number;
   },
@@ -129,12 +145,12 @@ export function normalizeNoteIndexEntry(
   if (raw.snippet?.trim()) return raw;
   const plain =
     raw.text?.trim() ||
-    (raw.blocks?.length ? blocksToPlainText(raw.blocks).trim() : '');
+    (raw.blocks?.length ? blocksToReadableText(raw.blocks).trim() : '');
   if (!plain) return raw;
   const { text: _text, blocks: _blocks, ...entry } = raw;
   return { ...entry, snippet: plain.slice(0, 200) };
 }
 
 export function countNoteCharacters(blocks: NoteBlock[]): number {
-  return Array.from(blocksToPlainText(blocks)).length;
+  return Array.from(blocksToReadableText(blocks)).length;
 }

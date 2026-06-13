@@ -7,7 +7,14 @@ import { Icon, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BatchActionBar } from '../../components/BatchActionBar';
+import { BatchDeleteConfirmDialog } from '../../components/BatchDeleteConfirmDialog';
 import { FloatingHeader } from '../../components/FloatingHeader';
+import { ListSelectionCheckbox } from '../../components/ListSelectionCheckbox';
+import { SwipeableRow, type SwipeRowAction } from '../../components/SwipeableRow';
+import { SwipeHintBanner } from '../../components/SwipeHintBanner';
+import { LIST_DELAY_LONG_PRESS, LIST_DELETE_UNDO_MS } from '../../constants/list-interaction';
+import { useListSelection } from '../../hooks/use-list-selection';
+import { useNoteDeleteWithUndo } from '../../hooks/use-note-delete-with-undo';
 import { useMessages, t } from '../../i18n/messages';
 import { pickAttachmentFromSource, type AttachmentPickSource } from '../chat/attachment-file-io';
 import type { ComposerAttachment } from '../chat/composer.types';
@@ -25,7 +32,6 @@ import { parseCaptureIntent } from '../notes/capture-parser';
 import { flushPendingNotes, queueMediaCapture, queueNote } from '../notes/notes-sync';
 import { QuickCaptureComposer } from '../notes/QuickCaptureComposer';
 import { InboxItemContent } from './InboxItemContent';
-import { InboxSwipeableItem } from './InboxSwipeableItem';
 
 type CapturePayload =
   | { type: 'text'; text: string }
@@ -40,10 +46,21 @@ export function InboxScreen() {
   const m = useMessages();
   const im = m.inboxPage;
   const pm = m.notesPage;
+  const li = m.listInteraction;
   const [captureText, setCaptureText] = useState('');
   const [snackMsg, setSnackMsg] = useState('');
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [snackUndo, setSnackUndo] = useState<{ label: string; onPress: () => void } | null>(null);
+  const [showBatchDelete, setShowBatchDelete] = useState(false);
+  const {
+    selectionMode,
+    selectedIds,
+    selectedCount,
+    exitSelectionMode,
+    enterSelection,
+    startSelection,
+    toggleSelected,
+  } = useListSelection<string>();
+  const { deleteWithUndo } = useNoteDeleteWithUndo(queryClient);
 
   const inboxQuery = useQuery({
     queryKey: queryKeys.notes('inbox'),
@@ -51,17 +68,11 @@ export function InboxScreen() {
   });
 
   const items = inboxQuery.data?.items ?? [];
-  const selectedCount = selectedIds.size;
 
   const invalidateInbox = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.notes('inbox') });
     invalidateHomeFeed(queryClient);
   }, [queryClient]);
-
-  const exitSelectionMode = useCallback(() => {
-    setSelectionMode(false);
-    setSelectedIds(new Set());
-  }, []);
 
   const captureMutation = useMutation({
     mutationFn: async (payload: CapturePayload) => {
@@ -126,6 +137,7 @@ export function InboxScreen() {
     onSuccess: (_data, ids) => {
       setSnackMsg(ids.length > 1 ? t(im.batchDeleted, { count: ids.length }) : pm.deleted);
       exitSelectionMode();
+      setShowBatchDelete(false);
     },
     onError: (err) => setSnackMsg(err instanceof Error ? err.message : pm.actionFailed),
   });
@@ -154,21 +166,6 @@ export function InboxScreen() {
     captureMutation.mutate({ type: 'voice', ...payload });
   }, [captureMutation]);
 
-  const enterSelection = useCallback((item: NoteIndexEntry) => {
-    setSelectionMode(true);
-    setSelectedIds(new Set([item.id]));
-  }, []);
-
-  const toggleSelected = useCallback((itemId: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(itemId)) next.delete(itemId);
-      else next.add(itemId);
-      if (next.size === 0) setSelectionMode(false);
-      return next;
-    });
-  }, []);
-
   const handleItemPress = useCallback((item: NoteIndexEntry) => {
     if (selectionMode) {
       toggleSelected(item.id);
@@ -182,7 +179,7 @@ export function InboxScreen() {
       toggleSelected(item.id);
       return;
     }
-    enterSelection(item);
+    enterSelection(item.id);
   }, [enterSelection, selectionMode, toggleSelected]);
 
   const handleSwipeAction = useCallback((item: NoteIndexEntry, action: 'archive' | 'delete') => {
@@ -190,8 +187,30 @@ export function InboxScreen() {
       archiveMutation.mutate([item.id]);
       return;
     }
-    deleteMutation.mutate([item.id]);
-  }, [archiveMutation, deleteMutation]);
+    const snack = deleteWithUndo(item);
+    setSnackMsg(snack.message);
+    setSnackUndo({ label: snack.undoLabel, onPress: snack.onUndo });
+  }, [archiveMutation, deleteWithUndo]);
+
+  const buildSwipeActions = useCallback(
+    (item: NoteIndexEntry): SwipeRowAction[] => [
+      {
+        key: 'archive',
+        icon: 'archive-arrow-down-outline',
+        label: pm.archive,
+        color: 'blue',
+        onPress: () => handleSwipeAction(item, 'archive'),
+      },
+      {
+        key: 'delete',
+        icon: 'trash-can-outline',
+        label: pm.delete,
+        color: 'red',
+        onPress: () => handleSwipeAction(item, 'delete'),
+      },
+    ],
+    [handleSwipeAction, pm.archive, pm.delete],
+  );
 
   const batchActions = useMemo(() => [
     {
@@ -207,7 +226,7 @@ export function InboxScreen() {
       icon: 'trash-can-outline',
       label: pm.delete,
       destructive: true,
-      onPress: () => deleteMutation.mutate([...selectedIds]),
+      onPress: () => setShowBatchDelete(true),
       disabled: selectedCount === 0 || archiveMutation.isPending || deleteMutation.isPending,
       loading: deleteMutation.isPending,
     },
@@ -226,12 +245,11 @@ export function InboxScreen() {
         ]}
         onPress={() => handleItemPress(item)}
         onLongPress={() => handleItemLongPress(item)}
-        delayLongPress={280}
+        delayLongPress={LIST_DELAY_LONG_PRESS}
+        accessibilityState={selectionMode ? { selected } : undefined}
       >
         {selectionMode ? (
-          <View style={[styles.checkbox, selected && { backgroundColor: colors.accent.primary, borderColor: colors.accent.primary }]}>
-            {selected ? <Icon source="check" size={14} color={colors.text.inverse} /> : null}
-          </View>
+          <ListSelectionCheckbox selected={selected} />
         ) : (
           <View style={styles.itemIcon}>
             <Icon source={NOTE_KIND_ICONS[item.kind] ?? 'lightbulb-outline'} size={20} color="#6D5DFB" />
@@ -241,28 +259,19 @@ export function InboxScreen() {
       </Pressable>
     );
 
-    if (selectionMode) return card;
-
     return (
-      <InboxSwipeableItem
-        archiveLabel={pm.archive}
-        deleteLabel={pm.delete}
-        onAction={(action) => handleSwipeAction(item, action)}
-      >
+      <SwipeableRow actions={buildSwipeActions(item)} borderRadius={20} enabled={!selectionMode}>
         {card}
-      </InboxSwipeableItem>
+      </SwipeableRow>
     );
   }, [
+    buildSwipeActions,
     colors.accent.primary,
     colors.accent.selectionBg,
     colors.border.subtle,
     colors.surface.panel,
-    colors.text.inverse,
     handleItemLongPress,
     handleItemPress,
-    handleSwipeAction,
-    pm.archive,
-    pm.delete,
     selectedIds,
     selectionMode,
   ]);
@@ -274,9 +283,13 @@ export function InboxScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
       <FloatingHeader
-        title={selectionMode ? t(im.selectedCount, { count: selectedCount }) : im.title}
+        title={selectionMode ? t(li.selectedCount, { count: selectedCount }) : im.title}
         onBack={selectionMode ? exitSelectionMode : () => router.back()}
+        rightLabel={selectionMode ? undefined : li.select}
+        onRightLabelPress={selectionMode ? undefined : startSelection}
       />
+
+      <SwipeHintBanner hasItems={!selectionMode && items.length > 0} />
 
       <FlatList
         data={items}
@@ -323,7 +336,23 @@ export function InboxScreen() {
         </KeyboardStickyView>
       )}
 
-      <Snackbar visible={!!snackMsg} onDismiss={() => setSnackMsg('')} duration={2200}>
+      <BatchDeleteConfirmDialog
+        visible={showBatchDelete}
+        count={selectedCount}
+        onDismiss={() => setShowBatchDelete(false)}
+        onConfirm={() => deleteMutation.mutate([...selectedIds])}
+        loading={deleteMutation.isPending}
+      />
+
+      <Snackbar
+        visible={!!snackMsg}
+        onDismiss={() => {
+          setSnackMsg('');
+          setSnackUndo(null);
+        }}
+        duration={snackUndo ? LIST_DELETE_UNDO_MS : 2200}
+        action={snackUndo ? { label: snackUndo.label, onPress: snackUndo.onPress } : undefined}
+      >
         {snackMsg}
       </Snackbar>
     </View>
@@ -353,16 +382,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(109,93,251,0.14)',
-    marginTop: 2,
-  },
-  checkbox: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: 'rgba(120,120,128,0.36)',
-    alignItems: 'center',
-    justifyContent: 'center',
     marginTop: 2,
   },
   emptyWrap: {

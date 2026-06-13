@@ -794,6 +794,19 @@ export const en = {
     error: 'Error',
   },
 
+  listInteraction: {
+    select: 'Select',
+    selectedCount: '{{count}} selected',
+    swipeHint: 'Swipe left for quick archive',
+    undo: 'Undo',
+    batchDeleteTitle: 'Delete selected',
+    batchDeleteMessage: 'Delete {{count}} items? This cannot be undone.',
+    batchDeleteConfirm: 'Delete',
+    batchDeleted: 'Deleted {{count}} items',
+    addTags: 'Tags',
+    rename: 'Rename',
+  },
+
   // ── Share sheet ─────────────────────────────────────────
   share: {
     sheetTitle: 'Share link',

@@ -5,6 +5,7 @@ import {
   blocksToHtml,
   blocksToMarkdown,
   blocksToPlainText,
+  blocksToReadableText,
   createTextBlock,
   createTodoBlock,
   htmlToBlocks,
@@ -40,6 +41,16 @@ describe('note-blocks', () => {
       { id: 'line', type: 'divider', createdAt: 1, updatedAt: 1 },
     ];
     expect(blocksToPlainText(blocks)).toBe('标题\n\n[ ] 跟进需求\n\n[x] 完成设计\n\n---');
+  });
+
+  it('serializes readable text without markdown for media blocks', () => {
+    const blocks: NoteBlock[] = [
+      { id: 'img', type: 'image', src: 'data:image/png;base64,abc', alt: '截图', createdAt: 1, updatedAt: 1 },
+      { id: 'line', type: 'divider', createdAt: 1, updatedAt: 1 },
+      textBlock('a', '正文'),
+    ];
+    expect(blocksToReadableText(blocks)).toBe('截图\n\n正文');
+    expect(blocksToPlainText(blocks)).toContain('![截图](');
   });
 
   it('applies replace, insert, and update patch operations', () => {

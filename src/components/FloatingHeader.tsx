@@ -17,6 +17,8 @@ interface FloatingHeaderProps {
   rightIcon?: string;
   onRightPress?: () => void;
   rightActions?: FloatingHeaderAction[];
+  rightLabel?: string;
+  onRightLabelPress?: () => void;
   searchPlaceholder?: string;
   onSearchPress?: () => void;
 }
@@ -28,6 +30,8 @@ export function FloatingHeader({
   rightIcon,
   onRightPress,
   rightActions,
+  rightLabel,
+  onRightLabelPress,
   searchPlaceholder,
   onSearchPress,
 }: FloatingHeaderProps) {
@@ -35,6 +39,7 @@ export function FloatingHeader({
   const insets = useSafeAreaInsets();
   const backgroundColor = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.05)';
   const actions = rightActions ?? (rightIcon && onRightPress ? [{ icon: rightIcon, onPress: onRightPress }] : []);
+  const showRightCluster = Boolean(rightLabel) || actions.length > 0;
 
   return (
     <View style={[styles.wrap, { paddingTop: insets.top + 8 }]}>
@@ -68,8 +73,20 @@ export function FloatingHeader({
         </View>
       )}
 
-      {actions.length > 0 ? (
+      {showRightCluster ? (
         <View style={styles.actionsRow}>
+          {rightLabel && onRightLabelPress ? (
+            <Pressable
+              style={[styles.labelButton, { backgroundColor }]}
+              onPress={onRightLabelPress}
+              accessibilityRole="button"
+              accessibilityLabel={rightLabel}
+            >
+              <Text numberOfLines={1} style={[styles.rightLabel, { color: colors.accent.primary }]}>
+                {rightLabel}
+              </Text>
+            </Pressable>
+          ) : null}
           {actions.map((action) => (
             <Pressable key={action.icon} style={[styles.iconButton, { backgroundColor }]} onPress={action.onPress}>
               <Icon source={action.icon} size={22} color={colors.text.secondary} />
@@ -133,5 +150,16 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontWeight: '500',
+  },
+  labelButton: {
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  rightLabel: {
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

@@ -9,7 +9,7 @@ import { createOfflineQueue, type OfflineQueue, type QueuedOperation } from '../
 import { storage } from '../../storage/mmkv';
 import { syncNote, updateNote, type Note } from '../../query/notes';
 
-import { blocksToPlainText, type NoteBlock } from './note-blocks';
+import { blocksToReadableText, type NoteBlock } from './note-blocks';
 import { editorAttachmentToSync, type NoteEditorAttachment } from './editor/note-attachment.types';
 
 // ── Local snapshot (instant read) ───────────────────────────
@@ -96,7 +96,7 @@ export function saveLocalNoteEdit(
   const snapshot: LocalNoteSnapshot = {
     ...note,
     blocks,
-    text: blocksToPlainText(blocks),
+    text: blocksToReadableText(blocks),
     updatedAt: Date.now(),
     localVersion,
     syncState: 'pending',

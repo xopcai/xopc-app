@@ -1,20 +1,16 @@
 /**
- * Session list card — displays session info with long-press context menu.
- *
- * Shows session name (or truncated key), message count, relative time,
- * and status badge (pinned/archived). Long-press opens an action menu
- * for rename, pin/unpin, archive/unarchive, and delete.
+ * Session list card — tap to open, long-press for multi-select.
  */
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Icon, Menu, Text } from 'react-native-paper';
+import { Icon, Text } from 'react-native-paper';
 
+import { ListSelectionCheckbox } from '../../components/ListSelectionCheckbox';
+import { LIST_DELAY_LONG_PRESS } from '../../constants/list-interaction';
 import { t, useMessages } from '../../i18n/messages';
 import { sessionDisplayName } from '../../lib/session-helpers';
 import type { SessionListItem } from '../../query/sessions';
 import { useTheme } from '../../theme';
-
-// ── Helpers ──────────────────────────────────────────────────────
 
 function relativeTime(dateStr: string): string {
   const now = Date.now();
@@ -32,134 +28,85 @@ function relativeTime(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
-// ── Types ────────────────────────────────────────────────────────
-
-export type SessionAction = 'open' | 'rename' | 'pin' | 'unpin' | 'archive' | 'unarchive' | 'delete';
-
 type SessionCardProps = {
   session: SessionListItem;
   onPress: () => void;
-  onAction: (action: SessionAction) => void;
+  onLongPress: () => void;
+  selectionMode?: boolean;
+  selected?: boolean;
 };
-
-// ── Component ────────────────────────────────────────────────────
 
 export const SessionCard = memo(function SessionCard({
   session,
   onPress,
-  onAction,
+  onLongPress,
+  selectionMode = false,
+  selected = false,
 }: SessionCardProps) {
   const { colors, isDark } = useTheme();
   const m = useMessages();
-  const [menuVisible, setMenuVisible] = useState(false);
 
   const isPinned = session.status === 'pinned';
   const isArchived = session.status === 'archived';
   const title = useMemo(() => sessionDisplayName(session), [session]);
   const time = useMemo(() => relativeTime(session.updatedAt), [session.updatedAt]);
 
-  const openMenu = useCallback(() => setMenuVisible(true), []);
-  const closeMenu = useCallback(() => setMenuVisible(false), []);
-
-  const handleAction = useCallback(
-    (action: SessionAction) => {
-      closeMenu();
-      onAction(action);
-    },
-    [closeMenu, onAction],
-  );
+  const handlePress = useCallback(() => onPress(), [onPress]);
+  const handleLongPress = useCallback(() => onLongPress(), [onLongPress]);
 
   return (
-    <Menu
-      visible={menuVisible}
-      onDismiss={closeMenu}
-      anchor={
-        <Pressable
-          onPress={onPress}
-          onLongPress={openMenu}
-          delayLongPress={350}
-          android_ripple={{ color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}
-          style={({ pressed }) => [
-            styles.card,
-            {
-              backgroundColor: colors.surface.panel,
-              borderColor: colors.border.default,
-            },
-            pressed && { opacity: 0.85 },
-          ]}
-        >
-          <View style={styles.row}>
-            <View style={styles.content}>
-              <View style={styles.titleRow}>
-                {isPinned ? (
-                  <Icon source="pin" size={14} color={colors.accent.primary} />
-                ) : null}
-                {isArchived ? (
-                  <Icon source="archive" size={14} color={colors.text.secondary} />
-                ) : null}
-                <Text
-                  variant="titleSmall"
-                  numberOfLines={1}
-                  style={[styles.title, isArchived && styles.archivedTitle]}
-                >
-                  {title}
-                </Text>
-              </View>
-              <View style={styles.metaRow}>
-                <Text variant="bodySmall" style={[styles.meta, { color: colors.text.tertiary }]}>
-                  {t(m.sessions.messagesCount, { count: session.messageCount })}
-                </Text>
-                <Text variant="bodySmall" style={[styles.metaDot, { color: colors.text.tertiary }]}>
-                  ·
-                </Text>
-                <Text variant="bodySmall" style={[styles.meta, { color: colors.text.tertiary }]}>
-                  {time}
-                </Text>
-              </View>
-            </View>
-            <Icon source="chevron-right" size={20} color={colors.text.tertiary} />
-          </View>
-        </Pressable>
-      }
+    <Pressable
+      onPress={handlePress}
+      onLongPress={handleLongPress}
+      delayLongPress={LIST_DELAY_LONG_PRESS}
+      android_ripple={{ color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}
+      accessibilityState={selectionMode ? { selected } : undefined}
+      style={({ pressed }) => [
+        styles.card,
+        {
+          backgroundColor: selected ? colors.accent.selectionBg : colors.surface.panel,
+          borderColor: selected ? colors.accent.primary : colors.border.default,
+        },
+        pressed && { opacity: 0.85 },
+      ]}
     >
-      <Menu.Item
-        leadingIcon="pencil-outline"
-        title={m.sessionActions.rename}
-        onPress={() => handleAction('rename')}
-      />
-      {isPinned ? (
-        <Menu.Item
-          leadingIcon="pin-off-outline"
-          title={m.sessionActions.unpin}
-          onPress={() => handleAction('unpin')}
-        />
-      ) : (
-        <Menu.Item
-          leadingIcon="pin-outline"
-          title={m.sessionActions.pin}
-          onPress={() => handleAction('pin')}
-        />
-      )}
-      {isArchived ? (
-        <Menu.Item
-          leadingIcon="archive-arrow-up-outline"
-          title={m.sessionActions.unarchive}
-          onPress={() => handleAction('unarchive')}
-        />
-      ) : (
-        <Menu.Item
-          leadingIcon="archive-outline"
-          title={m.sessionActions.archive}
-          onPress={() => handleAction('archive')}
-        />
-      )}
-      <Menu.Item
-        leadingIcon="delete-outline"
-        title={m.sessionActions.delete}
-        titleStyle={{ color: colors.semantic.errorBold }}
-        onPress={() => handleAction('delete')}
-      />
-    </Menu>
+      <View style={styles.row}>
+        {selectionMode ? (
+          <ListSelectionCheckbox selected={selected} size={28} />
+        ) : null}
+        <View style={styles.content}>
+          <View style={styles.titleRow}>
+            {isPinned ? (
+              <Icon source="pin" size={14} color={colors.accent.primary} />
+            ) : null}
+            {isArchived ? (
+              <Icon source="archive" size={14} color={colors.text.secondary} />
+            ) : null}
+            <Text
+              variant="titleSmall"
+              numberOfLines={1}
+              style={[styles.title, isArchived && styles.archivedTitle]}
+            >
+              {title}
+            </Text>
+          </View>
+          <View style={styles.metaRow}>
+            <Text variant="bodySmall" style={[styles.meta, { color: colors.text.tertiary }]}>
+              {t(m.sessions.messagesCount, { count: session.messageCount })}
+            </Text>
+            <Text variant="bodySmall" style={[styles.metaDot, { color: colors.text.tertiary }]}>
+              ·
+            </Text>
+            <Text variant="bodySmall" style={[styles.meta, { color: colors.text.tertiary }]}>
+              {time}
+            </Text>
+          </View>
+        </View>
+        {!selectionMode ? (
+          <Icon source="chevron-right" size={20} color={colors.text.tertiary} />
+        ) : null}
+      </View>
+    </Pressable>
   );
 });
 
@@ -175,6 +122,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
   },
   content: {
     flex: 1,

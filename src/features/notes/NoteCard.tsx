@@ -2,6 +2,8 @@ import { useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
+import { ListSelectionCheckbox } from '../../components/ListSelectionCheckbox';
+import { LIST_DELAY_LONG_PRESS } from '../../constants/list-interaction';
 import { useMessages } from '../../i18n/messages';
 import type { NoteIndexEntry, NoteStatus } from '../../query/notes';
 import { useTheme } from '../../theme';
@@ -30,9 +32,17 @@ export type NoteCardProps = {
   note: NoteIndexEntry;
   onPress: (note: NoteIndexEntry) => void;
   onLongPress: (note: NoteIndexEntry) => void;
+  selectionMode?: boolean;
+  selected?: boolean;
 };
 
-export function NoteCard({ note, onPress, onLongPress }: NoteCardProps) {
+export function NoteCard({
+  note,
+  onPress,
+  onLongPress,
+  selectionMode = false,
+  selected = false,
+}: NoteCardProps) {
   const { colors } = useTheme();
   const m = useMessages();
   const pm = m.notesPage;
@@ -67,16 +77,26 @@ export function NoteCard({ note, onPress, onLongPress }: NoteCardProps) {
       style={({ pressed }) => [
         styles.card,
         {
-          backgroundColor: pressed ? colors.surface.hover : colors.surface.panel,
+          backgroundColor: selected
+            ? colors.accent.selectionBg
+            : pressed
+              ? colors.surface.hover
+              : colors.surface.panel,
         },
       ]}
       onPress={handlePress}
       onLongPress={handleLongPress}
+      delayLongPress={LIST_DELAY_LONG_PRESS}
+      accessibilityState={selectionMode ? { selected } : undefined}
     >
       <View style={styles.topRow}>
-        <View style={[styles.kindBadge, { backgroundColor: colors.accent.selectionBg }]}>
-          <Icon source={iconName} size={16} color={colors.accent.primary} />
-        </View>
+        {selectionMode ? (
+          <ListSelectionCheckbox selected={selected} size={28} />
+        ) : (
+          <View style={[styles.kindBadge, { backgroundColor: colors.accent.selectionBg }]}>
+            <Icon source={iconName} size={16} color={colors.accent.primary} />
+          </View>
+        )}
         <View style={styles.copy}>
           <Text
             style={[styles.title, { color: colors.text.primary }]}
