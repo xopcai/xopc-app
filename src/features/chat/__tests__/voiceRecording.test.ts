@@ -4,6 +4,8 @@ vi.mock('expo-audio', () => ({
   AudioModule: {
     AudioRecorder: class AudioRecorder {
       isRecording = false;
+      uri = 'file:///tmp/recording.m4a';
+      currentTime = 0;
       getStatus = vi.fn(() => ({ durationMillis: 0, metering: -20 }));
       record = vi.fn(() => {
         this.isRecording = true;
@@ -135,10 +137,11 @@ describe('beginRecording', () => {
   it('polls recorder status for live metering updates', async () => {
     const onStatus = vi.fn();
     const recorder = await beginRecording(onStatus);
+    const getStatus = vi.mocked(recorder.getStatus);
 
     expect(onStatus).toHaveBeenCalledTimes(1);
 
-    recorder.getStatus.mockReturnValue({ durationMillis: 120, metering: -12 });
+    getStatus.mockReturnValue({ durationMillis: 120, metering: -12 } as never);
     await vi.advanceTimersByTimeAsync(100);
     expect(onStatus).toHaveBeenCalledTimes(2);
     expect(onStatus).toHaveBeenLastCalledWith(-12, 120);

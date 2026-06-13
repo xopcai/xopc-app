@@ -589,6 +589,17 @@ export const en = {
     emptyHint: 'Start a chat and it will appear here.',
   },
 
+  inboxPage: {
+    title: 'Inbox',
+    selectedCount: '{{count}} selected',
+    archived: 'Removed from inbox',
+    batchArchived: 'Archived {{count}} items',
+    batchDeleted: 'Deleted {{count}} items',
+    emptyTitle: 'Inbox is clear',
+    emptyHint: 'New ideas land here first — sort them when you are ready.',
+    capturePlaceholder: 'Capture a thought…',
+  },
+
   notesPage: {
     title: 'Notes',
     quickCapturePlaceholder: 'Write down your thought…',

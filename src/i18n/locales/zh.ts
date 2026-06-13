@@ -589,6 +589,17 @@ export const zh: MessageBundle = {
     emptyHint: '开始一次 AI 对话后会显示在这里。',
   },
 
+  inboxPage: {
+    title: 'Inbox',
+    selectedCount: '已选 {{count}} 项',
+    archived: '已从 Inbox 清理',
+    batchArchived: '已归档 {{count}} 条',
+    batchDeleted: '已删除 {{count}} 条',
+    emptyTitle: 'Inbox 已清空',
+    emptyHint: '新想法会先进入这里，再由你整理归类。',
+    capturePlaceholder: '快速记录一条想法…',
+  },
+
   notesPage: {
     title: '笔记',
     quickCapturePlaceholder: '写下你的想法…',
