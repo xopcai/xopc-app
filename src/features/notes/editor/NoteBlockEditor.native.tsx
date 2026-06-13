@@ -142,6 +142,13 @@ function buildEditorCss(colors: ReturnType<typeof useTheme>['colors']): string {
       height: 0;
     }
     a { color: ${colors.accent.primary}; text-decoration: underline; }
+    img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      margin: 8px 0;
+      display: block;
+    }
     ::selection { background: ${colors.accent.selectionBg}; }
   `;
 }
@@ -234,6 +241,16 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
     insertText: (text: string) => {
       editor.injectJS(
         `(function(){var t=${JSON.stringify(text)};window.editor.chain().focus().insertContent(t).run();})()`,
+      );
+    },
+    insertImage: (src: string, alt?: string) => {
+      if (typeof editor.setImage === 'function') {
+        editor.setImage(src);
+        return;
+      }
+      const altAttr = alt ? ` alt=${JSON.stringify(alt)}` : '';
+      editor.injectJS(
+        `(function(){var s=${JSON.stringify(src)};window.editor.chain().focus().insertContent('<img src="'+s+'"${altAttr}>').run();})()`,
       );
     },
     getHTML: () => editor.getHTML(),

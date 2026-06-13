@@ -10,7 +10,8 @@ export type NoteBlockType =
   | 'numberedList'
   | 'quote'
   | 'code'
-  | 'divider';
+  | 'divider'
+  | 'image';
 
 export interface BaseNoteBlock {
   id: string;
@@ -35,7 +36,13 @@ export interface DividerNoteBlock extends BaseNoteBlock {
   type: 'divider';
 }
 
-export type NoteBlock = TextNoteBlock | TodoNoteBlock | DividerNoteBlock;
+export interface ImageNoteBlock extends BaseNoteBlock {
+  type: 'image';
+  src: string;
+  alt?: string;
+}
+
+export type NoteBlock = TextNoteBlock | TodoNoteBlock | DividerNoteBlock | ImageNoteBlock;
 
 // ── AI patch types ─────────────────────────────────────────
 
@@ -66,6 +73,18 @@ export function createTextBlock(type: TextNoteBlock['type'], text = ''): TextNot
     createdAt: now,
     updatedAt: now,
     ...(type === 'heading' ? { level: 2 as const } : null),
+  };
+}
+
+export function createImageBlock(src: string, alt = ''): ImageNoteBlock {
+  const now = Date.now();
+  return {
+    id: createBlockId(),
+    type: 'image',
+    src,
+    alt,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -100,6 +119,7 @@ export function blocksToPlainText(blocks: NoteBlock[]): string {
   return blocks
     .map((block) => {
       if (block.type === 'divider') return '---';
+      if (block.type === 'image') return `![${block.alt ?? 'image'}](${block.src})`;
       if (block.type === 'todo') return `${block.checked ? '[x]' : '[ ]'} ${block.text}`;
       return block.text;
     })
@@ -111,6 +131,7 @@ export function blocksToMarkdown(blocks: NoteBlock[]): string {
   return blocks
     .map((block) => {
       if (block.type === 'divider') return '\n---\n';
+      if (block.type === 'image') return `![${block.alt ?? 'image'}](${block.src})`;
       if (block.type === 'heading') {
         const prefix = '#'.repeat(block.level ?? 2);
         return `${prefix} ${block.text}`;
@@ -129,6 +150,12 @@ export function blocksToMarkdown(blocks: NoteBlock[]): string {
 // ── HTML ↔ blocks conversion (for TipTap bridge) ──────────
 
 const BLOCK_ID_ATTR = 'data-block-id';
+
+function escapeAttr(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;');
+}
 
 function escapeHtml(text: string): string {
   return text
@@ -151,12 +178,25 @@ function blockWithId<T extends NoteBlock>(block: T, id?: string): T {
   return { ...block, id };
 }
 
+function readAttr(attrs: string, name: string): string | undefined {
+  const match = attrs.match(new RegExp(`${name}="([^"]*)"`));
+  return match?.[1];
+}
+
+function unescapeAttr(text: string): string {
+  return text.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+}
+
 /** Convert blocks to HTML suitable for TipTap editor `setContent`. */
 export function blocksToHtml(blocks: NoteBlock[]): string {
   return blocks
     .map((block) => {
       const id = blockIdAttr(block.id);
       if (block.type === 'divider') return `<hr${id}>`;
+      if (block.type === 'image') {
+        const alt = block.alt ? ` alt="${escapeAttr(block.alt)}"` : '';
+        return `<img${id} src="${escapeAttr(block.src)}"${alt}>`;
+      }
       if (block.type === 'heading') {
         const level = block.level ?? 2;
         return `<h${level}${id}>${escapeHtml(block.text)}</h${level}>`;
@@ -212,15 +252,26 @@ export function htmlToBlocks(html: string, previousBlocks: NoteBlock[] = []): No
 
   const blocks: NoteBlock[] = [];
   const tagPattern =
-    /<(h[1-3]|p|ul|ol|blockquote|pre|hr)\b([^>]*)>([\s\S]*?)<\/\1>|<hr\b([^>]*)\s*\/?>/gi;
+    /<(h[1-3]|p|ul|ol|blockquote|pre|hr|img)\b([^>]*)>([\s\S]*?)<\/\1>|<hr\b([^>]*)\s*\/?>|<img\b([^>]*)\s*\/?>/gi;
 
   let match: RegExpExecArray | null;
   while ((match = tagPattern.exec(html)) !== null) {
     const fullMatch = match[0];
-    const tag = (match[1] || 'hr').toLowerCase();
-    const attrs = match[2] || match[4] || '';
+    const tag = (match[1] || (fullMatch.startsWith('<img') ? 'img' : 'hr')).toLowerCase();
+    const attrs = match[2] || match[4] || match[5] || '';
     const inner = match[3] || '';
     const blockId = readBlockId(attrs ? ` ${attrs}` : '');
+
+    if (tag === 'img' || fullMatch.startsWith('<img')) {
+      const src = readAttr(attrs, 'src');
+      if (src) {
+        blocks.push(blockWithId(
+          createImageBlock(unescapeAttr(src), unescapeAttr(readAttr(attrs, 'alt') ?? '')),
+          nextId(blockId, 'image'),
+        ));
+      }
+      continue;
+    }
 
     if (tag === 'hr' || fullMatch.startsWith('<hr')) {
       blocks.push(blockWithId(

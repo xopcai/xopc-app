@@ -22,6 +22,8 @@ export interface UnifiedEditor {
   focus(): void;
   /** Insert plain text at the current cursor position. */
   insertText(text: string): void;
+  /** Insert an inline image at the current cursor position. */
+  insertImage(src: string, alt?: string): void;
   getHTML(): Promise<string> | string;
   setContent(html: string): void;
   /** Delete slash token and run a block command (native slash menu). */

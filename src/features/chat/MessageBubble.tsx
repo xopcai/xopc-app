@@ -203,33 +203,34 @@ export const MessageBubble = memo(function MessageBubble({
   const { colors, isDark } = useTheme();
   const isUser = message.role === 'user' || message.role === 'user-with-attachments';
   const isAssistant = message.role === 'assistant';
+  const contentBlocks = message.content ?? [];
 
   const userText = useMemo(
-    () => (isUser ? userContentText(message.content) : ''),
-    [isUser, message.content],
+    () => (isUser ? userContentText(contentBlocks) : ''),
+    [isUser, contentBlocks],
   );
 
   const userAudio = useMemo(
-    () => (isUser ? userAudioBlocks(message.content) : []),
-    [isUser, message.content],
+    () => (isUser ? userAudioBlocks(contentBlocks) : []),
+    [isUser, contentBlocks],
   );
 
   const displayContent = useMemo(
-    () => (isAssistant ? (message.content ?? []).filter((b) => b.type !== 'image') : (message.content ?? [])),
-    [isAssistant, message.content],
+    () => (isAssistant ? contentBlocks.filter((b) => b.type !== 'image') : contentBlocks),
+    [isAssistant, contentBlocks],
   );
 
   const assistantWorkspacePaths = useMemo(
-    () => (isAssistant ? collectAssistantWorkspaceOutputPaths(message.content) : []),
-    [isAssistant, message.content],
+    () => (isAssistant ? collectAssistantWorkspaceOutputPaths(contentBlocks) : []),
+    [isAssistant, contentBlocks],
   );
 
   const assistantImageBlocks = useMemo(
     () =>
       isAssistant
-        ? (message.content ?? []).filter((b): b is ImageContent => b.type === 'image' && Boolean(b.source?.data))
+        ? contentBlocks.filter((b): b is ImageContent => b.type === 'image' && Boolean(b.source?.data))
         : [],
-    [isAssistant, message.content],
+    [isAssistant, contentBlocks],
   );
 
   const assistantImageAttachments = useMemo(
@@ -242,12 +243,11 @@ export const MessageBubble = memo(function MessageBubble({
 
   const stepsActive = useMemo(() => {
     if (!isAssistant || !isStreaming) return false;
-    const content = message.content ?? [];
-    const stepBlocks = content.filter(
+    const stepBlocks = contentBlocks.filter(
       (b): b is ThinkingContent | ToolUseContent => b.type === 'thinking' || b.type === 'tool_use',
     );
     return isAnyBlockActive(stepBlocks);
-  }, [isAssistant, isStreaming, message.content]);
+  }, [isAssistant, isStreaming, contentBlocks]);
 
   const showProgressDetail =
     Boolean(progress?.detail?.trim()) &&
@@ -257,7 +257,7 @@ export const MessageBubble = memo(function MessageBubble({
     isStreaming &&
     !progress?.message &&
     !stepsActive &&
-    !message.content?.some((b) => b.type === 'thinking' && b.streaming);
+    !contentBlocks.some((b) => b.type === 'thinking' && b.streaming);
 
   const attachmentsForBubble = useMemo(() => {
     if (!isAssistant) return message.attachments;
@@ -272,12 +272,12 @@ export const MessageBubble = memo(function MessageBubble({
 
   const assistantPlainText = useMemo(() => {
     if (!isAssistant) return '';
-    return message.content
+    return contentBlocks
       .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
       .map((b) => b.text)
       .join('\n')
       .trim();
-  }, [isAssistant, message.content]);
+  }, [isAssistant, contentBlocks]);
 
   const assistantCodeText = useMemo(
     () => (assistantPlainText ? extractMarkdownCodeBlocks(assistantPlainText) : ''),

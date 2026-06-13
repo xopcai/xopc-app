@@ -1,27 +1,55 @@
 /**
  * Notes quick-capture offline sync — backed by the unified OfflineQueue.
  *
- * When a quick capture fails (offline), the text is queued and flushed
- * when connectivity resumes. Replaces the previous hand-rolled pending
- * note storage with a generic, tested queue primitive.
+ * Queues text, image, and voice captures when the network call fails.
  */
 import { createOfflineQueue, type OfflineQueue, type QueuedOperation } from '../../sync';
-import { quickCaptureNote } from '../../query/notes';
+import type { NoteKind } from '../../query/notes';
+import { captureNote } from '../../query/notes';
+import type { ComposerAttachment } from '../chat/composer.types';
+import {
+  captureNoteWithComposerAttachment,
+  captureNoteWithQueuedVoice,
+  type QueuedVoiceCapture,
+} from './capture-note-media';
+import { parseCaptureIntent } from './capture-parser';
 
-export interface CapturePayload {
-  text: string;
-}
+export type CaptureQueuePayload =
+  | { type: 'text'; text: string; kind?: NoteKind }
+  | { type: 'attachment'; attachment: ComposerAttachment; text?: string }
+  | ({ type: 'voice' } & QueuedVoiceCapture);
 
-const captureQueue: OfflineQueue<CapturePayload> = createOfflineQueue<CapturePayload>({
+const captureQueue: OfflineQueue<CaptureQueuePayload> = createOfflineQueue<CaptureQueuePayload>({
   namespace: 'notes:capture',
-  processor: async (operation: QueuedOperation<CapturePayload>) => {
-    await quickCaptureNote(operation.payload.text);
+  processor: async (operation: QueuedOperation<CaptureQueuePayload>) => {
+    const { payload } = operation;
+    if (payload.type === 'text') {
+      await captureNote({
+        text: payload.text,
+        kind: payload.kind ?? parseCaptureIntent(payload.text).kind,
+      });
+      return;
+    }
+    if (payload.type === 'attachment') {
+      await captureNoteWithComposerAttachment(payload.attachment, payload.text);
+      return;
+    }
+    await captureNoteWithQueuedVoice(payload);
   },
 });
 
-/** Queue a note for later sync. Returns the operation ID. */
-export function queueNote(text: string): string {
-  return captureQueue.enqueue({ text });
+/** Queue a text note for later sync. Returns the operation ID. */
+export function queueNote(text: string, kind?: NoteKind): string {
+  return captureQueue.enqueue({
+    type: 'text',
+    text,
+    kind: kind ?? parseCaptureIntent(text).kind,
+  });
+}
+
+/** Queue a media capture for later sync. Returns the operation ID. */
+export function queueMediaCapture(payload: Exclude<CaptureQueuePayload, { type: 'text' }>): string {
+  return captureQueue.enqueue(payload);
 }
 
 /** Flush all pending quick-capture notes. Returns count flushed. */
@@ -38,7 +66,11 @@ export function getPendingNoteCount(): number {
 export function getPendingNotes(): Array<{ id: string; text: string; createdAt: number }> {
   return captureQueue.pending().map((op) => ({
     id: op.id,
-    text: op.payload.text,
+    text: op.payload.type === 'text'
+      ? op.payload.text
+      : op.payload.type === 'attachment'
+        ? `[image: ${op.payload.attachment.name}]`
+        : `[voice: ${op.payload.name}]`,
     createdAt: op.createdAt,
   }));
 }

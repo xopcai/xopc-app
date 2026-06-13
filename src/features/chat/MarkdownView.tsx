@@ -9,6 +9,7 @@ import type { ComponentType } from 'react';
 import { memo, useCallback, useMemo } from 'react';
 import { Linking, Platform, Text } from 'react-native';
 
+import { ChatRenderErrorBoundary } from './ChatRenderErrorBoundary';
 import { typography, useTheme, type ColorScheme } from '../../theme';
 
 function createMarkdownStyle(themeColors: ColorScheme, isDark: boolean) {
@@ -98,6 +99,9 @@ type EnrichedProps = {
   allowTrailingMargin?: boolean;
 };
 
+/** Skip native streaming animation for large payloads — reduces native crash risk. */
+const STREAMING_ANIMATION_MAX_CHARS = 8192;
+
 function isExpoGo(): boolean {
   return Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 }
@@ -150,6 +154,43 @@ const PlainMarkdownFallback = memo(function PlainMarkdownFallback({
   );
 });
 
+const EnrichedMarkdownBody = memo(function EnrichedMarkdownBody({
+  content,
+  streaming,
+  allowTrailingMargin,
+  Enriched,
+  markdownStyle,
+  themeColors,
+  onLinkPress,
+}: {
+  content: string;
+  streaming: boolean;
+  allowTrailingMargin: boolean;
+  Enriched: ComponentType<EnrichedProps>;
+  markdownStyle: MarkdownStyle;
+  themeColors: ColorScheme;
+  onLinkPress: (e: { url: string }) => void;
+}) {
+  const useStreamingAnimation =
+    streaming && content.length <= STREAMING_ANIMATION_MAX_CHARS;
+
+  return (
+    <ChatRenderErrorBoundary
+      fallback={<PlainMarkdownFallback content={content} themeColors={themeColors} />}
+    >
+      <Enriched
+        markdown={content}
+        flavor="github"
+        markdownStyle={markdownStyle as EnrichedProps['markdownStyle']}
+        {...(useStreamingAnimation ? { streamingAnimation: true } : {})}
+        onLinkPress={onLinkPress}
+        selectable
+        allowTrailingMargin={allowTrailingMargin}
+      />
+    </ChatRenderErrorBoundary>
+  );
+});
+
 export const MarkdownView = memo(function MarkdownView({
   content,
   streaming = false,
@@ -179,14 +220,14 @@ export const MarkdownView = memo(function MarkdownView({
   }
 
   return (
-    <Enriched
-      markdown={content}
-      flavor="github"
-      markdownStyle={markdownStyle as EnrichedProps['markdownStyle']}
-      {...(streaming ? { streamingAnimation: true } : {})}
-      onLinkPress={handleLinkPress}
-      selectable
+    <EnrichedMarkdownBody
+      content={content}
+      streaming={streaming}
       allowTrailingMargin={allowTrailingMargin}
+      Enriched={Enriched}
+      markdownStyle={markdownStyle}
+      themeColors={colors}
+      onLinkPress={handleLinkPress}
     />
   );
 });

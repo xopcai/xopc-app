@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
@@ -104,6 +105,7 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
       }),
       TaskList,
       TaskItem.configure({ nested: true }),
+      Image.configure({ inline: false, allowBase64: true }),
       slashExtension,
     ],
     content: initialHtml,
@@ -132,6 +134,9 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
       redo: () => { editor.chain().focus().redo().run(); },
       focus: () => { editor.chain().focus().run(); },
       insertText: (text) => { editor.chain().focus().insertContent(text).run(); },
+      insertImage: (src, alt) => {
+        editor.chain().focus().setImage({ src, alt: alt ?? '' }).run();
+      },
       getHTML: () => editor.getHTML(),
       setContent: (html) => { editor.commands.setContent(html); },
     };
@@ -311,6 +316,13 @@ function buildEditorCss(colors: ReturnType<typeof useTheme>['colors']): string {
       height: 0;
     }
     .xopc-editor-container .tiptap a { color: ${colors.accent.primary}; text-decoration: underline; }
+    .xopc-editor-container .tiptap img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      margin: 8px 0;
+      display: block;
+    }
     .xopc-editor-container .tiptap ::selection { background: ${colors.accent.selectionBg ?? 'rgba(109,93,251,0.2)'}; }
   `;
 }

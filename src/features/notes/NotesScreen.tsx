@@ -32,7 +32,7 @@ import { useFlatListEndReached } from '../../lib/use-flat-list-end-reached';
 import {
   deleteNote,
   fetchNotes,
-  quickCaptureNote,
+  captureNote,
   updateNote,
   type NoteIndexEntry,
   type NoteKind,
@@ -49,8 +49,19 @@ import { NoteTagTabs } from './NoteTagTabs';
 import { collectTagsFromNotes, noteMatchesTagFilter, type NoteTagFilter } from './note-tag-utils';
 import { NoteCard } from './NoteCard';
 import { SwipeableNoteCard, type SwipeAction } from './SwipeableNoteCard';
-import { flushPendingNotes, queueNote } from './notes-sync';
+import {
+  captureNoteWithComposerAttachment,
+  captureNoteWithVoice,
+  prepareVoiceCapturePayload,
+} from './capture-note-media';
+import { flushPendingNotes, queueMediaCapture, queueNote } from './notes-sync';
 import { captureIntentBadgeKey, parseCaptureIntent } from './capture-parser';
+import type { ComposerAttachment } from '../chat/composer.types';
+
+type CapturePayload =
+  | { type: 'text'; text: string }
+  | { type: 'attachment'; attachment: ComposerAttachment }
+  | { type: 'voice'; uri: string; durationMillis: number; mimeType: string };
 
 type StatusFilter = 'all' | NoteStatus;
 type KindFilter = 'all' | NoteKind;
@@ -121,21 +132,45 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
   }, [queryClient, notesListQueryKey]);
 
   const captureMutation = useMutation({
-    mutationFn: (text: string) => quickCaptureNote(text),
+    mutationFn: async (payload: CapturePayload) => {
+      if (payload.type === 'text') {
+        const intent = parseCaptureIntent(payload.text);
+        return captureNote({ text: payload.text, kind: intent.kind });
+      }
+      if (payload.type === 'attachment') {
+        return captureNoteWithComposerAttachment(payload.attachment, captureText);
+      }
+      return captureNoteWithVoice(payload);
+    },
     onSuccess: async () => {
+      setCaptureText('');
       await refreshList();
     },
-    onError: (_err, text) => {
-      queueNote(text);
-      setSnackMsg(pm.savedOffline);
+    onError: async (err, payload) => {
+      if (payload.type === 'text') {
+        queueNote(payload.text);
+        setSnackMsg(pm.savedOffline);
+        return;
+      }
+      try {
+        if (payload.type === 'attachment') {
+          queueMediaCapture({ type: 'attachment', attachment: payload.attachment, text: captureText });
+        } else {
+          const queued = await prepareVoiceCapturePayload(payload);
+          queueMediaCapture({ type: 'voice', ...queued });
+        }
+        setCaptureText('');
+        setSnackMsg(pm.savedOffline);
+      } catch {
+        setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
+      }
     },
   });
 
   const handleCapture = useCallback(() => {
     const text = captureText.trim();
     if (!text) return;
-    setCaptureText('');
-    captureMutation.mutate(text);
+    captureMutation.mutate({ type: 'text', text });
   }, [captureText, captureMutation]);
 
   const handleVoiceStart = useCallback(async () => {
@@ -159,7 +194,7 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
       const { uri, durationMillis } = await finishRecording(rec);
       if (!uri || durationMillis < 500) { return; }
       const mimeType = inferRecordingMimeType(uri);
-      captureMutation.mutate(`[voice memo: ${Math.round(durationMillis / 1000)}s]`);
+      captureMutation.mutate({ type: 'voice', uri, durationMillis, mimeType });
     } catch {
       setSnackMsg(pm.actionFailed);
     }
@@ -177,7 +212,7 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
     try {
       const attachment = await pickAttachmentFromSource(source);
       if (!attachment) return;
-      captureMutation.mutate(`[image: ${attachment.name}]`);
+      captureMutation.mutate({ type: 'attachment', attachment });
     } catch (err) {
       if (err instanceof Error && err.message.includes('permission')) {
         setSnackMsg(pm.micDenied);

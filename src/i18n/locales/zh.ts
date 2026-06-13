@@ -751,6 +751,7 @@ export const zh: MessageBundle = {
     editorVoiceNotSupported: '当前环境暂不支持语音输入',
     editorVoiceMicRequired: '需要麦克风权限才能语音输入',
     editorVoiceRecordingFailed: '语音录制失败',
+    editorVoiceSaved: '语音已保存为附件',
     editorInsertImage: '插入图片',
     editorInsertAttachment: '插入附件',
     editorInsertTakePhoto: '拍照',

@@ -20,6 +20,7 @@ import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 import { useKeyboardListPadding } from '../../hooks/use-keyboard-list-padding';
 import { typography } from '../../theme';
 import { GatewayUnreachableTip } from '../gateway/GatewayUnreachableTip';
+import { ChatRenderErrorBoundary } from './ChatRenderErrorBoundary';
 import { MessageBubble } from './MessageBubble';
 import { isLastAssistantMessage } from './composer-send-helpers';
 import type { Message, ProgressState } from './messages.types';
@@ -137,20 +138,30 @@ export const MessageList = memo(function MessageList({
       const isLast = index === messages.length - 1;
       const isStreamRow = streaming && isLast && item.role === 'assistant';
       return (
-        <MessageBubble
-          message={item}
-          isStreaming={isStreamRow}
-          progress={isStreamRow ? progress : null}
-          sessionKey={sessionKey}
-          onUserMessageCopy={onUserMessageCopy}
-          onUserMessageEdit={onUserMessageEdit}
-          onAssistantCopy={onAssistantCopy}
-          onAssistantRegenerate={
-            onAssistantRegenerate && isLastAssistantMessage(messages, index)
-              ? () => onAssistantRegenerate(index)
-              : undefined
+        <ChatRenderErrorBoundary
+          fallback={
+            <View style={styles.bubbleError}>
+              <Text variant="bodySmall" style={styles.bubbleErrorText}>
+                Unable to display this message.
+              </Text>
+            </View>
           }
-        />
+        >
+          <MessageBubble
+            message={item}
+            isStreaming={isStreamRow}
+            progress={isStreamRow ? progress : null}
+            sessionKey={sessionKey}
+            onUserMessageCopy={onUserMessageCopy}
+            onUserMessageEdit={onUserMessageEdit}
+            onAssistantCopy={onAssistantCopy}
+            onAssistantRegenerate={
+              onAssistantRegenerate && isLastAssistantMessage(messages, index)
+                ? () => onAssistantRegenerate(index)
+                : undefined
+            }
+          />
+        </ChatRenderErrorBoundary>
       );
     },
     [messages, onUserMessageCopy, onUserMessageEdit, onAssistantCopy, onAssistantRegenerate, streaming, progress, sessionKey],
@@ -337,5 +348,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
+  },
+  bubbleError: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  bubbleErrorText: {
+    ...typography.label,
+    fontStyle: 'italic',
+    opacity: 0.6,
   },
 });

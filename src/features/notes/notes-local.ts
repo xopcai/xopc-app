@@ -60,15 +60,21 @@ const editQueue: OfflineQueue<EditSyncPayload> = createOfflineQueue<EditSyncPayl
   processor: async (operation: QueuedOperation<EditSyncPayload>) => {
     const { noteId, blocks, text, localVersion, baseRemoteVersion, attachments } = operation.payload;
     const syncResult = await syncNote({ noteId, blocks, text, localVersion, baseRemoteVersion });
+    let mergedNote = syncResult.note;
     if (attachments?.length) {
-      await updateNote(noteId, {
+      mergedNote = await updateNote(noteId, {
         attachments: attachments.map(editorAttachmentToSync),
       });
     }
-    // Update local snapshot on success
     const snapshot = readLocalNote(noteId);
     if (snapshot && snapshot.localVersion === localVersion) {
-      writeLocalNote({ ...snapshot, ...syncResult.note, blocks, syncState: 'synced' });
+      writeLocalNote({
+        ...snapshot,
+        ...mergedNote,
+        blocks,
+        syncState: 'synced',
+        pendingAttachments: undefined,
+      });
     }
   },
   maxRetries: 8,

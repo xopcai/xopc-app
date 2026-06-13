@@ -751,6 +751,7 @@ export const en = {
     editorVoiceNotSupported: 'Voice input is not supported in this environment',
     editorVoiceMicRequired: 'Microphone permission required for voice input',
     editorVoiceRecordingFailed: 'Could not record voice',
+    editorVoiceSaved: 'Voice saved as attachment',
     editorInsertImage: 'Insert image',
     editorInsertAttachment: 'Insert attachment',
     editorInsertTakePhoto: 'Take photo',

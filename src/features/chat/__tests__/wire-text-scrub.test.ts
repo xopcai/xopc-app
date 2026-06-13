@@ -61,6 +61,20 @@ Short description.
 `;
     expect(collapseExpandedSkillBlockForDisplay(expanded)).toBe('/skill:babysit user trailing text');
   });
+
+  it('preserves user text before the expanded skill block', () => {
+    const expanded = `Hello there
+
+## Skill: babysit
+
+Short description.
+
+**Arguments**: run checks
+`;
+    expect(collapseExpandedSkillBlockForDisplay(expanded)).toBe(
+      'Hello there\n\n/skill:babysit run checks',
+    );
+  });
 });
 
 describe('parseSessionMessages startup context', () => {

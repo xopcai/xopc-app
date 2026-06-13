@@ -35,6 +35,9 @@ import { useNoteTagsStore } from '../../stores/note-tags-store';
 import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding, useTheme } from '../../theme';
 
 import { NoteAiPanel } from '../notes/ai/NoteAiPanel';
+import { readUriAsBase64 } from '../chat/attachment-file-io';
+import { composerAttachmentFromBase64 } from '../chat/attachment-file-io-core';
+import { pickAttachmentFromSource } from '../chat/attachment-file-io';
 import { ComposerAttachmentStrip } from '../chat/composer-attachment-strip';
 import { NoteBlockEditor } from '../notes/editor/NoteBlockEditor';
 import { EditorActionBar } from '../notes/editor/EditorActionBar';
@@ -42,6 +45,7 @@ import { EditorInsertMenu } from '../notes/editor/EditorInsertMenu';
 import { NoteVoiceInputBar } from '../notes/editor/NoteVoiceInputBar';
 import { useNoteAttachments } from '../notes/editor/useNoteAttachments';
 import { useNoteVoiceInput } from '../notes/editor/useNoteVoiceInput';
+import { inlineImageDataUri } from '../notes/editor/editor-inline-image';
 import type { NoteEditorAttachment } from '../notes/editor/note-attachment.types';
 import { useDebouncedCallback } from '../notes/editor/useDebouncedCallback';
 import type { UnifiedEditor } from '../notes/editor/types';
@@ -129,6 +133,7 @@ export function PageScreen() {
   const attachmentsRef = useRef<NoteEditorAttachment[]>([]);
   const noteRef = useRef<Note | undefined>(undefined);
   const editorRef = useRef<UnifiedEditor | null>(null);
+  const syncInFlightRef = useRef(false);
   blocksRef.current = blocks;
 
   const noteQuery = useQuery({
@@ -294,8 +299,31 @@ export function PageScreen() {
     liveEditor.focus();
   }, []);
 
+  const handleVoiceCaptured = useCallback(async (payload: {
+    uri: string;
+    durationMillis: number;
+    mimeType: string;
+  }) => {
+    if (attachmentsRef.current.length >= 24) {
+      setSnackMsg(pm.editorAttachmentMaxReached);
+      return;
+    }
+    const name = payload.mimeType.includes('mpeg') ? 'voice.mp3' : 'voice.m4a';
+    const { content, size } = await readUriAsBase64(payload.uri, name);
+    const voiceAtt = composerAttachmentFromBase64({
+      uri: payload.uri,
+      name,
+      mimeType: payload.mimeType,
+      content,
+      size,
+    });
+    persistAttachments([...attachmentsRef.current, voiceAtt]);
+    setSnackMsg(pm.editorVoiceSaved);
+  }, [persistAttachments, pm.editorAttachmentMaxReached, pm.editorVoiceSaved]);
+
   const voiceInput = useNoteVoiceInput({
     onTranscription: handleVoiceTranscription,
+    onVoiceCaptured: handleVoiceCaptured,
     onMessage: setSnackMsg,
     messages: {
       voiceNotSupported: pm.editorVoiceNotSupported,
@@ -307,15 +335,30 @@ export function PageScreen() {
     },
   });
 
+  const syncEditsInBackground = useCallback(async () => {
+    if (syncInFlightRef.current) return;
+    syncInFlightRef.current = true;
+    try {
+      await flushPendingNoteOperations();
+      if (id) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.note(id) });
+      }
+      setLocalNote(id ? readLocalNote(id) : null);
+    } finally {
+      syncInFlightRef.current = false;
+    }
+  }, [id, queryClient]);
+
   const handleDoneEdit = useCallback(async () => {
     if (voiceInput.isActive) {
       await voiceInput.cancelRecording();
     }
     await flushPendingSave();
+    void syncEditsInBackground();
     refreshViewTitle();
     Keyboard.dismiss();
     setScreenMode('view');
-  }, [flushPendingSave, refreshViewTitle, voiceInput]);
+  }, [flushPendingSave, refreshViewTitle, syncEditsInBackground, voiceInput]);
 
   const handleSubmitTitle = useCallback(async () => {
     const currentNote = noteRef.current;
@@ -399,16 +442,31 @@ export function PageScreen() {
       return;
     }
     try {
-      const added = await noteAttachments.addFromSource(source);
-      if (added) {
-        editorRef.current?.focus();
-        setSnackMsg(pm.editorAttachmentAdded);
+      if (source === 'document') {
+        const added = await noteAttachments.addFromSource(source);
+        if (added) {
+          editorRef.current?.focus();
+          setSnackMsg(pm.editorAttachmentAdded);
+        }
+        return;
       }
+
+      const picked = await pickAttachmentFromSource(source);
+      if (!picked) return;
+      const dataUri = inlineImageDataUri(picked);
+      if (!dataUri) {
+        setSnackMsg(pm.editorAttachmentLoadFailed.replace('{{name}}', picked.name));
+        return;
+      }
+      editorRef.current?.insertImage(dataUri, picked.name);
+      editorRef.current?.focus();
+      persistAttachments([...attachmentsRef.current, picked]);
+      setSnackMsg(pm.editorAttachmentAdded);
     } catch (error) {
       const message = noteAttachments.mapPickError(error);
       if (message) setSnackMsg(message);
     }
-  }, [noteAttachments, pm]);
+  }, [noteAttachments, persistAttachments, pm]);
 
   const handleAttachmentPress = useCallback(() => {
     void handlePickImageSource('document');
@@ -424,8 +482,10 @@ export function PageScreen() {
     if (voiceInput.isActive) {
       void voiceInput.cancelRecording();
     }
-    void flushPendingSave().finally(() => router.back());
-  }, [flushPendingSave, router, voiceInput]);
+    void flushPendingSave()
+      .then(() => syncEditsInBackground())
+      .finally(() => router.back());
+  }, [flushPendingSave, router, syncEditsInBackground, voiceInput]);
 
   const handleFlush = useCallback(async () => {
     await flushPendingSave();

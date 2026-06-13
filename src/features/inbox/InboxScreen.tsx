@@ -11,14 +11,17 @@ import { FloatingHeader } from '../../components/FloatingHeader';
 import { useMessages, t } from '../../i18n/messages';
 import { pickAttachmentFromSource, type AttachmentPickSource } from '../chat/attachment-file-io';
 import type { ComposerAttachment } from '../chat/composer.types';
-import { deleteNote, fetchNotes, quickCaptureNote, updateNote, type NoteIndexEntry, type NoteKind } from '../../query/notes';
+import { deleteNote, fetchNotes, captureNote, updateNote, type NoteIndexEntry, type NoteKind } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
 import { invalidateHomeFeed } from '../../query/workspace-sync';
 import { useTheme, FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
 import {
   captureNoteWithComposerAttachment,
   captureNoteWithVoice,
+  prepareVoiceCapturePayload,
 } from '../notes/capture-note-media';
+import { parseCaptureIntent } from '../notes/capture-parser';
+import { flushPendingNotes, queueMediaCapture, queueNote } from '../notes/notes-sync';
 import { QuickCaptureComposer } from '../notes/QuickCaptureComposer';
 import { InboxSwipeableItem } from './InboxSwipeableItem';
 
@@ -71,10 +74,11 @@ export function InboxScreen() {
   const captureMutation = useMutation({
     mutationFn: async (payload: CapturePayload) => {
       if (payload.type === 'text') {
-        return quickCaptureNote(payload.text);
+        const intent = parseCaptureIntent(payload.text);
+        return captureNote({ text: payload.text, kind: intent.kind });
       }
       if (payload.type === 'attachment') {
-        return captureNoteWithComposerAttachment(payload.attachment);
+        return captureNoteWithComposerAttachment(payload.attachment, captureText);
       }
       return captureNoteWithVoice(payload);
     },
@@ -82,7 +86,22 @@ export function InboxScreen() {
       setCaptureText('');
       await invalidateInbox();
     },
-    onError: (err) => setSnackMsg(err instanceof Error ? err.message : pm.actionFailed),
+    onError: async (err, payload) => {
+      try {
+        if (payload.type === 'text') {
+          queueNote(payload.text);
+        } else if (payload.type === 'attachment') {
+          queueMediaCapture({ type: 'attachment', attachment: payload.attachment, text: captureText });
+        } else {
+          const queued = await prepareVoiceCapturePayload(payload);
+          queueMediaCapture({ type: 'voice', ...queued });
+        }
+        setCaptureText('');
+        setSnackMsg(pm.savedOffline);
+      } catch {
+        setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
+      }
+    },
   });
 
   const archiveIds = useCallback(async (ids: string[]) => {
@@ -287,7 +306,10 @@ export function InboxScreen() {
         refreshControl={
           <RefreshControl
             refreshing={inboxQuery.isFetching}
-            onRefresh={() => void inboxQuery.refetch()}
+            onRefresh={async () => {
+              await flushPendingNotes();
+              await inboxQuery.refetch();
+            }}
           />
         }
         ListEmptyComponent={

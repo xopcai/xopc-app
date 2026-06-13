@@ -27,6 +27,13 @@ function normalizeRel(path: string): string {
   return path.replace(/\\/g, '/').replace(/^\/+/, '');
 }
 
+function artifactRowKey(path: ExtractedFilePath, index: number): string {
+  const rel = path.workspaceRelativePath?.replace(/\\/g, '/').trim();
+  if (rel) return `rel:${rel}`;
+  if (path.absolutePath) return `abs:${path.absolutePath}`;
+  return `artifact-${index}`;
+}
+
 function rawPath(rel: string, sessionKey?: string | null): string {
   const params = new URLSearchParams({ path: rel });
   const sk = sessionKey?.trim();
@@ -228,8 +235,8 @@ export function WorkspaceArtifactStrip({
   return (
     <>
       <View style={styles.wrap}>
-        {imagePaths.map((p) => (
-          <View key={p.absolutePath} style={[styles.thumb, { borderColor: border }]}>
+        {imagePaths.map((p, index) => (
+          <View key={artifactRowKey(p, index)} style={[styles.thumb, { borderColor: border }]}>
             <Pressable
               style={({ pressed }) => [styles.thumbFill, pressed && styles.pressed]}
               onPress={() => setActive(toPreviewable(p))}
@@ -253,9 +260,9 @@ export function WorkspaceArtifactStrip({
             </Pressable>
           </View>
         ))}
-        {otherPaths.map((p) => (
+        {otherPaths.map((p, index) => (
           <View
-            key={p.absolutePath}
+            key={artifactRowKey(p, index)}
             style={[styles.chip, { borderColor: border, backgroundColor: chipBg }]}
           >
             <Pressable
@@ -279,9 +286,9 @@ export function WorkspaceArtifactStrip({
             </Pressable>
           </View>
         ))}
-        {nonWorkspacePaths.map((p) => (
+        {nonWorkspacePaths.map((p, index) => (
           <OffWorkspaceArtifactCard
-            key={p.absolutePath}
+            key={artifactRowKey(p, index)}
             path={p}
             refInfo={p.refInfo}
             border={border}

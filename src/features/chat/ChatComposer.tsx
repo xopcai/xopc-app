@@ -289,10 +289,20 @@ export const ChatComposer = memo(function ChatComposer({
     setInputHeight(MIN_COMPOSER_INPUT_HEIGHT);
   }, [isFocused, draft.length]);
 
-  const updateDraft = useCallback(
+  /** Typing updates draft only; cursor comes from TextInput selection events. */
+  const onDraftInputChange = useCallback(
     (nextDraft: string) => {
       setDraft(nextDraft);
-      setCursorPos(nextDraft.length);
+      setInputHeight(estimateComposerInputHeight(nextDraft, inputWidth || undefined));
+    },
+    [inputWidth],
+  );
+
+  /** Programmatic draft updates (palette, suggestions, restore) set cursor explicitly. */
+  const updateDraft = useCallback(
+    (nextDraft: string, nextCursor = nextDraft.length) => {
+      setDraft(nextDraft);
+      setCursorPos(nextCursor);
       setInputHeight(estimateComposerInputHeight(nextDraft, inputWidth || undefined));
     },
     [inputWidth],
@@ -743,7 +753,7 @@ export const ChatComposer = memo(function ChatComposer({
     placeholder: composerPlaceholder,
     placeholderTextColor: colors.text.tertiary,
     value: draft,
-    onChangeText: updateDraft,
+    onChangeText: onDraftInputChange,
     onCursorChange: setCursorPos,
     cursorPos,
     isDark,

@@ -19,6 +19,7 @@ export type NoteVoiceInputPhase = 'idle' | 'recording' | 'transcribing';
 
 export interface UseNoteVoiceInputOptions {
   onTranscription: (text: string) => void;
+  onVoiceCaptured?: (payload: { uri: string; durationMillis: number; mimeType: string }) => void | Promise<void>;
   onMessage: (message: string) => void;
   messages: {
     voiceNotSupported: string;
@@ -41,6 +42,7 @@ export function formatVoiceDuration(ms: number): string {
 
 export function useNoteVoiceInput({
   onTranscription,
+  onVoiceCaptured,
   onMessage,
   messages,
 }: UseNoteVoiceInputOptions) {
@@ -86,10 +88,19 @@ export function useNoteVoiceInput({
         return;
       }
 
-      const result = await transcribeVoice(uri, inferRecordingMimeType(uri));
+      const mimeType = inferRecordingMimeType(uri);
+      let attachmentSaved = false;
+      try {
+        await onVoiceCaptured?.({ uri, durationMillis: recordedMs, mimeType });
+        attachmentSaved = true;
+      } catch {
+        /* attachment save is best-effort */
+      }
+
+      const result = await transcribeVoice(uri, mimeType);
       const text = (result.refined || result.raw).trim();
       if (!text) {
-        onMessage(messages.noVoiceContent);
+        if (!attachmentSaved) onMessage(messages.noVoiceContent);
         return;
       }
       onTranscription(text);
@@ -99,7 +110,7 @@ export function useNoteVoiceInput({
       setPhase('idle');
       setMeterSamples([]);
     }
-  }, [clearMaxTimer, messages, onMessage, onTranscription, phase]);
+  }, [clearMaxTimer, messages, onMessage, onTranscription, onVoiceCaptured, phase]);
 
   const startRecording = useCallback(async () => {
     if (phase !== 'idle') return;

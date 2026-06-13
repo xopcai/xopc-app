@@ -9,6 +9,15 @@ import {
 } from '../../query/notes';
 import { editorAttachmentToSync } from './editor/note-attachment.types';
 
+export type QueuedVoiceCapture = {
+  content: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  durationMillis: number;
+  transcript?: string;
+};
+
 function kindForComposerAttachment(att: ComposerAttachment): NoteKind {
   if (att.type === 'image' || att.mimeType.startsWith('image/')) return 'media';
   return 'mixed';
@@ -50,6 +59,15 @@ export async function captureNoteWithVoice(payload: {
   durationMillis: number;
   mimeType: string;
 }): Promise<{ note: { id: string } }> {
+  const queued = await prepareVoiceCapturePayload(payload);
+  return captureNoteWithQueuedVoice(queued);
+}
+
+export async function prepareVoiceCapturePayload(payload: {
+  uri: string;
+  durationMillis: number;
+  mimeType: string;
+}): Promise<QueuedVoiceCapture> {
   const mimeType = payload.mimeType || inferRecordingMimeType(payload.uri);
   const name = mimeType.includes('mpeg') ? 'voice.mp3' : 'voice.m4a';
   const { content, size } = await readUriAsBase64(payload.uri, name);
@@ -62,17 +80,30 @@ export async function captureNoteWithVoice(payload: {
     /* STT optional — still save the recording */
   }
 
+  return {
+    content,
+    name,
+    mimeType,
+    size,
+    durationMillis: payload.durationMillis,
+    transcript,
+  };
+}
+
+export async function captureNoteWithQueuedVoice(
+  payload: QueuedVoiceCapture,
+): Promise<{ note: { id: string } }> {
   return captureNote({
-    text: transcript ?? '',
+    text: payload.transcript ?? '',
     kind: 'voice',
     attachments: [
       voiceAttachmentToSync({
-        content,
-        name,
-        mimeType,
-        size,
+        content: payload.content,
+        name: payload.name,
+        mimeType: payload.mimeType,
+        size: payload.size,
         durationMillis: payload.durationMillis,
-        transcript,
+        transcript: payload.transcript,
       }),
     ],
   });

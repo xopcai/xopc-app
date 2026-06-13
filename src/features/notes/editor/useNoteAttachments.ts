@@ -40,12 +40,20 @@ export function useNoteAttachments(
   const [attachments, setAttachments] = useState<NoteEditorAttachment[]>([]);
   const attachmentsRef = useRef(attachments);
   attachmentsRef.current = attachments;
-  const loadedNoteIdRef = useRef<string | null>(null);
+  const loadedAttachmentKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!note?.id) return;
-    if (loadedNoteIdRef.current === note.id) return;
-    loadedNoteIdRef.current = note.id;
+    const local = note as LocalNoteSnapshot | undefined;
+    const attachmentKey = [
+      note.id,
+      note.updatedAt,
+      local?.syncState ?? 'synced',
+      note.attachments?.length ?? 0,
+      local?.pendingAttachments?.length ?? 0,
+    ].join(':');
+    if (loadedAttachmentKeyRef.current === attachmentKey) return;
+    loadedAttachmentKeyRef.current = attachmentKey;
     setAttachments(attachmentsFromNote(note, apiUrl));
   }, [apiUrl, note]);
 

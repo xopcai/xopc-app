@@ -222,4 +222,12 @@ describe('blocksToMarkdown', () => {
     ];
     expect(blocksToMarkdown(blocks)).toBe('- [x] Done\n\n- [ ] Open');
   });
+
+  it('round-trips inline image blocks through html', () => {
+    const src = 'data:image/png;base64,abc123';
+    const html = blocksToHtml([{ id: 'img-1', type: 'image', src, alt: 'shot', createdAt: 1, updatedAt: 1 }]);
+    const blocks = htmlToBlocks(html);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({ type: 'image', src, alt: 'shot' });
+  });
 });

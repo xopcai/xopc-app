@@ -1,24 +1,57 @@
 import { memo, useMemo, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
+import { useGatewayStore } from '../../stores/gateway-store';
+import { AudioMessageBlock } from './AudioMessageBlock';
 import type { ComposerAttachment } from './composer.types';
 import { FilePreviewModal, type PreviewableFile } from './FilePreviewModal';
+import type { AudioContent } from './messages.types';
+
+function isAudioAttachment(att: ComposerAttachment): boolean {
+  return att.mimeType.startsWith('audio/');
+}
+
+function isImageAttachment(att: ComposerAttachment): boolean {
+  return att.type === 'image' || att.mimeType.startsWith('image/');
+}
 
 function attachmentToPreviewable(att: ComposerAttachment): PreviewableFile {
+  const isImage = isImageAttachment(att);
   return {
     name: att.name,
     mimeType: att.mimeType,
     contentBase64: att.content,
+    remoteUri: isImage && !att.content && att.localUri ? att.localUri : undefined,
+  };
+}
+
+function attachmentToAudioContent(att: ComposerAttachment): AudioContent {
+  let uri: string | undefined;
+  if (att.localUri) {
+    uri = att.localUri;
+  } else if (att.content) {
+    uri = `data:${att.mimeType};base64,${att.content}`;
+  }
+  return {
+    type: 'audio',
+    uri,
+    mimeType: att.mimeType,
+    name: att.name,
   };
 }
 
 function thumbnailUri(att: ComposerAttachment): string | null {
+  if (!isImageAttachment(att)) return null;
   if (att.localUri) return att.localUri;
-  if (att.type === 'image' && att.content) {
+  if (att.content) {
     return `data:${att.mimeType};base64,${att.content}`;
   }
   return null;
+}
+
+function needsAuthHeaders(uri: string): boolean {
+  return uri.startsWith('http://') || uri.startsWith('https://');
 }
 
 export const ComposerAttachmentStrip = memo(function ComposerAttachmentStrip({
@@ -33,10 +66,13 @@ export const ComposerAttachmentStrip = memo(function ComposerAttachmentStrip({
   readOnly?: boolean;
 }) {
   const scheme = useColorScheme();
+  const token = useGatewayStore((s) => s.token);
   const [preview, setPreview] = useState<PreviewableFile | null>(null);
+  const [audioPreview, setAudioPreview] = useState<AudioContent | null>(null);
   const border = scheme === 'dark' ? '#3A3A3C' : '#E5E5EA';
   const chipBg = scheme === 'dark' ? 'rgba(255,255,255,0.08)' : '#FFFFFF';
   const muted = scheme === 'dark' ? '#8E8E93' : '#6D6D70';
+  const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
 
   const items = useMemo(() => attachments.filter(Boolean), [attachments]);
   if (!items.length) return null;
@@ -52,19 +88,33 @@ export const ComposerAttachmentStrip = memo(function ComposerAttachmentStrip({
       >
         {items.map((att, index) => {
           const uri = thumbnailUri(att);
+          const audio = isAudioAttachment(att);
           return (
             <View key={att.id} style={[styles.tileWrap, { borderColor: border }]}>
               <Pressable
                 style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
-                onPress={() => setPreview(attachmentToPreviewable(att))}
+                onPress={() => {
+                  if (audio) {
+                    setAudioPreview(attachmentToAudioContent(att));
+                    return;
+                  }
+                  setPreview(attachmentToPreviewable(att));
+                }}
                 accessibilityRole="button"
                 accessibilityLabel={att.name}
               >
                 {uri ? (
-                  <Image source={{ uri }} style={styles.image} resizeMode="cover" />
+                  <Image
+                    source={{
+                      uri,
+                      ...(needsAuthHeaders(uri) && authHeaders ? { headers: authHeaders } : {}),
+                    }}
+                    style={styles.image}
+                    resizeMode="cover"
+                  />
                 ) : (
                   <View style={[styles.docTile, { backgroundColor: chipBg }]}>
-                    <Icon source="file-outline" size={28} color={muted} />
+                    <Icon source={audio ? 'microphone' : 'file-outline'} size={28} color={muted} />
                     <Text style={[styles.docName, { color: muted }]} numberOfLines={2}>
                       {att.name}
                     </Text>
@@ -89,6 +139,18 @@ export const ComposerAttachmentStrip = memo(function ComposerAttachmentStrip({
         })}
       </ScrollView>
       <FilePreviewModal visible={Boolean(preview)} file={preview} onClose={() => setPreview(null)} />
+      <Modal
+        visible={Boolean(audioPreview)}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setAudioPreview(null)}
+      >
+        <Pressable style={styles.audioBackdrop} onPress={() => setAudioPreview(null)}>
+          <Pressable style={[styles.audioSheet, { backgroundColor: chipBg, borderColor: border }]} onPress={() => {}}>
+            {audioPreview ? <AudioMessageBlock audio={audioPreview} /> : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </>
   );
 });
@@ -149,5 +211,19 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.85,
+  },
+  audioBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  audioSheet: {
+    width: '100%',
+    maxWidth: 320,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 12,
   },
 });
