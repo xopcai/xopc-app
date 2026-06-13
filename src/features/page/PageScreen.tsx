@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMessages, t } from '../../i18n/messages';
 import { openChat } from '../../lib/navigation';
 import { queryKeys } from '../../query/keys';
+import { noteToIndexEntry, upsertNoteInListCaches } from '../../query/note-list-cache';
 import { invalidateNoteLists, invalidateSessionLists } from '../../query/workspace-sync';
 import {
   createTask,
@@ -139,6 +140,11 @@ export function PageScreen() {
     [localNote, noteQuery.data],
   );
   noteRef.current = note;
+
+  useEffect(() => {
+    if (!noteQuery.data) return;
+    upsertNoteInListCaches(queryClient, noteToIndexEntry(noteQuery.data));
+  }, [noteQuery.data, queryClient]);
 
   const isEditing = screenMode === 'edit';
 
@@ -359,7 +365,7 @@ export function PageScreen() {
         writeLocalNote(nextSnapshot);
         return nextSnapshot;
       });
-      await invalidateNoteLists(queryClient);
+      upsertNoteInListCaches(queryClient, noteToIndexEntry(mergedNote));
     } catch (err) {
       setSnackMsg(err instanceof Error ? err.message : pm.actionFailed);
       refreshViewTitle();

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
@@ -11,6 +11,7 @@ import { queryKeys } from '../../query/keys';
 import { fetchHome } from '../../query/home';
 import { resolveNoteListTitle } from '../notes/note-title';
 import { readLocalNote } from '../notes/notes-local';
+import { blankNoteIndexEntry, upsertNoteInListCaches } from '../../query/note-list-cache';
 import { createBlankNote, fetchNotes, type NoteIndexEntry } from '../../query/notes';
 import { useGatewayConfigured } from '../../query/sessions';
 import { useTheme } from '../../theme';
@@ -25,6 +26,7 @@ import { useWorkspaceNavigation } from './workspace-navigation-context';
 
 export function WorkspaceHomeScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const configured = useGatewayConfigured();
@@ -89,11 +91,12 @@ export function WorkspaceHomeScreen() {
   const handleCreateNote = useCallback(async () => {
     try {
       const { note } = await createBlankNote();
+      upsertNoteInListCaches(queryClient, blankNoteIndexEntry(note.id));
       router.push(`/notes/${note.id}`);
     } catch {
       router.push('/notes');
     }
-  }, [router]);
+  }, [queryClient, router]);
 
   if (!configured) {
     return (
