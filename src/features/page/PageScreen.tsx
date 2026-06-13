@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -37,13 +36,11 @@ import { createSession } from '../../query/sessions';
 import { useNoteTagsStore } from '../../stores/note-tags-store';
 import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding, useTheme } from '../../theme';
 
-import { ChatRenderErrorBoundary } from '../chat/ChatRenderErrorBoundary';
 import { NoteAiPanel } from '../notes/ai/NoteAiPanel';
 import { readUriAsBase64 } from '../chat/attachment-file-io';
 import { composerAttachmentFromBase64 } from '../chat/attachment-file-io-core';
 import { pickAttachmentFromSource } from '../chat/attachment-file-io';
 import { ComposerAttachmentStrip } from '../chat/composer-attachment-strip';
-import { NoteBodyPreview } from '../notes/NoteBodyPreview';
 import { NoteBlockEditor } from '../notes/editor/NoteBlockEditor';
 import { EditorActionBar } from '../notes/editor/EditorActionBar';
 import { EditorInsertMenu } from '../notes/editor/EditorInsertMenu';
@@ -137,7 +134,6 @@ export function PageScreen() {
   const [catalystTaskLoading, setCatalystTaskLoading] = useState(false);
   const [catalystChatLoading, setCatalystChatLoading] = useState(false);
   const [showTagPicker, setShowTagPicker] = useState(false);
-  const [editorMountReady, setEditorMountReady] = useState(false);
   const lastSeedKeyRef = useRef('');
 
   const blocksRef = useRef<NoteBlock[]>([]);
@@ -176,19 +172,6 @@ export function PageScreen() {
   }, [noteQuery.data, queryClient]);
 
   const isEditing = screenMode === 'edit';
-
-  useEffect(() => {
-    if (!isEditing) {
-      setEditorMountReady(false);
-      editorRef.current = null;
-      setEditor(null);
-      return;
-    }
-    const task = InteractionManager.runAfterInteractions(() => {
-      setEditorMountReady(true);
-    });
-    return () => task.cancel();
-  }, [isEditing]);
 
   const refreshViewTitle = useCallback(() => {
     const nextTitle = resolveDisplayTitle(noteRef.current, blocksRef.current, pm.untitledNote);
@@ -712,7 +695,7 @@ export function PageScreen() {
 
   const showLoading = noteQuery.isLoading && !note;
   const showError = noteQuery.isError && !note;
-  const showNoteContent = Boolean(note && id);
+  const showEditor = Boolean(note && id && editorSeed);
   const viewBottomPadding = floatingBottomPadding(insets.bottom) + FLOATING_BOTTOM_OFFSET + VIEW_BOTTOM_BAR_HEIGHT;
 
   return (
@@ -744,7 +727,7 @@ export function PageScreen() {
               {m.common.retry}
             </Button>
           </View>
-        ) : showNoteContent ? (
+        ) : showEditor ? (
           <>
             <View
               style={[
@@ -831,47 +814,26 @@ export function PageScreen() {
               ) : null}
 
               <View style={styles.editorPressable}>
-                {isEditing ? (
-                  editorMountReady && editorSeed ? (
-                    <ChatRenderErrorBoundary
-                      fallback={(
-                        <NoteBodyPreview
-                          blocks={blocks}
-                          emptyLabel={pm.editorPlaceholderSlash}
-                        />
-                      )}
-                    >
-                      <NoteBlockEditor
-                        key={editorSeed.key}
-                        contentKey={editorSeed.key}
-                        initialHtml={editorSeed.html}
-                        onChange={handleEditorChange}
-                        onEditorReady={handleEditorReady}
-                        slashMenuOpen={showSlashMenu}
-                        onSlashMenuClose={() => setShowSlashMenu(false)}
-                        editable
-                        focusOnEnable={focusOnEnable}
-                        onFocusApplied={handleFocusApplied}
-                      />
-                    </ChatRenderErrorBoundary>
-                  ) : (
-                    <View style={styles.editorLoading}>
-                      <ActivityIndicator color={colors.accent.primary} />
-                    </View>
-                  )
-                ) : (
+                <NoteBlockEditor
+                  key={editorSeed!.key}
+                  contentKey={editorSeed!.key}
+                  initialHtml={editorSeed!.html}
+                  onChange={handleEditorChange}
+                  onEditorReady={handleEditorReady}
+                  slashMenuOpen={showSlashMenu}
+                  onSlashMenuClose={() => setShowSlashMenu(false)}
+                  editable={isEditing}
+                  focusOnEnable={focusOnEnable}
+                  onFocusApplied={handleFocusApplied}
+                />
+                {!isEditing ? (
                   <Pressable
-                    style={styles.previewPressable}
+                    style={styles.editorOverlay}
                     onPress={handleEnterEdit}
                     accessibilityRole="button"
                     accessibilityLabel={pm.edit}
-                  >
-                    <NoteBodyPreview
-                      blocks={blocks}
-                      emptyLabel={pm.editorPlaceholderSlash}
-                    />
-                  </Pressable>
-                )}
+                  />
+                ) : null}
               </View>
 
               {!isEditing ? (
@@ -951,7 +913,7 @@ export function PageScreen() {
         )}
       </KeyboardAvoidingView>
 
-      {!isEditing && showNoteContent && !showAiPanel ? (
+      {!isEditing && showEditor && !showAiPanel ? (
         <NoteViewActionBar
           labels={{
             catalyst: pm.catalystTitle,
@@ -1084,8 +1046,9 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 24 },
   editorWrap: { flex: 1, paddingHorizontal: 16, paddingTop: 4 },
   editorPressable: { flex: 1, minHeight: 120, position: 'relative' },
-  previewPressable: { flex: 1 },
-  editorLoading: { flex: 1, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
+  editorOverlay: {
+    ...StyleSheet.absoluteFill,
+  },
   noteTitle: {
     fontSize: 28,
     fontWeight: '800',

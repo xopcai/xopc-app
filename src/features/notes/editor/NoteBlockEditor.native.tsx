@@ -178,7 +178,6 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
 
   const loadedKeyRef = useRef('');
   const isExternalUpdateRef = useRef(false);
-  const pendingContentRef = useRef<{ key: string; html: string } | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
@@ -191,7 +190,6 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
   const [manualSlashOpen, setManualSlashOpen] = useState(false);
 
   const [keyboardSeed, setKeyboardSeed] = useState(false);
-  const webViewReadyRef = useRef(false);
 
   const editor = useEditorBridge({
     initialContent: initialHtml,
@@ -205,18 +203,6 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
       }),
     ],
   });
-
-  const safeInjectJS = useCallback(
-    (js: string) => {
-      if (!webViewReadyRef.current) return;
-      try {
-        editor.injectJS(js);
-      } catch {
-        // WebView may be torn down during navigation.
-      }
-    },
-    [editor],
-  );
 
   const filteredSlashItems = useMemo(
     () => filterSlashItems(slashItems, slashMenu?.query ?? ''),
@@ -286,54 +272,35 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
   useEffect(() => {
     const unsubscribe = editor._subscribeToContentUpdate(() => {
       if (!isExternalUpdateRef.current) {
-        safeInjectJS(SLASH_DETECT_JS);
+        try {
+          editor.injectJS(SLASH_DETECT_JS);
+        } catch {
+          // WebView may be torn down during navigation.
+        }
         void handleContentChange();
       }
     });
     return unsubscribe;
-  }, [editor, handleContentChange, safeInjectJS]);
+  }, [editor, handleContentChange]);
 
   const resetEditorScroll = useCallback(() => {
-    safeInjectJS(RESET_SCROLL_JS);
-  }, [safeInjectJS]);
-
-  const applyEditorTheme = useCallback(() => {
-    if (!webViewReadyRef.current) return;
     try {
-      editor.injectCSS(buildEditorCss(colors), 'xopc-editor-theme');
+      editor.injectJS(RESET_SCROLL_JS);
     } catch {
       // WebView may be torn down during navigation.
     }
-  }, [colors, editor]);
+  }, [editor]);
 
-  const applyEditorContent = useCallback((html: string) => {
-    if (!webViewReadyRef.current) return;
+  useEffect(() => {
+    if (loadedKeyRef.current === contentKey) return;
+    loadedKeyRef.current = contentKey;
     isExternalUpdateRef.current = true;
-    try {
-      editor.setContent(html);
-    } catch {
-      isExternalUpdateRef.current = false;
-      return;
-    }
+    editor.setContent(initialHtml);
     setTimeout(() => {
       isExternalUpdateRef.current = false;
       resetEditorScroll();
     }, 100);
-  }, [editor, resetEditorScroll]);
-
-  const syncEditorContent = useCallback((key: string, html: string) => {
-    if (loadedKeyRef.current === key) return;
-    loadedKeyRef.current = key;
-    if (webViewReadyRef.current) {
-      applyEditorContent(html);
-      return;
-    }
-    pendingContentRef.current = { key, html };
-  }, [applyEditorContent]);
-
-  useEffect(() => {
-    syncEditorContent(contentKey, initialHtml);
-  }, [contentKey, initialHtml, syncEditorContent]);
+  }, [contentKey, initialHtml, editor, resetEditorScroll]);
 
   useEffect(() => {
     if (editable) return;
@@ -341,22 +308,23 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
   }, [editable, resetEditorScroll]);
 
   useEffect(() => {
-    applyEditorTheme();
-  }, [applyEditorTheme]);
+    try {
+      editor.injectCSS(buildEditorCss(colors), 'xopc-editor-theme');
+    } catch {
+      // WebView may be torn down during navigation.
+    }
+  }, [colors, editor]);
 
   const applyEditorFocus = useCallback(() => {
     editor.focus('start');
-    safeInjectJS(FOCUS_START_JS);
+    try {
+      editor.injectJS(FOCUS_START_JS);
+    } catch {
+      // WebView may be torn down during navigation.
+    }
     resetEditorScroll();
     onFocusApplied?.();
-  }, [editor, onFocusApplied, resetEditorScroll, safeInjectJS]);
-
-  useEffect(() => {
-    return () => {
-      webViewReadyRef.current = false;
-      pendingContentRef.current = null;
-    };
-  }, []);
+  }, [editor, onFocusApplied, resetEditorScroll]);
 
   useEffect(() => {
     if (!editable || !focusOnEnable) return;
@@ -424,15 +392,6 @@ export const NoteBlockEditor = memo(function NoteBlockEditor({
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
         onLoad={() => {
-          webViewReadyRef.current = true;
-          applyEditorTheme();
-          const pending = pendingContentRef.current;
-          if (pending) {
-            pendingContentRef.current = null;
-            syncEditorContent(pending.key, pending.html);
-          } else if (loadedKeyRef.current !== contentKey) {
-            syncEditorContent(contentKey, initialHtml);
-          }
           resetEditorScroll();
         }}
         style={[styles.richText, { backgroundColor: 'transparent' }]}
@@ -456,11 +415,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, minHeight: 200 },
   richText: { flex: 1 },
   hiddenInput: {
-    opacity: 0,
-    width: 1,
-    height: 1,
+    display: 'none',
+    width: 0,
+    height: 0,
     position: 'absolute',
     top: 0,
-    left: -9999,
+    left: 0,
   },
 });
