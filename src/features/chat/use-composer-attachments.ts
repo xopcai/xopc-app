@@ -15,6 +15,7 @@ export type ComposerAttachmentMessages = {
   attachmentFileTooLarge: string;
   attachmentLoadFailed: string;
   attachmentPermissionDenied: string;
+  attachmentCameraPermissionDenied: string;
 };
 
 export function useComposerAttachments(messages: ComposerAttachmentMessages) {
@@ -64,7 +65,9 @@ export function useComposerAttachments(messages: ComposerAttachmentMessages) {
         if (e instanceof AttachmentFileError) {
           if (e.code === 'cancelled') return false;
           if (e.code === 'permission_denied') {
-            setSnack(messages.attachmentPermissionDenied);
+            setSnack(source === 'camera'
+              ? messages.attachmentCameraPermissionDenied
+              : messages.attachmentPermissionDenied);
             return false;
           }
           if (e.code === 'too_large') {

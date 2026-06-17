@@ -99,15 +99,6 @@ async function ensureCameraPermission(): Promise<void> {
   }
 }
 
-async function ensureMediaLibraryPermission(): Promise<void> {
-  const current = await ImagePicker.getMediaLibraryPermissionsAsync();
-  if (current.granted) return;
-  const requested = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!requested.granted) {
-    throw new AttachmentFileError('Media library permission denied', 'permission_denied');
-  }
-}
-
 export async function pickAttachmentFromSource(source: AttachmentPickSource): Promise<ComposerAttachment | null> {
   if (source === 'camera') {
     await ensureCameraPermission();
@@ -118,7 +109,6 @@ export async function pickAttachmentFromSource(source: AttachmentPickSource): Pr
   }
 
   if (source === 'photos') {
-    await ensureMediaLibraryPermission();
     const result = await ImagePicker.launchImageLibraryAsync(EDITABLE_IMAGE_PICKER_OPTIONS);
     if (result.canceled || !result.assets[0]?.uri) return null;
     const asset = result.assets[0];

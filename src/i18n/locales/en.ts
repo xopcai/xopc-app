@@ -293,6 +293,7 @@ export const en = {
     attachmentFileTooLarge: '{{name}} is too large (max {{maxSize}})',
     attachmentLoadFailed: 'Could not load {{name}}',
     attachmentPermissionDenied: 'Photo library or camera permission is required',
+    attachmentCameraPermissionDenied: 'Camera permission is required to take photos.',
     messageArtifactsHeading: 'Message output',
     fileReferenceExternalBadge: 'Off workspace',
     fileReferenceExternalDescription: 'This file is outside the current session workspace.',

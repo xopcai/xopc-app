@@ -183,6 +183,7 @@ export const ChatComposer = memo(function ChatComposer({
     attachmentFileTooLarge: cm.attachmentFileTooLarge,
     attachmentLoadFailed: cm.attachmentLoadFailed,
     attachmentPermissionDenied: cm.attachmentPermissionDenied,
+    attachmentCameraPermissionDenied: cm.attachmentCameraPermissionDenied,
   });
 
   const palette = useCommandPalette(draft, cursorPos);

@@ -22,7 +22,7 @@ import { BatchDeleteConfirmDialog } from '../../components/BatchDeleteConfirmDia
 import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_DEFAULT } from '../../constants/toast';
 import { useListSelection } from '../../hooks/use-list-selection';
 
-import { pickAttachmentFromSource } from '../chat/attachment-file-io';
+import { AttachmentFileError, pickAttachmentFromSource } from '../chat/attachment-file-io';
 import {
   beginRecording,
   finishRecording,
@@ -83,6 +83,7 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
   const configured = useGatewayConfigured();
   const m = useMessages();
   const pm = m.notesPage;
+  const cm = m.chat;
   const li = m.listInteraction;
   const insets = useSafeAreaInsets();
   const {
@@ -221,11 +222,11 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
       if (!attachment) return;
       captureMutation.mutate({ type: 'attachment', attachment });
     } catch (err) {
-      if (err instanceof Error && err.message.includes('permission')) {
-        setSnackMsg(pm.micDenied);
+      if (err instanceof AttachmentFileError && err.code === 'permission_denied') {
+        setSnackMsg(source === 'camera' ? cm.attachmentCameraPermissionDenied : cm.attachmentPermissionDenied);
       }
     }
-  }, [captureMutation, pm]);
+  }, [captureMutation, cm.attachmentCameraPermissionDenied, cm.attachmentPermissionDenied]);
 
   const handleNotePress = useCallback((note: NoteIndexEntry) => {
     if (selectionMode) {

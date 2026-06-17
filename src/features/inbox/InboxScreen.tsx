@@ -15,7 +15,7 @@ import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_SHORT } from '../../constan
 import { dismissOrHome } from '../../lib/navigation';
 import { useListSelection } from '../../hooks/use-list-selection';
 import { useMessages, t } from '../../i18n/messages';
-import { pickAttachmentFromSource, type AttachmentPickSource } from '../chat/attachment-file-io';
+import { AttachmentFileError, pickAttachmentFromSource, type AttachmentPickSource } from '../chat/attachment-file-io';
 import type { ComposerAttachment } from '../chat/composer.types';
 import { deleteNote, fetchNotes, captureNote, updateNote, type NoteIndexEntry } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
@@ -45,6 +45,7 @@ export function InboxScreen() {
   const m = useMessages();
   const im = m.inboxPage;
   const pm = m.notesPage;
+  const cm = m.chat;
   const li = m.listInteraction;
   const [captureText, setCaptureText] = useState('');
   const [snackMsg, setSnackMsg] = useState('');
@@ -150,13 +151,13 @@ export function InboxScreen() {
       if (!attachment) return;
       captureMutation.mutate({ type: 'attachment', attachment });
     } catch (error) {
-      if (error instanceof Error && error.message.includes('permission')) {
-        setSnackMsg(pm.micDenied);
+      if (error instanceof AttachmentFileError && error.code === 'permission_denied') {
+        setSnackMsg(source === 'camera' ? cm.attachmentCameraPermissionDenied : cm.attachmentPermissionDenied);
         return;
       }
       setSnackMsg(pm.actionFailed);
     }
-  }, [captureMutation, pm.actionFailed, pm.micDenied]);
+  }, [captureMutation, cm.attachmentCameraPermissionDenied, cm.attachmentPermissionDenied, pm.actionFailed]);
 
   const handleVoiceCapture = useCallback((payload: { uri: string; durationMillis: number; mimeType: string }) => {
     captureMutation.mutate({ type: 'voice', ...payload });

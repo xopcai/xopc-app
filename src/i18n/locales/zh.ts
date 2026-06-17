@@ -293,6 +293,7 @@ export const zh: MessageBundle = {
     attachmentFileTooLarge: '{{name}} 超过大小限制（最大 {{maxSize}}）',
     attachmentLoadFailed: '无法加载 {{name}}',
     attachmentPermissionDenied: '需要相册或相机权限才能添加附件',
+    attachmentCameraPermissionDenied: '拍照需要相机权限。',
     messageArtifactsHeading: '本消息输出',
     fileReferenceExternalBadge: '工作区外',
     fileReferenceExternalDescription: '这个文件不在当前会话工作区内。',

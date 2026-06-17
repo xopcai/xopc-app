@@ -3,7 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import { ActivityIndicator, Button, Icon, Snackbar, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -32,18 +32,17 @@ import { NoteDetailHeader } from '../notes/NoteDetailHeader';
 import { flushPendingNoteOperations, readLocalNote, saveLocalMarkdownNoteEdit } from '../notes/notes-local';
 import { MarkdownNoteEditor } from '../notes/markdown/MarkdownNoteEditor';
 import { StructuredMarkdownEditor } from '../notes/markdown/StructuredMarkdownEditor';
-import { canFocusStructuredMarkdownRange, extractMarkdownWikiLinks, findMarkdownMatches, formatWikiLink, getMarkdownAiContext, getMarkdownOutline, getVisibleMarkdownSelection, getWholeMarkdownAiContext, isMarkdownRangeInFrontmatter, renderObsidianCalloutsToMarkdown, renderWikiLinksToMarkdown, stripMarkdownFrontmatter, summarizeMarkdownAiContext, type MarkdownAiContext } from '../notes/markdown/markdown-document';
+import { canFocusStructuredMarkdownRange, extractMarkdownWikiLinks, findMarkdownMatches, formatWikiLink, getMarkdownAiContext, getMarkdownOutline, getVisibleMarkdownSelection, isMarkdownRangeInFrontmatter, renderObsidianCalloutsToMarkdown, renderWikiLinksToMarkdown, stripMarkdownFrontmatter, summarizeMarkdownAiContext, type MarkdownAiContext } from '../notes/markdown/markdown-document';
 import { formatMarkdownImage, insertMarkdownCallout, insertMarkdownCodeBlock, insertMarkdownHeading, insertMarkdownLineTemplate, insertMarkdownLink, insertMarkdownPrefixedLines, wrapMarkdownSelection } from '../notes/markdown/markdown-insert';
 import { applyMarkdownPatchResult, getMarkdownPatchChangedRange, getMarkdownPatchPreviewSnippets, type MarkdownPatchChangedRange, type MarkdownPatchPreviewSnippets, type MarkdownPatchResult } from '../notes/markdown/markdown-patch';
 import type { BlockInsertAction } from '../notes/blocks/BlockInsertBar';
-import { MarkdownView } from '../chat/MarkdownView';
 
 const SAVE_DEBOUNCE_MS = 600;
 
 type SelectionRange = { start: number; end: number };
 type StructuredFocusRequest = SelectionRange & { tick: number };
 type SourceFocusRequest = SelectionRange & { tick: number };
-type NoteEditorMode = 'read' | 'edit' | 'source';
+type NoteEditorMode = 'edit' | 'source';
 type SaveState = 'saved' | 'dirty' | 'saving' | 'pending' | 'failed';
 type PendingAiSuggestion = {
   patch: NoteAiPatch;
@@ -116,24 +115,12 @@ function formatFrontmatterPreview(frontmatter: NonNullable<MarkdownPatchResult['
     .join(' · ');
 }
 
-function parseInternalNoteUrl(url: string): { title: string; heading?: string } | null {
-  if (!url.startsWith('xopc-note://open?')) return null;
-  const query = url.slice('xopc-note://open?'.length);
-  const params = new URLSearchParams(query);
-  const title = params.get('title')?.trim();
-  if (!title) return null;
-  return {
-    title,
-    heading: params.get('heading')?.trim() || undefined,
-  };
+function normalizeHeadingTarget(heading: string): string {
+  return heading.trim().replace(/\s*\{#[^}]+}\s*$/, '').replace(/\s+/g, ' ').toLowerCase();
 }
 
 function normalizeLinkTitle(title: string): string {
   return title.trim().replace(/\s+/g, ' ').toLowerCase();
-}
-
-function normalizeHeadingTarget(heading: string): string {
-  return heading.trim().replace(/\s*\{#[^}]+}\s*$/, '').replace(/\s+/g, ' ').toLowerCase();
 }
 
 function firstRouteParam(value: string | string[] | undefined): string | undefined {
@@ -186,9 +173,8 @@ export function PageScreen() {
   const [selection, setSelection] = useState<SelectionRange>({ start: 0, end: 0 });
   const [structuredFocusSelection, setStructuredFocusSelection] = useState<StructuredFocusRequest | undefined>(undefined);
   const [sourceFocusSelection, setSourceFocusSelection] = useState<SourceFocusRequest | undefined>(undefined);
-  const [mode, setMode] = useState<NoteEditorMode>('read');
+  const [mode, setMode] = useState<NoteEditorMode>('edit');
   const [saveState, setSaveState] = useState<SaveState>('saved');
-  const [editFocusTick, setEditFocusTick] = useState(0);
 
   const markdownRef = useRef(markdown);
   const titleRef = useRef(title);
@@ -262,9 +248,7 @@ export function PageScreen() {
       setTags(nextTags);
       setNoteStatus(nextStatus);
       setSaveState(shouldUseLocal && localNote?.syncState === 'failed' ? 'failed' : shouldUseLocal && localNote?.syncState === 'pending' ? 'pending' : 'saved');
-      if (isNewNote) {
-        setMode(nextMarkdown.trim() ? 'read' : 'edit');
-      }
+      if (isNewNote) setMode('edit');
     }
 
     upsertNoteInListCaches(queryClient, noteToIndexEntry(note));
@@ -549,11 +533,6 @@ export function PageScreen() {
     setWikiLinkQuery('');
   }, [mode, replaceSelection, selection]);
 
-  const enterEditMode = useCallback(() => {
-    setMode('edit');
-    setEditFocusTick((tick) => tick + 1);
-  }, []);
-
   const openSearchFromMore = useCallback(() => {
     setMoreVisible(false);
     requestAnimationFrame(() => setSearchVisible(true));
@@ -567,23 +546,18 @@ export function PageScreen() {
     else await Clipboard.setStringAsync(body);
   }, [flushSave]);
 
-  const handleMarkdownLinkPress = useCallback((url: string) => {
-    const noteLink = parseInternalNoteUrl(url);
-    if (!noteLink) {
-      void Linking.openURL(url);
-      return;
-    }
+  const openLinkedNote = useCallback((targetTitle: string, heading?: string) => {
     void (async () => {
       try {
-        const result = await fetchNotes({ search: noteLink.title, limit: 10 });
-        const normalizedTarget = normalizeLinkTitle(noteLink.title);
+        const result = await fetchNotes({ search: targetTitle, limit: 10 });
+        const normalizedTarget = normalizeLinkTitle(targetTitle);
         const targetNote = result.items.find((item) => normalizeLinkTitle(item.title ?? '') === normalizedTarget)
           ?? result.items[0];
         if (!targetNote) {
-          setSnackMsg(t(pm.noteLinkNotFound, { title: noteLink.title }));
+          setSnackMsg(t(pm.noteLinkNotFound, { title: targetTitle }));
           return;
         }
-        openNoteDetail(router, targetNote.id, { heading: noteLink.heading });
+        openNoteDetail(router, targetNote.id, { heading });
       } catch (error) {
         setSnackMsg(error instanceof Error ? error.message : pm.actionFailed);
       }
@@ -592,11 +566,6 @@ export function PageScreen() {
 
   const handlePickImage = useCallback(async () => {
     if (!id) return;
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setSnackMsg(pm.editorAttachmentPermissionDenied);
-      return;
-    }
     const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9, base64: false });
     if (picked.canceled || !picked.assets[0]?.uri) return;
     try {
@@ -611,7 +580,7 @@ export function PageScreen() {
     } catch (error) {
       setSnackMsg(error instanceof Error ? error.message : pm.actionFailed);
     }
-  }, [flushSave, id, insertLineTemplate, pm.actionFailed, pm.editorAttachmentAdded, pm.editorAttachmentPermissionDenied]);
+  }, [flushSave, id, insertLineTemplate, pm.actionFailed, pm.editorAttachmentAdded]);
 
   const previewAiPatch = useCallback((patch: NoteAiPatch, beforeMarkdown = markdownRef.current) => {
     const result = applyMarkdownPatchResult(beforeMarkdown, patch.operations);
@@ -690,12 +659,6 @@ export function PageScreen() {
   }, []);
 
   const buildAiContextSnapshot = useCallback((source: string): AiContextSnapshot => {
-    if (mode === 'read') {
-      return {
-        markdown: source,
-        context: getWholeMarkdownAiContext(source),
-      };
-    }
     const contextSelection = mode === 'source' ? selection : getVisibleMarkdownSelection(source, selection);
     return {
       markdown: source,
@@ -876,22 +839,20 @@ export function PageScreen() {
   const handleDone = useCallback(() => {
     Keyboard.dismiss();
     void flushSave();
-    setMode(markdownRef.current.trim() ? 'read' : 'edit');
+    setMode('edit');
   }, [flushSave]);
 
   const rightActions = useMemo(() => {
     if (!note) return undefined;
-    if (mode === 'read') {
-      return undefined;
-    }
     const undoAction = undoSnapshot != null
       ? [{ icon: 'undo', label: pm.editorUndo, onPress: undoAiSuggestion }]
       : [];
     return [
       ...undoAction,
+      { icon: 'dots-horizontal', label: pm.viewMore, onPress: () => setMoreVisible(true) },
       { icon: 'check', label: pm.done, onPress: handleDone },
     ];
-  }, [handleDone, mode, note, pm.done, pm.editorUndo, undoAiSuggestion, undoSnapshot]);
+  }, [handleDone, note, pm.done, pm.editorUndo, pm.viewMore, undoAiSuggestion, undoSnapshot]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}> 
@@ -917,20 +878,14 @@ export function PageScreen() {
       ) : note ? (
         <View style={styles.editorWrap}>
           <View style={styles.titleWrap}>
-            {mode === 'read' ? (
-              <Text style={[styles.titleText, { color: colors.text.primary }]}>
-                {title.trim() || pm.untitledNote}
-              </Text>
-            ) : (
-              <TextInput
-                value={title}
-                onChangeText={updateTitle}
-                placeholder={pm.untitledNote}
-                placeholderTextColor={colors.text.tertiary}
-                accessibilityLabel={pm.aiMetadataNoteTitle}
-                style={[styles.titleInput, { color: colors.text.primary }]}
-              />
-            )}
+            <TextInput
+              value={title}
+              onChangeText={updateTitle}
+              placeholder={pm.untitledNote}
+              placeholderTextColor={colors.text.tertiary}
+              accessibilityLabel={pm.aiMetadataNoteTitle}
+              style={[styles.titleInput, { color: colors.text.primary }]}
+            />
             <View style={styles.metaRow}>
               <Text
                 style={[
@@ -970,27 +925,7 @@ export function PageScreen() {
               </View>
             ) : null}
           </View>
-          {mode === 'read' ? (
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.readContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {markdown.trim() ? (
-                <MarkdownView content={previewMarkdown} allowTrailingMargin onLinkPress={handleMarkdownLinkPress} />
-              ) : (
-                <Pressable
-                  style={[styles.emptyRead, { borderColor: colors.border.default, backgroundColor: colors.surface.panel }]}
-                  onPress={enterEditMode}
-                  accessibilityRole="button"
-                  accessibilityLabel={pm.editorEmptyTapHint}
-                >
-                  <Icon source="file-document-edit-outline" size={32} color={colors.text.tertiary} />
-                  <Text style={{ color: colors.text.tertiary }}>{pm.editorEmptyTapHint}</Text>
-                </Pressable>
-              )}
-            </ScrollView>
-          ) : mode === 'source' ? (
+          {mode === 'source' ? (
             <MarkdownNoteEditor
               markdown={markdown}
               previewMarkdown={previewMarkdown}
@@ -1009,7 +944,6 @@ export function PageScreen() {
               todoAccessibilityLabel={pm.editorBlockTodo}
               blockAccessibilityLabels={structuredBlockAccessibilityLabels}
               unsupportedMarkdownLabels={unsupportedMarkdownLabels}
-              autoFocusTick={editFocusTick}
               focusSelection={structuredFocusSelection}
               toolbarActions={toolbarActions}
               onChangeMarkdown={updateMarkdown}
@@ -1019,53 +953,6 @@ export function PageScreen() {
               resolveImageSource={resolvePreviewImageSrc}
             />
           )}
-        </View>
-      ) : null}
-
-      {note && mode === 'read' ? (
-        <View
-          style={[
-            styles.floatingActionDock,
-            {
-              bottom: Math.max(insets.bottom, 12) + 12,
-              backgroundColor: colors.surface.panel,
-              borderColor: colors.border.default,
-            },
-          ]}
-        >
-          <Pressable
-            onPress={openAiDialog}
-            accessibilityRole="button"
-            accessibilityLabel={pm.aiSuggestionTitle}
-            style={({ pressed }) => [
-              styles.floatingActionButton,
-              { backgroundColor: pressed ? colors.surface.hover : 'transparent' },
-            ]}
-          >
-            <Icon source="creation-outline" size={21} color={colors.text.secondary} />
-          </Pressable>
-          <Pressable
-            onPress={enterEditMode}
-            accessibilityRole="button"
-            accessibilityLabel={pm.edit}
-            style={({ pressed }) => [
-              styles.floatingActionButton,
-              { backgroundColor: pressed ? colors.surface.hover : 'transparent' },
-            ]}
-          >
-            <Icon source="pencil-outline" size={21} color={colors.text.secondary} />
-          </Pressable>
-          <Pressable
-            onPress={() => setMoreVisible(true)}
-            accessibilityRole="button"
-            accessibilityLabel={pm.viewMore}
-            style={({ pressed }) => [
-              styles.floatingActionButton,
-              { backgroundColor: pressed ? colors.surface.hover : 'transparent' },
-            ]}
-          >
-            <Icon source="dots-horizontal" size={21} color={colors.text.secondary} />
-          </Pressable>
         </View>
       ) : null}
 
@@ -1465,8 +1352,6 @@ export function PageScreen() {
             <ScrollView contentContainerStyle={styles.outlineList}>
               <Text style={[styles.linkSectionTitle, { color: colors.text.tertiary }]}>{pm.outgoingLinks}</Text>
               {outgoingLinks.length ? outgoingLinks.map((link) => {
-                const params = new URLSearchParams({ title: link.target });
-                if (link.heading) params.set('heading', link.heading);
                 return (
                   <Pressable
                     key={`${link.range.start}_${link.target}_${link.heading ?? ''}`}
@@ -1476,7 +1361,7 @@ export function PageScreen() {
                     ]}
                     onPress={() => {
                       setLinksVisible(false);
-                      handleMarkdownLinkPress(`xopc-note://open?${params.toString()}`);
+                      openLinkedNote(link.target, link.heading);
                     }}
                     accessibilityRole="button"
                     accessibilityLabel={link.label}
@@ -1766,12 +1651,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     paddingVertical: 6,
   },
-  titleText: {
-    fontSize: 26,
-    lineHeight: 32,
-    fontWeight: '700',
-    paddingVertical: 6,
-  },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1803,39 +1682,6 @@ const styles = StyleSheet.create({
   statusDot: {
     fontSize: 12,
     lineHeight: 17,
-  },
-  readContent: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 120,
-  },
-  emptyRead: {
-    minHeight: 220,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    padding: 20,
-  },
-  floatingActionDock: {
-    position: 'absolute',
-    alignSelf: 'center',
-    minHeight: 52,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 26,
-    paddingHorizontal: 4,
-    paddingVertical: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  floatingActionButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   aiInput: {
     minHeight: 100,
