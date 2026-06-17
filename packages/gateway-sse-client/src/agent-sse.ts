@@ -61,8 +61,10 @@ export function dispatchAgentSseEvent(
   }
 
   const sseChatId = options?.sseChatId;
+  const payloadType = typeof parsed.type === 'string' ? parsed.type.trim() : '';
+  const effectiveEvent = (event === 'message' || event === '') && payloadType ? payloadType : event;
 
-  switch (event) {
+  switch (effectiveEvent) {
     case 'status':
       if (typeof parsed.runId === 'string' && sseChatId) {
         options?.savePendingRunId?.(sseChatId, parsed.runId);
@@ -87,6 +89,11 @@ export function dispatchAgentSseEvent(
       cb?.onUserTranscript?.({ text, attachments });
       break;
     }
+    case 'user_message':
+      // The server emits the accepted user turn before assistant tokens. Mobile
+      // already renders an optimistic user row, so do not treat its `content`
+      // as assistant text in the default branch.
+      break;
     case 'token': {
       const chunk =
         typeof parsed.content === 'string'

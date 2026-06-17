@@ -49,6 +49,33 @@ describe('dispatchAgentSseEvent', () => {
     });
   });
 
+  it('does not emit accepted user_message content as assistant token', () => {
+    const onToken = vi.fn();
+    dispatchAgentSseEvent(
+      'user_message',
+      JSON.stringify({ content: '[2026-06-17 10:00 CST] 你好' }),
+      { onToken } as never,
+    );
+    expect(onToken).not.toHaveBeenCalled();
+  });
+
+  it('uses payload type when SSE event name is generic message', () => {
+    const onToken = vi.fn();
+    const onUserTranscript = vi.fn();
+    dispatchAgentSseEvent(
+      'message',
+      JSON.stringify({ type: 'user_message', content: '[2026-06-17 10:00 CST] 你好' }),
+      { onToken, onUserTranscript } as never,
+    );
+    dispatchAgentSseEvent(
+      'message',
+      JSON.stringify({ type: 'user_transcript', text: '语音转文字' }),
+      { onToken, onUserTranscript } as never,
+    );
+    expect(onToken).not.toHaveBeenCalled();
+    expect(onUserTranscript).toHaveBeenCalledWith({ text: '语音转文字', attachments: undefined });
+  });
+
   it('persists runId on status when savePendingRunId provided', () => {
     const savePendingRunId = vi.fn();
     dispatchAgentSseEvent(
