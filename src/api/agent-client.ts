@@ -140,7 +140,7 @@ function sseDispatchOptions(sseChatId: string, sender: AgentMessageSender): Agen
 export class AgentMessageSender {
   private _abort?: AbortController;
   private _sseChatId = '';
-  /** `runId` from the `status` event for this POST/resume; do not clear a newer pending run. */
+  /** `runId` from the `run_start` event for this POST/resume; do not clear a newer pending run. */
   private _trackedRunId?: string;
   /** Local transport teardown for resume/recovery — do not abort the server run or clear pending runId. */
   private _localDetach = false;

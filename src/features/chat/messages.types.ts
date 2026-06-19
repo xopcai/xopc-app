@@ -16,11 +16,14 @@ export type ImageContent = {
 export type ToolUseContent = {
   type: 'tool_use';
   id: string;
+  toolCallId?: string;
   name: string;
   input?: unknown;
   status: 'running' | 'done' | 'error';
   /** Serialized tool output; may be an object in edge cases. */
   result?: string | unknown;
+  /** Live structured details from tool_update events. */
+  details?: unknown;
 };
 
 /** Reasoning / thinking segment; order in `content` matches model execution. */

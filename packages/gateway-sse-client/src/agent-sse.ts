@@ -1,6 +1,5 @@
 /**
- * Client-side parsing for xopc gateway `POST /api/agent` (and resume) SSE streams.
- * Mirrors `web/src/features/chat/message-sender.ts` dispatch semantics.
+ * Client-side parser for xopc Chat Stream Protocol v1 over SSE.
  */
 
 export interface ProgressState {
@@ -24,8 +23,9 @@ export type AgentSseCallbacks = {
   onToken: (delta: string) => void;
   onThinking: (content: string, isDelta: boolean) => void;
   onThinkingEnd: () => void;
-  onToolStart: (toolName: string, args?: unknown) => void;
-  onToolEnd: (toolName: string, isError: boolean, result?: string) => void;
+  onToolStart: (toolName: string, args?: unknown, toolCallId?: string) => void;
+  onToolUpdate?: (toolName: string, toolCallId: string | undefined, details: unknown) => void;
+  onToolEnd: (toolName: string, isError: boolean, result?: unknown, toolCallId?: string) => void;
   onProgress: (progress: ProgressState) => void;
   onTtsAudio?: (payload: { workspaceRelativePath: string; mimeType: string; name: string }) => void;
   onClarifyRequest?: (payload: {
@@ -44,119 +44,142 @@ export type AgentSseDispatchOptions = {
   savePendingRunId?: (chatId: string, runId: string) => void;
 };
 
+type ParsedEvent = {
+  type?: unknown;
+  runId?: unknown;
+  payload?: unknown;
+  timestamp?: unknown;
+};
+
+function payloadOf(parsed: ParsedEvent): Record<string, unknown> {
+  return parsed.payload && typeof parsed.payload === 'object'
+    ? parsed.payload as Record<string, unknown>
+    : {};
+}
+
+function normalizedEventName(event: string, parsed: ParsedEvent): string {
+  const payloadType = typeof parsed.type === 'string' ? parsed.type.trim() : '';
+  return (event === 'message' || event === '') && payloadType ? payloadType : event;
+}
+
+function normalizeTranscriptAttachments(raw: unknown): UserTranscriptAttachment[] | undefined {
+  const rawAttachments = Array.isArray(raw) ? raw : undefined;
+  return rawAttachments
+    ?.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
+    .map((item) => ({
+      workspaceRelativePath:
+        typeof item.workspaceRelativePath === 'string' ? item.workspaceRelativePath : undefined,
+      mimeType: typeof item.mimeType === 'string' ? item.mimeType : undefined,
+      name: typeof item.name === 'string' ? item.name : undefined,
+      durationSeconds:
+        typeof item.durationSeconds === 'number' && Number.isFinite(item.durationSeconds)
+          ? item.durationSeconds
+          : undefined,
+    }));
+}
+
+function serializePayload(value: unknown): unknown {
+  if (value == null || typeof value === 'string') return value;
+  return value;
+}
+
 export function dispatchAgentSseEvent(
   event: string,
   data: string,
   cb: AgentSseCallbacks | undefined,
   options?: AgentSseDispatchOptions,
 ): void {
-  let parsed: Record<string, unknown>;
+  let parsed: ParsedEvent;
   try {
-    parsed = JSON.parse(data) as Record<string, unknown>;
+    parsed = JSON.parse(data) as ParsedEvent;
   } catch {
-    if (event === 'result') {
-      cb?.onResult();
-    }
     return;
   }
 
-  const sseChatId = options?.sseChatId;
-  const payloadType = typeof parsed.type === 'string' ? parsed.type.trim() : '';
-  const effectiveEvent = (event === 'message' || event === '') && payloadType ? payloadType : event;
+  const p = payloadOf(parsed);
+  const effectiveEvent = normalizedEventName(event, parsed);
 
   switch (effectiveEvent) {
-    case 'status':
-      if (typeof parsed.runId === 'string' && sseChatId) {
-        options?.savePendingRunId?.(sseChatId, parsed.runId);
+    case 'run_start':
+      if (typeof parsed.runId === 'string' && options?.sseChatId) {
+        options.savePendingRunId?.(options.sseChatId, parsed.runId);
       }
       cb?.onStreamStart();
       break;
     case 'user_transcript': {
-      const text = typeof parsed.text === 'string' ? parsed.text : '';
-      const rawAttachments = Array.isArray(parsed.attachments) ? parsed.attachments : undefined;
-      const attachments = rawAttachments
-        ?.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
-        .map((item) => ({
-          workspaceRelativePath:
-            typeof item.workspaceRelativePath === 'string' ? item.workspaceRelativePath : undefined,
-          mimeType: typeof item.mimeType === 'string' ? item.mimeType : undefined,
-          name: typeof item.name === 'string' ? item.name : undefined,
-          durationSeconds:
-            typeof item.durationSeconds === 'number' && Number.isFinite(item.durationSeconds)
-              ? item.durationSeconds
-              : undefined,
-        }));
+      const text = typeof p.text === 'string' ? p.text : '';
+      const attachments = normalizeTranscriptAttachments(p.attachments ?? p.media);
       cb?.onUserTranscript?.({ text, attachments });
       break;
     }
     case 'user_message':
-      // The server emits the accepted user turn before assistant tokens. Mobile
-      // already renders an optimistic user row, so do not treat its `content`
-      // as assistant text in the default branch.
       break;
-    case 'token': {
-      const chunk =
-        typeof parsed.content === 'string'
-          ? parsed.content
-          : typeof parsed.delta === 'string'
-            ? parsed.delta
-            : typeof parsed.text === 'string'
-              ? parsed.text
-              : '';
-      if (chunk) cb?.onToken(chunk);
+    case 'assistant_message_start':
+      cb?.onStreamStart();
       break;
-    }
-    case 'thinking':
-      if (parsed.status === 'started') {
-        cb?.onThinking('', false);
-        break;
-      }
-      cb?.onThinking(String(parsed.content || ''), Boolean(parsed.delta));
+    case 'assistant_delta':
+      if (typeof p.delta === 'string' && p.delta) cb?.onToken(p.delta);
+      break;
+    case 'thinking_delta':
+      if (typeof p.delta === 'string' && p.delta) cb?.onThinking(p.delta, true);
       break;
     case 'thinking_end':
-      cb?.onThinkingEnd();
-      break;
-    case 'message_end':
+    case 'assistant_message_end':
       cb?.onThinkingEnd();
       break;
     case 'tool_start': {
-      const toolName = String(parsed.toolName || 'unknown');
+      const toolName = String(p.toolName || 'unknown');
+      const toolCallId = typeof p.toolCallId === 'string' ? p.toolCallId : undefined;
       if (toolName === 'clarify') break;
-      cb?.onToolStart(toolName, parsed.args);
+      cb?.onToolStart(toolName, p.args, toolCallId);
+      break;
+    }
+    case 'tool_update': {
+      const toolName = typeof p.toolName === 'string' && p.toolName ? p.toolName : 'unknown';
+      const toolCallId = typeof p.toolCallId === 'string' ? p.toolCallId : undefined;
+      if (p.details !== undefined) cb?.onToolUpdate?.(toolName, toolCallId, p.details);
+      if (typeof p.textDelta === 'string' && p.textDelta) {
+        cb?.onToolUpdate?.(toolName, toolCallId, { textDelta: p.textDelta });
+      }
       break;
     }
     case 'tool_end':
       cb?.onToolEnd(
-        typeof parsed.toolName === 'string' && parsed.toolName ? parsed.toolName : 'unknown',
-        !!parsed.isError,
-        parsed.result as string | undefined,
+        typeof p.toolName === 'string' && p.toolName ? p.toolName : 'unknown',
+        p.status === 'error' || p.status === 'cancelled',
+        serializePayload(p.result),
+        typeof p.toolCallId === 'string' ? p.toolCallId : undefined,
       );
       break;
     case 'progress':
       cb?.onProgress({
-        stage: String(parsed.stage || 'thinking'),
-        message: String(parsed.message || ''),
-        detail: parsed.detail as string | undefined,
-        toolName: parsed.toolName as string | undefined,
+        stage: String(p.stage || 'thinking'),
+        message: String(p.message || ''),
+        detail: p.detail as string | undefined,
+        toolName: p.toolName as string | undefined,
         timestamp: Date.now(),
       });
       break;
+    case 'compaction':
+      if (typeof p.message === 'string') {
+        cb?.onProgress({ stage: 'compaction', message: p.message, timestamp: Date.now() });
+      }
+      break;
     case 'tts_audio':
       cb?.onTtsAudio?.({
-        workspaceRelativePath: String(parsed.workspaceRelativePath || ''),
-        mimeType: String(parsed.mimeType || 'audio/mpeg'),
-        name: String(parsed.name || 'voice.mp3'),
+        workspaceRelativePath: String(p.workspaceRelativePath || p.uri || ''),
+        mimeType: String(p.mimeType || 'audio/mpeg'),
+        name: String(p.name || 'voice.mp3'),
       });
       break;
     case 'clarify_request': {
-      const requestId = typeof parsed.requestId === 'string' ? parsed.requestId.trim() : '';
-      const question = typeof parsed.question === 'string' ? parsed.question.trim() : '';
+      const requestId = typeof p.requestId === 'string' ? p.requestId.trim() : '';
+      const question = typeof p.question === 'string' ? p.question.trim() : '';
       if (requestId && question && cb?.onClarifyRequest) {
-        const choices = Array.isArray(parsed.choices)
-          ? (parsed.choices as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+        const choices = Array.isArray(p.choices)
+          ? (p.choices as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
           : undefined;
-        const def =
-          typeof parsed.default === 'string' && parsed.default.trim() ? parsed.default.trim() : undefined;
+        const def = typeof p.default === 'string' && p.default.trim() ? p.default.trim() : undefined;
         cb.onClarifyRequest({
           requestId,
           question,
@@ -166,30 +189,12 @@ export function dispatchAgentSseEvent(
       }
       break;
     }
-    case 'result':
+    case 'run_end':
       cb?.onResult();
       break;
     case 'error':
-      cb?.onError(
-        String(
-          parsed.content ||
-            (parsed.error as { message?: string } | undefined)?.message ||
-            'Send failed',
-        ),
-      );
+      cb?.onError(String(p.message || 'Send failed'));
       break;
-    default: {
-      const chunk =
-        typeof parsed.content === 'string'
-          ? parsed.content
-          : typeof parsed.delta === 'string'
-            ? parsed.delta
-            : typeof parsed.text === 'string'
-              ? parsed.text
-              : '';
-      if (chunk) cb?.onToken(chunk);
-      break;
-    }
   }
 }
 

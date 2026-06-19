@@ -12,7 +12,7 @@ export type AgentStreamResumeOptions = {
 export type TryAgentStreamResume = (opts?: AgentStreamResumeOptions) => void | Promise<void>;
 
 /**
- * Listen for gateway `agent.stream` status events (goal continuations, scheduled webchat runs)
+ * Listen for gateway `agent.stream` run_start events (goal continuations, scheduled webchat runs)
  * and trigger resume when the active chat is idle.
  */
 export function useAgentStreamResume(opts: {
@@ -33,7 +33,7 @@ export function useAgentStreamResume(opts: {
       const d = detail as { sessionKey?: string; event?: { type?: string; runId?: string } };
       if (!d?.sessionKey) return;
       const inner = d.event;
-      if (!inner || inner.type !== 'status' || typeof inner.runId !== 'string' || !inner.runId.trim()) {
+      if (!inner || inner.type !== 'run_start' || typeof inner.runId !== 'string' || !inner.runId.trim()) {
         return;
       }
 

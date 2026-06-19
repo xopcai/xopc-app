@@ -60,7 +60,7 @@ function closeStreamingThinkingIfAny(content: MessageContent[]): void {
   }
 }
 
-/** Start a new reasoning segment (e.g. SSE `thinking` with status `started`). */
+/** Start a new reasoning segment. */
 export function startThinkingSegment(content: MessageContent[]): void {
   const last = content[content.length - 1];
   if (last?.type === 'thinking' && last.streaming) return;
@@ -115,12 +115,17 @@ export function appendTextDelta(content: MessageContent[], delta: string): void 
   content.push({ type: 'text', text: delta });
 }
 
-export function appendToolStart(content: MessageContent[], toolName: string, args: unknown): void {
+export function appendToolStart(
+  content: MessageContent[],
+  toolName: string,
+  args: unknown,
+  toolCallId?: string,
+): void {
   closeStreamingThinkingIfAny(content);
-  const id = `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const block: ToolUseContent = {
     type: 'tool_use',
-    id,
+    id: toolCallId || `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    toolCallId,
     name: toolName,
     input: args,
     status: 'running',
@@ -132,14 +137,32 @@ export function completeTool(
   content: MessageContent[],
   toolName: string,
   isError: boolean,
-  result?: string,
+  result?: unknown,
+  toolCallId?: string,
 ): void {
   for (let i = content.length - 1; i >= 0; i--) {
     const b = content[i];
-    if (b.type === 'tool_use' && b.status === 'running' && toolNameMatches(b.name, toolName)) {
-      b.status = isError ? 'error' : 'done';
-      b.result = result;
-      return;
-    }
+    if (b.type !== 'tool_use' || b.status !== 'running') continue;
+    if (toolCallId && b.toolCallId !== toolCallId && b.id !== toolCallId) continue;
+    if (!toolCallId && !toolNameMatches(b.name, toolName)) continue;
+    b.status = isError ? 'error' : 'done';
+    b.result = result;
+    return;
+  }
+}
+
+export function updateToolDetails(
+  content: MessageContent[],
+  toolName: string,
+  toolCallId: string | undefined,
+  details: unknown,
+): void {
+  for (let i = content.length - 1; i >= 0; i--) {
+    const b = content[i];
+    if (b.type !== 'tool_use' || b.status !== 'running') continue;
+    if (toolCallId && b.toolCallId !== toolCallId && b.id !== toolCallId) continue;
+    if (!toolCallId && !toolNameMatches(b.name, toolName)) continue;
+    b.details = details;
+    return;
   }
 }

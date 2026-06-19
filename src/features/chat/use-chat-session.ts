@@ -44,6 +44,7 @@ import {
   finalizeRunningTools,
   finalizeStreamingThinking,
   startThinkingSegment,
+  updateToolDetails,
 } from './streaming';
 import {
   clearPendingAgentRun,
@@ -374,21 +375,28 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
         finalizeStreamingThinking(streamingMsgRef.current.content);
         flushStreamingMessage();
       },
-      onToolStart: (toolName, args) => {
+      onToolStart: (toolName, args, toolCallId) => {
         if (!isCurrentSession()) return;
         touchStreamActivity();
         updateStreamingMessage((message) => {
-          appendToolStart(message.content, toolName, args);
+          appendToolStart(message.content, toolName, args, toolCallId);
         }, true);
         if (!streamingRef.current) {
           setStreaming(true);
           streamingRef.current = true;
         }
       },
-      onToolEnd: (toolName, isErr, result) => {
+      onToolUpdate: (toolName, toolCallId, details) => {
+        if (!isCurrentSession()) return;
+        touchStreamActivity();
+        updateStreamingMessage((message) => {
+          updateToolDetails(message.content, toolName, toolCallId, details);
+        }, true);
+      },
+      onToolEnd: (toolName, isErr, result, toolCallId) => {
         if (!isCurrentSession()) return;
         updateStreamingMessage((message) => {
-          completeTool(message.content, toolName, isErr, result);
+          completeTool(message.content, toolName, isErr, result, toolCallId);
         }, true);
       },
       onProgress: (p) => {
