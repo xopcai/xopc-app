@@ -28,9 +28,9 @@ export function NoteViewActionBar({
 }: NoteViewActionBarProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const barBg = isDark ? colors.surface.panel : '#FFFFFF';
-  const iconColor = isDark ? colors.text.secondary : '#8E8E93';
-  const labelColor = isDark ? colors.text.tertiary : '#AEAEB2';
+  const barBg = isDark ? colors.surface.panel : colors.surface.base;
+  const iconColor = colors.text.secondary;
+  const labelColor = colors.text.tertiary;
 
   const items = [
     {
@@ -55,7 +55,8 @@ export function NoteViewActionBar({
           styles.bar,
           {
             backgroundColor: barBg,
-            shadowColor: '#000',
+            borderColor: colors.border.default,
+            shadowColor: colors.text.primary,
           },
         ]}
       >
@@ -84,6 +85,7 @@ const styles = StyleSheet.create({
     bottom: FLOATING_BOTTOM_OFFSET,
     alignItems: 'center',
     paddingTop: 6,
+    zIndex: 20,
   },
   bar: {
     flexDirection: 'row',
@@ -92,6 +94,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     paddingHorizontal: 8,
     maxWidth: '96%',
+    borderWidth: StyleSheet.hairlineWidth,
     shadowOpacity: 0.06,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
