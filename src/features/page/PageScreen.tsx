@@ -571,17 +571,6 @@ export function PageScreen() {
     code: pm.editorBlockCode,
   }), [pm]);
 
-  const saveLabel = saveState === 'saving'
-    ? pm.saving
-    : saveState === 'failed'
-      ? pm.saveFailed
-      : saveState === 'pending'
-        ? pm.savedOffline
-        : saveState === 'dirty'
-          ? pm.savePending
-          : pm.saved;
-  const shouldShowSaveState = saveState !== 'saved';
-  const shouldShowMetaRow = shouldShowSaveState;
   const showLoading = noteQuery.isLoading && !note;
   const showError = noteQuery.isError && !note;
 
@@ -612,7 +601,7 @@ export function PageScreen() {
         </View>
       ) : note && id ? (
         <View style={styles.editorWrap}>
-          <View style={[styles.titleWrap, !shouldShowMetaRow && styles.titleWrapCompact, { borderBottomColor: colors.border.subtle }]}>
+          <View style={[styles.titleWrap, styles.titleWrapCompact, { borderBottomColor: colors.border.subtle }]}>
             <TextInput
               value={title}
               onChangeText={updateTitle}
@@ -621,24 +610,6 @@ export function PageScreen() {
               accessibilityLabel={pm.aiMetadataNoteTitle}
               style={[styles.titleInput, { color: colors.text.primary }]}
             />
-            {shouldShowMetaRow ? (
-              <View style={styles.metaRow}>
-                {shouldShowSaveState ? (
-                  <Text
-                    style={[
-                      styles.modeLabel,
-                      {
-                        color: saveState === 'failed'
-                          ? colors.semantic.error
-                          : colors.text.secondary,
-                      },
-                    ]}
-                  >
-                    {saveLabel}
-                  </Text>
-                ) : null}
-              </View>
-            ) : null}
           </View>
           <NoteEditorBridge
             noteId={id}
@@ -761,19 +732,6 @@ const styles = StyleSheet.create({
     lineHeight: 31,
     fontWeight: '700',
     paddingVertical: 4,
-  },
-  metaRow: {
-    minHeight: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  modeLabel: {
-    fontSize: 12,
-    flexShrink: 1,
-  },
-  statusDot: {
-    fontSize: 12,
   },
   retryBar: {
     position: 'absolute',
