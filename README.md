@@ -1,135 +1,224 @@
-# xopc
+# xopc Mobile
 
-Standalone Expo (React Native) app for the [xopc](https://github.com/xopcai/xopc) gateway. Run an xopc gateway (HTTP/WebSocket) with your API keys and optional token auth; configure the app to point at that gateway base URL.
+English | [简体中文](./README.zh-CN.md)
 
-**Remote access (FRP):** LAN-first routing with broker-terminated TLS on `*.frp.xopc.ai`; remote API calls use HTTPS + gateway Bearer token after QR pairing (`ps`).
+Expo mobile client for the [xopc](https://github.com/xopcai/xopc) gateway. The app connects to a user-hosted gateway over HTTP/WebSocket, with LAN-first routing and optional FRP remote access after QR pairing.
 
-## Start here
+The mobile client is designed as a calm, content-first workspace for notes, inbox triage, assistant conversations, and automation control. Visual and interaction standards live in [DESIGN.md](./DESIGN.md).
+
+## Quick Links
 
 - Main project: [xopcai/xopc](https://github.com/xopcai/xopc)
-- Mobile app guide: [xopc docs — Mobile app](https://xopcai.github.io/xopc/mobile-app)
-- Remote access guide: [xopc docs — Remote access](https://xopcai.github.io/xopc/remote-access)
+- Mobile app guide: [xopc docs - Mobile app](https://xopcai.github.io/xopc/mobile-app)
+- Remote access guide: [xopc docs - Remote access](https://xopcai.github.io/xopc/remote-access)
+- Design language: [DESIGN.md](./DESIGN.md)
 
-If xopc helps you keep long-term AI work moving across terminal, web, desktop, mobile, and messengers, please star the main repo: [github.com/xopcai/xopc](https://github.com/xopcai/xopc).
+If xopc helps you keep long-running AI work moving across terminal, web, desktop, mobile, and messengers, please star the main repo: [github.com/xopcai/xopc](https://github.com/xopcai/xopc).
 
-## How it connects
+## How the App Connects
 
-1. Start `xopc gateway` on the machine that holds your xopc config and model credentials.
-2. In the gateway console, open **Settings → Remote access**.
-3. Choose LAN, FRP public tunnel, Tailscale Serve, or your own HTTPS reverse proxy.
-4. Use **Mobile app pairing** to scan the QR, or set the gateway base URL and optional bearer token in app settings.
+1. Start `xopc gateway` on the machine that has your xopc config and model credentials.
+2. Open the gateway console and go to **Settings -> Remote access**.
+3. Choose a route: LAN, FRP public tunnel, Tailscale Serve, or your own HTTPS reverse proxy.
+4. Pair the mobile app with the gateway QR code, or enter the gateway base URL and optional bearer token in app settings.
 
-## Layout
+Remote access uses LAN-first routing. When FRP is enabled, broker-terminated TLS serves `*.frp.xopc.ai`; remote API calls use HTTPS plus the gateway bearer token after QR pairing.
 
-- App source: `app/` (Expo Router), `src/`, `app.json`, `metro.config.js`.
-- `packages/gateway-sse-client/` — workspace package `@xopcai/gateway-sse-client` (agent SSE parsing).
+## Tech Stack
 
-## Prerequisites
+| Area | Stack |
+|---|---|
+| Runtime | Expo SDK 56, React Native 0.85, React 19 |
+| Routing | Expo Router |
+| Server state | TanStack React Query |
+| Client state | Zustand |
+| Storage | react-native-mmkv, with web/local fallback |
+| UI | react-native-paper plus project design tokens |
+| Gestures and motion | react-native-gesture-handler, react-native-reanimated |
+| Keyboard | react-native-keyboard-controller |
+| Lists | FlashList for long/high-update lists |
+| Validation | zod, react-hook-form |
+| Tests | Vitest |
+
+## Repository Layout
+
+```text
+app/                         Expo Router routes
+src/                         Features, components, API, query, theme, stores
+src/theme/                   Design tokens and Paper theme mapping
+src/i18n/                    Localized message bundles
+src/storage/                 MMKV and fallback storage
+packages/gateway-sse-client/ Workspace package for gateway SSE parsing
+plugins/                     Expo config plugins
+app.json                     Expo native configuration
+eas.json                     EAS build profiles
+```
+
+## Requirements
 
 - Node.js 22+
-- [pnpm](https://pnpm.io/) 9.x
+- pnpm 9.x
+- A running xopc gateway for real device usage
+- Xcode and CocoaPods for iOS native builds
+- Android Studio / Android SDK for Android native builds
 
-## Commands
+## Install
+
+```bash
+pnpm install
+```
+
+## Development
+
+```bash
+pnpm start
+```
+
+Common scripts:
 
 | Script | Description |
-|--------|-------------|
-| `pnpm start` | Expo dev server |
-| `pnpm run android` / `pnpm run ios` / `pnpm run web` | Platform targets |
-| `pnpm run android:release` | Android release APK (arm64, minified — smaller install) |
-| `pnpm run lint` | ESLint |
-| `pnpm run typecheck` | TypeScript (app + gateway-sse-client) |
-| `pnpm run test:gateway-sse-client` | Vitest for SSE client |
+|---|---|
+| `pnpm start` | Start the Expo dev server |
+| `pnpm start:no-proxy` | Start Expo with proxy environment variables cleared |
+| `pnpm run android` | Build and run Android |
+| `pnpm run ios` | Build and run iOS |
+| `pnpm run ios:no-proxy` | Build and run iOS with proxy variables cleared |
+| `pnpm run web` | Start Expo web |
+| `pnpm run lint` | Run ESLint on `app` and `src` |
+| `pnpm run typecheck` | Type-check the app and SSE workspace package |
+| `pnpm test` | Run the Vitest suite |
+| `pnpm run test:gateway-sse-client` | Run SSE client tests |
 
-## MMKV and Expo Go
+## Configure the Gateway
 
-[`react-native-mmkv`](https://github.com/mrousavy/react-native-mmkv) uses native code. **Expo Go** does not ship this module; the app falls back to in-memory storage (settings are lost on restart).
+Open app settings and configure:
 
-For persistent storage, use a **development build**:
+- Gateway base URL, without a trailing slash.
+- Optional bearer token, matching gateway auth in `xopc.json`.
+
+Examples:
+
+```text
+http://192.168.1.44:18790
+https://your-name.frp.xopc.ai
+https://xopc.example.com
+```
+
+The app can probe available routes from gateway settings and prefers LAN when `/health` succeeds.
+
+## Expo Go vs Development Builds
+
+Expo Go is useful for quick UI iteration, but it does not include every native module used by this app.
+
+`react-native-mmkv` requires native code. In Expo Go, the app falls back to in-memory storage, so settings are lost after restart. For persistent storage and native networking behavior, use a development build:
 
 ```bash
 pnpm exec expo prebuild
 pnpm run ios:no-proxy
-# or: pnpm exec expo run:android
+# or
+pnpm run android
 ```
 
-### iOS CocoaPods (slow installs / proxy)
+Run `pnpm exec expo prebuild --clean` after changing `app.json`, config plugins, native permissions, or native networking settings.
 
-If `expo run:ios` hangs on **Installing CocoaPods…**, system HTTP proxies often slow `pod install` and trigger Node `[UNDICI-EHPA]` warnings. This repo:
+## Native Networking Notes
 
-- Injects a **Tsinghua CocoaPods Specs mirror** at prebuild (`plugins/with-ios-cocoapods-mirror.js`), similar to Android’s Aliyun Maven mirrors.
-- Provides scripts that clear proxy env vars and prefer Homebrew’s `pod`:
+Local gateways often use plain HTTP on a LAN IP, such as `http://192.168.1.44:18790`. Expo Go and installed native builds can behave differently because native builds use this app's own bundle ID, permissions, and network policy.
 
-```bash
-pnpm exec expo prebuild          # or prebuild --clean after plugin changes
-pnpm run pods:install            # pod install in ios/ without proxy
-pnpm run ios:no-install          # build/run after pods are already installed
-# or one step:
-pnpm run ios:no-proxy
-```
+### Android HTTP Cleartext
 
-## LAN gateway access
+Android 9+ blocks HTTP by default. This project enables LAN HTTP through `expo-build-properties` with `android.usesCleartextTraffic: true`.
 
-Local gateways often use `http://` on LAN IPs (for example `http://192.168.1.44:18790`). **Expo Go** can reach LAN more easily because it runs inside Expo’s own app shell. **Standalone iOS/Android builds** use your app’s native permissions and network policy — behavior can differ from Expo Go even on the same phone and Wi‑Fi.
-
-The app probes LAN vs FRP in **Settings → Gateway → Connection status** and prefers LAN when `/health` succeeds.
-
-### Android (HTTP cleartext)
-
-Standalone Android builds block HTTP by default (Android 9+). This project enables it via the `expo-build-properties` plugin with `android.usesCleartextTraffic: true`. After changing native network settings, run a fresh build:
+After changing native network settings:
 
 ```bash
 pnpm exec expo prebuild --clean
-pnpm exec expo run:android
+pnpm run android
 ```
 
-If LAN worked in Expo Go but fails in a release/dev-client APK, rebuild the Android app — cleartext is applied at **prebuild** time, not at runtime.
+If LAN works in Expo Go but fails in a dev-client or release APK, rebuild the Android app. Cleartext settings are applied at prebuild time.
 
-### Android APK size
+### iOS Local Network and ATS
 
-Release builds use `expo-build-properties` to keep install size down:
+The iOS config in `app.json` includes:
 
-- **arm64-v8a only** — modern phones; drops armeabi-v7a / x86 / x86_64 from the APK
-- **R8 minify + resource shrinking** — release variant only
+- `NSAppTransportSecurity.NSAllowsLocalNetworking`, allowing HTTP to local IPs.
+- `NSLocalNetworkUsageDescription`, required for the iOS Local Network privacy prompt.
 
-After changing these settings in `app.json`, regenerate native projects and build release:
+On first LAN access, iOS asks whether the app may find devices on the local network. Expo Go and the installed xopc app have different bundle IDs, so allowing Expo Go does not grant access to the standalone app.
+
+If LAN is unreachable after install:
+
+1. Open **Settings -> Privacy & Security -> Local Network** and enable **xopc**.
+2. Confirm the phone and gateway are on the same Wi-Fi.
+3. Open gateway settings in the app and re-detect the route.
+
+## iOS CocoaPods and Proxy Notes
+
+If `expo run:ios` hangs on `Installing CocoaPods...`, system HTTP proxies can slow `pod install` and trigger Node `[UNDICI-EHPA]` warnings.
+
+This repo provides:
+
+- `plugins/with-ios-cocoapods-mirror.js`, which injects a Tsinghua CocoaPods Specs mirror during prebuild.
+- Scripts that clear proxy environment variables and prefer Homebrew's `pod`.
+
+Recommended flow:
+
+```bash
+pnpm exec expo prebuild
+pnpm run pods:install
+pnpm run ios:no-install
+```
+
+One-step alternative:
+
+```bash
+pnpm run ios:no-proxy
+```
+
+## Android Release Builds
+
+Release builds use `expo-build-properties` to reduce install size:
+
+- `arm64-v8a` only.
+- R8 minification.
+- Resource shrinking.
+
+Build a local release APK:
 
 ```bash
 pnpm exec expo prebuild --clean
 pnpm run android:release
 ```
 
-For internal distribution via EAS, `preview` profile produces a release APK; `production` produces an **AAB** for Play Store (Play serves per-device slices, often ~45–60MB download).
+EAS profiles:
 
-Package id is `ai.xopc.xopc`. Uninstall older builds under `com.anonymous.xopcapp` — Android treats them as separate apps.
+| Script | Output |
+|---|---|
+| `pnpm run build:android:preview` | Internal Android APK |
+| `pnpm run build:android:production` | Android App Bundle |
+| `pnpm run build:ios:preview` | Internal iOS build |
+| `pnpm run build:ios` | Production iOS build |
+| `pnpm run submit:ios` | Submit latest production iOS build |
 
-### iOS (local network + ATS)
+The current package ID is `ai.xopc.xopc`. If you previously installed a build under `com.anonymous.xopcapp`, uninstall it separately; Android treats it as a different app.
 
-Standalone iOS builds include, via `app.json` → `ios.infoPlist`:
+## Quality Checks
 
-- `NSAppTransportSecurity.NSAllowsLocalNetworking` — allows HTTP to local IPs such as `192.168.x.x`
-- `NSLocalNetworkUsageDescription` — required for the iOS 14+ **Local Network** privacy prompt
-
-These keys are written into `Info.plist` during `expo prebuild`. Unlike Android, iOS does **not** need a separate cleartext manifest flag when `NSAllowsLocalNetworking` is set.
-
-On first LAN access, iOS shows a system dialog (“Allow xopc to find devices on your local network?”). **Expo Go and your standalone app are different bundle IDs** — allowing access in Expo Go does not grant it to an installed `xopc` build.
-
-If LAN shows unreachable after install:
-
-1. Open **Settings → Privacy & Security → Local Network** and enable **xopc**
-2. Confirm the phone and gateway are on the same Wi‑Fi
-3. In the app, open gateway settings and tap **Re-detect route**
-
-Rebuild after changing `app.json` iOS plist entries:
+Before handing off a change:
 
 ```bash
-pnpm exec expo prebuild --clean
-pnpm run ios:no-proxy
+pnpm run lint
+pnpm run typecheck
+pnpm test
 ```
 
-## Configure
+If you changed `packages/gateway-sse-client`, also run:
 
-Open **Settings** in the app: set gateway base URL (no trailing slash) and optional bearer token (must match `gateway` auth in `xopc.json`).
+```bash
+pnpm run test:gateway-sse-client
+```
 
 ## License
 
-MIT (match xopc main repo unless stated otherwise).
+MIT, matching the xopc main repo unless stated otherwise.
