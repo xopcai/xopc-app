@@ -10,7 +10,6 @@ import { BatchActionBar } from '../../components/BatchActionBar';
 import { BatchDeleteConfirmDialog } from '../../components/BatchDeleteConfirmDialog';
 import { FloatingHeader } from '../../components/FloatingHeader';
 import { ListSkeleton } from '../../components/ListSkeleton';
-import { SwipeHintBanner } from '../../components/SwipeHintBanner';
 import { LIST_DELETE_UNDO_MS } from '../../constants/list-interaction';
 import { TOAST_DURATION_SHORT } from '../../constants/toast';
 import { useDelayedDelete } from '../../hooks/use-delayed-delete';
@@ -32,7 +31,6 @@ import {
   unarchiveSession,
   useGatewayConfigured,
 } from '../../query/sessions';
-import { storage } from '../../storage/mmkv';
 import { spacing, useTheme } from '../../theme';
 
 import { RenameDialog } from './RenameDialog';
@@ -40,8 +38,6 @@ import { SessionCard } from './SessionCard';
 import type { SwipeAction } from '../../components/SwipeableRow';
 
 const PAGE_SIZE = 20;
-const SWIPE_HINT_SEEN_KEY = 'hasSeenSwipeHint_sessions';
-
 export function SessionsScreen() {
   const router = useRouter();
   useDismissOnHardwareBack(router);
@@ -56,7 +52,6 @@ export function SessionsScreen() {
   const [snackMsg, setSnackMsg] = useState('');
   const [renameTarget, setRenameTarget] = useState<SessionListItem | null>(null);
   const [showBatchDelete, setShowBatchDelete] = useState(false);
-  const [swipeHintSeen, setSwipeHintSeen] = useState(() => storage.getString(SWIPE_HINT_SEEN_KEY) === 'true');
   const {
     selectionMode,
     selectedIds,
@@ -208,11 +203,6 @@ export function SessionsScreen() {
     }
   }, [refreshList, sa, scheduleDelete]);
 
-  const markSwipeHintSeen = useCallback(() => {
-    storage.set(SWIPE_HINT_SEEN_KEY, true);
-    setSwipeHintSeen(true);
-  }, []);
-
   const headerOverflowMenu = useMemo(
     () => [
       {
@@ -341,9 +331,6 @@ export function SessionsScreen() {
             />
           }
           contentContainerStyle={[styles.list, { paddingBottom: listBottomPadding }]}
-          ListHeaderComponent={!selectionMode && !swipeHintSeen && allSessions.length > 0 ? (
-            <SwipeHintBanner seenKey={SWIPE_HINT_SEEN_KEY} hasSeen={swipeHintSeen} onMarkSeen={markSwipeHintSeen} />
-          ) : null}
           ListEmptyComponent={
             <View style={styles.center}>
               <Icon source="message-processing-outline" size={42} color={colors.text.tertiary} />

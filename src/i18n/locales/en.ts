@@ -956,9 +956,6 @@ export const en = {
     batchDeleted: 'Deleted {{count}} items',
     addTags: 'Tags',
     rename: 'Rename',
-    swipeHintArchive: 'Swipe left to archive',
-    swipeHintDelete: 'Swipe left to delete',
-    swipeHintGeneric: 'Swipe left for quick actions',
   },
 
   // ── Share sheet ─────────────────────────────────────────

@@ -956,9 +956,6 @@ export const zh: MessageBundle = {
     batchDeleted: '已删除 {{count}} 条',
     addTags: '标签',
     rename: '重命名',
-    swipeHintArchive: '左滑可快速归档',
-    swipeHintDelete: '左滑可快速删除',
-    swipeHintGeneric: '左滑可快捷操作',
   },
 
   // ── 分享面板 ────────────────────────────────────────────
