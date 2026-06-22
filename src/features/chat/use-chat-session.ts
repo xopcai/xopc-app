@@ -406,6 +406,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       },
       onTtsAudio: (payload) => {
         if (!isCurrentSession()) return;
+        touchStreamActivity();
         updateStreamingMessage((message) => {
           message.content.push({
             type: 'audio',
