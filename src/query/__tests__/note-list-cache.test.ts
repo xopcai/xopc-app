@@ -3,11 +3,9 @@ import { describe, expect, it } from 'vitest';
 
 import { queryKeys } from '../keys';
 import {
-  blankNoteIndexEntry,
   noteToIndexEntry,
   upsertNoteInListCaches,
 } from '../note-list-cache';
-import { emptyParagraphBlock } from '../../features/notes/blocks/convert/block-serialize';
 import type { Note, NoteIndexEntry } from '../notes';
 
 function makeNote(overrides: Partial<Note> = {}): Note {
@@ -18,7 +16,7 @@ function makeNote(overrides: Partial<Note> = {}): Note {
     createdAt: 1,
     updatedAt: 2,
     capturedVia: { channel: 'app' },
-    blocks: [emptyParagraphBlock()],
+    markdown: '',
     ...overrides,
   };
 }
@@ -35,7 +33,7 @@ function makeEntry(overrides: Partial<NoteIndexEntry> = {}): NoteIndexEntry {
 }
 
 describe('upsertNoteInListCaches', () => {
-  it('prepends a blank note to home recentlyOpened', () => {
+  it('prepends a note to home recentlyOpened', () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(queryKeys.home, {
       recentlyOpened: [makeEntry({ id: 'note-old' })],
@@ -45,7 +43,7 @@ describe('upsertNoteInListCaches', () => {
       recentSessions: [],
     });
 
-    upsertNoteInListCaches(queryClient, blankNoteIndexEntry('note-new'));
+    upsertNoteInListCaches(queryClient, noteToIndexEntry(makeNote({ id: 'note-new' })));
 
     const home = queryClient.getQueryData<{
       recentlyOpened: NoteIndexEntry[];
@@ -109,7 +107,7 @@ describe('upsertNoteInListCaches', () => {
       pageParams: [0],
     });
 
-    upsertNoteInListCaches(queryClient, blankNoteIndexEntry('note-new'));
+    upsertNoteInListCaches(queryClient, noteToIndexEntry(makeNote({ id: 'note-new' })));
 
     const allList = queryClient.getQueryData<{ pages: Array<{ items: NoteIndexEntry[]; total: number }> }>(
       allListKey,
@@ -135,7 +133,7 @@ describe('upsertNoteInListCaches', () => {
     });
 
     expect(() => {
-      upsertNoteInListCaches(queryClient, blankNoteIndexEntry('note-new'));
+      upsertNoteInListCaches(queryClient, noteToIndexEntry(makeNote({ id: 'note-new' })));
     }).not.toThrow();
 
     const home = queryClient.getQueryData<{ recentlyOpened: NoteIndexEntry[] }>(queryKeys.home);

@@ -1,7 +1,5 @@
 import type { Note, NoteAttachment, NoteIndexEntry } from '../../query/notes';
 
-import { blocksToPlainText } from './blocks/convert/block-serialize';
-
 function attachmentPreviewText(
   attachments?: Pick<NoteAttachment, 'transcript' | 'fileName'>[],
 ): string {
@@ -25,18 +23,25 @@ function truncateText(text: string, maxLen: number): string {
   return `${chars.slice(0, maxLen).join('')}…`;
 }
 
+function markdownToPlainText(markdown: string | undefined): string {
+  return (markdown ?? '')
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[`*_>#\-[\]()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function resolvePlainTextFromEntry(
   entry: Pick<NoteIndexEntry, 'snippet'>,
-  cachedNote?: Pick<Note, 'markdown' | 'text' | 'blocks' | 'attachments'> | null,
+  cachedNote?: Pick<Note, 'markdown' | 'text' | 'attachments'> | null,
 ): string {
   const snippet = entry.snippet?.trim();
   if (snippet) return snippet;
 
   if (cachedNote) {
-    const markdown = cachedNote.markdown?.trim();
+    const markdown = markdownToPlainText(cachedNote.markdown);
     if (markdown) return markdown;
-    const fromBlocks = blocksToPlainText(cachedNote.blocks ?? []).trim();
-    if (fromBlocks) return fromBlocks;
     const fromAttachments = attachmentPreviewText(cachedNote.attachments);
     if (fromAttachments) return fromAttachments;
     const text = cachedNote.text?.trim();
@@ -47,32 +52,32 @@ export function resolvePlainTextFromEntry(
 }
 
 export function deriveNoteTitle(
-  blocks: Note['blocks'],
+  markdown: string | undefined,
   maxLen = 10,
   fallback = 'Untitled',
   attachments?: Pick<NoteAttachment, 'transcript' | 'fileName'>[],
 ): string {
-  const plain = blocksToPlainText(blocks ?? []).replace(/\s+/g, ' ').trim();
+  const plain = markdownToPlainText(markdown);
   const source = plain || attachmentPreviewText(attachments).replace(/\s+/g, ' ').trim();
   if (!source) return fallback;
   return Array.from(source).slice(0, maxLen).join('');
 }
 
 export function resolveDisplayTitle(
-  note: Pick<Note, 'title' | 'markdown' | 'text' | 'blocks' | 'attachments'> | undefined,
+  note: Pick<Note, 'title' | 'markdown' | 'text' | 'attachments'> | undefined,
   fallback: string,
   maxLen = 10,
 ): string {
   const explicitTitle = note?.title?.trim();
   if (explicitTitle) return explicitTitle;
   if (!note) return fallback;
-  return deriveNoteTitle(note.blocks, maxLen, fallback, note.attachments);
+  return deriveNoteTitle(note.markdown ?? note.text, maxLen, fallback, note.attachments);
 }
 
 export function resolveNoteListTitle(
   entry: Pick<NoteIndexEntry, 'title' | 'snippet'>,
   fallback: string,
-  cachedNote?: Pick<Note, 'title' | 'markdown' | 'text' | 'blocks' | 'attachments'> | null,
+  cachedNote?: Pick<Note, 'title' | 'markdown' | 'text' | 'attachments'> | null,
   maxLen = 10,
 ): string {
   const explicitTitle = entry.title?.trim();
@@ -81,9 +86,7 @@ export function resolveNoteListTitle(
   if (cachedNote) {
     const cachedTitle = cachedNote.title?.trim();
     if (cachedTitle) return cachedTitle;
-    const derived = cachedNote.markdown?.trim()
-      ? truncateText(cachedNote.markdown, maxLen)
-      : deriveNoteTitle(cachedNote.blocks, maxLen, '', cachedNote.attachments);
+    const derived = deriveNoteTitle(cachedNote.markdown ?? cachedNote.text, maxLen, '', cachedNote.attachments);
     if (derived) return derived;
   }
 
@@ -95,7 +98,7 @@ export function resolveNoteListTitle(
 
 export function resolveNoteListSnippet(
   entry: Pick<NoteIndexEntry, 'snippet'>,
-  cachedNote?: Pick<Note, 'markdown' | 'text' | 'blocks' | 'attachments'> | null,
+  cachedNote?: Pick<Note, 'markdown' | 'text' | 'attachments'> | null,
   maxLen = DEFAULT_LIST_SNIPPET_MAX,
 ): string {
   return truncateText(resolvePlainTextFromEntry(entry, cachedNote), maxLen);
@@ -110,7 +113,7 @@ export function resolveNoteListPreview(
   entry: Pick<NoteIndexEntry, 'title' | 'snippet'>,
   options: {
     untitled: string;
-    cachedNote?: Pick<Note, 'title' | 'markdown' | 'text' | 'blocks' | 'attachments'> | null;
+    cachedNote?: Pick<Note, 'title' | 'markdown' | 'text' | 'attachments'> | null;
     titleMaxLen?: number;
     snippetMaxLen?: number;
   },
@@ -150,6 +153,6 @@ export function normalizeNoteIndexEntry(
   return { ...entry, snippet: plain.slice(0, 200) };
 }
 
-export function countNoteCharacters(blocks: Note['blocks']): number {
-  return Array.from(blocksToPlainText(blocks ?? [])).length;
+export function countNoteCharacters(markdown: string | undefined): number {
+  return Array.from(markdownToPlainText(markdown)).length;
 }

@@ -1,19 +1,13 @@
-/**
- * Notes local-first editing — Markdown is canonical; block documents are editor-internal only.
- */
+/** Notes local-first editing — Markdown is canonical. */
 import { createOfflineQueue, type OfflineQueue, type QueuedOperation } from '../../sync';
 import { storage } from '../../storage/mmkv';
 import { deleteCachedLinkIndex } from '../../query/note-link-index';
-import { syncNote, updateNote, type Note, type NoteBlock, type NoteStatus, type NoteSyncResult } from '../../query/notes';
-
-import type { BlockDocument } from './blocks/core/block-document';
-import { documentEqual, documentToBlocks, documentToPlainText } from './blocks/convert/block-serialize';
+import { updateNote, type Note, type NoteStatus } from '../../query/notes';
 
 const LOCAL_NOTE_PREFIX = 'notes:local:item:';
 const EDIT_SYNC_DEBOUNCE_MS = 400;
 
 export interface LocalNoteSnapshot extends Note {
-  document?: BlockDocument;
   localVersion: number;
   syncState: 'synced' | 'pending' | 'failed';
 }
@@ -39,70 +33,18 @@ export function writeLocalNote(note: LocalNoteSnapshot): void {
   storage.set(localNoteKey(note.id), JSON.stringify(note));
 }
 
+function deleteLocalNoteSnapshot(noteId: string): void {
+  storage.delete(localNoteKey(noteId));
+}
+
 interface EditSyncPayload {
   noteId: string;
-  blocks?: NoteBlock[];
   markdown: string;
   localVersion: number;
-  baseRemoteVersion?: number;
   title?: string;
   clearTitle?: boolean;
   tags?: string[];
   status?: NoteStatus;
-}
-
-function resolveBaseRemoteVersion(noteId: string, fallback?: number): number | undefined {
-  const snapshot = readLocalNote(noteId);
-  const candidates = [fallback, snapshot?.remoteVersion].filter(
-    (value): value is number => typeof value === 'number',
-  );
-  if (candidates.length === 0) return undefined;
-  return Math.max(...candidates);
-}
-
-export function applyNoteServerVersion(
-  noteId: string,
-  server: Pick<Note, 'remoteVersion' | 'lastOpenedAt'>,
-): LocalNoteSnapshot | null {
-  const snapshot = readLocalNote(noteId);
-  if (!snapshot || server.remoteVersion == null) return snapshot;
-  if (
-    snapshot.remoteVersion === server.remoteVersion &&
-    snapshot.lastOpenedAt === server.lastOpenedAt
-  ) {
-    return snapshot;
-  }
-  const next: LocalNoteSnapshot = {
-    ...snapshot,
-    remoteVersion: server.remoteVersion,
-    lastOpenedAt: server.lastOpenedAt ?? snapshot.lastOpenedAt,
-  };
-  writeLocalNote(next);
-  return next;
-}
-
-async function syncNoteEdit(payload: EditSyncPayload): Promise<NoteSyncResult> {
-  const request = {
-    noteId: payload.noteId,
-    markdown: payload.markdown,
-    localVersion: payload.localVersion,
-    baseRemoteVersion: resolveBaseRemoteVersion(payload.noteId, payload.baseRemoteVersion),
-  };
-  const first = await syncNote(request);
-  if (!first.conflict) return first;
-
-  if (first.note.remoteVersion != null) {
-    applyNoteServerVersion(payload.noteId, first.note);
-  }
-
-  const retry = await syncNote({
-    ...request,
-    baseRemoteVersion: first.note.remoteVersion ?? request.baseRemoteVersion,
-  });
-  if (retry.conflict) {
-    throw new Error('Note sync conflict');
-  }
-  return retry;
 }
 
 let editSyncTimer: ReturnType<typeof setTimeout> | null = null;
@@ -139,23 +81,27 @@ function enqueueNoteEdit(payload: EditSyncPayload): void {
 const editQueue: OfflineQueue<EditSyncPayload> = createOfflineQueue<EditSyncPayload>({
   namespace: 'notes:edit',
   processor: async (operation: QueuedOperation<EditSyncPayload>) => {
-    const { noteId, blocks, markdown, localVersion, title, clearTitle, tags, status } = operation.payload;
-    const syncResult = await syncNoteEdit(operation.payload);
+    const { noteId, markdown, localVersion, title, clearTitle, tags, status } = operation.payload;
     const metadataPatch = noteMetadataPatch({ title, clearTitle, tags, status });
-    const updatedNote = Object.keys(metadataPatch).length > 0
-      ? await updateNote(noteId, metadataPatch)
-      : syncResult.note;
+    let updatedNote: Note;
+    try {
+      updatedNote = await updateNote(noteId, { markdown, ...metadataPatch });
+    } catch (error) {
+      if (isNoteNotFoundError(error)) {
+        discardLocalNoteState(noteId);
+        return;
+      }
+      throw error;
+    }
     const snapshot = readLocalNote(noteId);
     if (snapshot && snapshot.localVersion === localVersion) {
       writeLocalNote({
         ...snapshot,
-        ...syncResult.note,
         ...updatedNote,
-        title: title ?? updatedNote.title ?? syncResult.note.title ?? snapshot.title,
-        tags: tags ?? updatedNote.tags ?? syncResult.note.tags ?? snapshot.tags,
-        status: status ?? updatedNote.status ?? syncResult.note.status ?? snapshot.status,
+        title: clearTitle ? undefined : title ?? updatedNote.title ?? snapshot.title,
+        tags: tags ?? updatedNote.tags ?? snapshot.tags,
+        status: status ?? updatedNote.status ?? snapshot.status,
         markdown,
-        ...(blocks ? { blocks } : {}),
         text: markdown,
         syncState: 'synced',
       });
@@ -164,50 +110,26 @@ const editQueue: OfflineQueue<EditSyncPayload> = createOfflineQueue<EditSyncPayl
   maxRetries: 8,
 });
 
-export function saveLocalNoteEdit(
-  note: Note,
-  document: BlockDocument,
-): LocalNoteSnapshot | null {
-  const previous = readLocalNote(note.id);
-  const blocks = documentToBlocks(document);
-  if (
-    previous?.syncState === 'synced' &&
-    previous.document &&
-    documentEqual(document, previous.document)
-  ) {
-    return previous;
+export function discardPendingNoteEdits(noteId: string): void {
+  for (const op of editQueue.pending()) {
+    if (op.payload.noteId === noteId) {
+      editQueue.remove(op.id);
+    }
   }
-
-  const localVersion = (previous?.localVersion ?? 0) + 1;
-  const baseRemoteVersion = resolveBaseRemoteVersion(
-    note.id,
-    previous?.remoteVersion ?? note.remoteVersion,
-  );
-  const plainText = documentToPlainText(document);
-  const snapshot: LocalNoteSnapshot = {
-    ...note,
-    document,
-    blocks,
-    markdown: plainText,
-    text: plainText,
-    updatedAt: Date.now(),
-    localVersion,
-    remoteVersion: baseRemoteVersion,
-    syncState: 'pending',
-  };
-  writeLocalNote(snapshot);
-  deleteCachedLinkIndex(storage);
-
-  enqueueNoteEdit({
-    noteId: note.id,
-    blocks,
-    markdown: plainText,
-    localVersion,
-    baseRemoteVersion,
-  });
-
-  return snapshot;
+  for (const op of editQueue.deadLetters()) {
+    if (op.payload.noteId === noteId) {
+      editQueue.removeDeadLetter(op.id);
+    }
+  }
 }
+
+export function discardLocalNoteState(noteId: string): void {
+  deleteLocalNoteSnapshot(noteId);
+  discardPendingNoteEdits(noteId);
+  deleteCachedLinkIndex(storage);
+}
+
+export const deleteLocalNote = discardLocalNoteState;
 
 export function saveLocalMarkdownNoteEdit(
   note: Note,
@@ -233,10 +155,6 @@ export function saveLocalMarkdownNoteEdit(
   }
 
   const localVersion = (previous?.localVersion ?? note.localVersion ?? 0) + 1;
-  const baseRemoteVersion = resolveBaseRemoteVersion(
-    note.id,
-    previous?.remoteVersion ?? note.remoteVersion,
-  );
   const snapshot: LocalNoteSnapshot = {
     ...note,
     ...previous,
@@ -247,7 +165,7 @@ export function saveLocalMarkdownNoteEdit(
     text: input.markdown,
     updatedAt: Date.now(),
     localVersion,
-    remoteVersion: baseRemoteVersion,
+    remoteVersion: previous?.remoteVersion ?? note.remoteVersion,
     syncState: 'pending',
   };
   writeLocalNote(snapshot);
@@ -261,7 +179,6 @@ export function saveLocalMarkdownNoteEdit(
     tags: input.tags,
     status: input.status,
     localVersion,
-    baseRemoteVersion,
   });
 
   return snapshot;
@@ -301,4 +218,10 @@ function tagsEqual(a: string[] | undefined, b: string[] | undefined): boolean {
   const right = b ?? [];
   if (left.length !== right.length) return false;
   return left.every((tag, index) => tag === right[index]);
+}
+
+function isNoteNotFoundError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const candidate = error as Error & { status?: number; code?: string };
+  return candidate.status === 404 || candidate.code === 'note_not_found';
 }

@@ -1,8 +1,8 @@
 import type { ComposerAttachment } from '../chat/composer.types';
 import { capAttachments, MAX_WEBCHAT_ATTACHMENT_FILE_BYTES } from '../chat/chat-limits';
-import type { NoteAttachment, NoteBlock } from '../../query/notes';
-import type { NoteEditorAttachment } from './blocks/attachment.types';
-import { blocksToMarkdown, collectBlockImages } from './blocks/convert/block-serialize';
+import type { NoteAttachment } from '../../query/notes';
+
+export type NoteEditorAttachment = ComposerAttachment;
 
 export type NoteChatContextLabels = {
   imagePlaceholder: (alt: string) => string;
@@ -14,7 +14,13 @@ export type NoteChatMediaCollection = {
   droppedCount: number;
 };
 
+type MarkdownImageRef = {
+  src: string;
+  alt?: string;
+};
+
 function attachmentDedupeKey(att: ComposerAttachment): string {
+  if (att.uri) return `uri:${att.uri}`;
   const rel = att.workspaceRelativePath?.replace(/\\/g, '/').trim();
   if (rel) return `rel:${rel}`;
   const content = att.content.replace(/\s/g, '');
@@ -31,7 +37,11 @@ function isAudioMime(mimeType: string): boolean {
   return mimeType.startsWith('audio/');
 }
 
-function noteAttachmentToComposer(att: NoteAttachment, localUri?: string): ComposerAttachment {
+function noteAttachmentUri(noteId: string, attachmentId: string): string {
+  return `xopc-attachment://notes/${encodeURIComponent(noteId)}/${encodeURIComponent(attachmentId)}`;
+}
+
+function noteAttachmentToComposer(noteId: string, att: NoteAttachment, localUri?: string): ComposerAttachment {
   const isImage = att.type === 'image' || isImageMime(att.mimeType);
   const isAudio = att.type === 'audio' || isAudioMime(att.mimeType);
   return {
@@ -41,8 +51,8 @@ function noteAttachmentToComposer(att: NoteAttachment, localUri?: string): Compo
     mimeType: att.mimeType,
     size: att.size,
     content: '',
+    uri: noteAttachmentUri(noteId, att.id),
     localUri: (isImage || isAudio) ? localUri : undefined,
-    workspaceRelativePath: att.relativePath || undefined,
     durationSeconds: att.duration,
   };
 }
@@ -59,18 +69,30 @@ function enrichEditorAttachment(
   };
 }
 
+function collectMarkdownImages(markdown: string): MarkdownImageRef[] {
+  const refs: MarkdownImageRef[] = [];
+  const imagePattern = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = imagePattern.exec(markdown)) != null) {
+    refs.push({ alt: match[1]?.trim() || undefined, src: match[2]?.trim() ?? '' });
+  }
+  return refs;
+}
+
+function attachmentIdFromMarkdownSrc(src: string): string | null {
+  const xopc = /^xopc-attachment:\/\/notes\/[^/\s)]+\/([^\s)]+)$/.exec(src);
+  if (xopc) return decodeURIComponent(xopc[1]);
+  return src.trim() || null;
+}
+
 /** Markdown-like note body for chat context — never embeds data URIs or file URLs. */
 export function buildNoteChatContextText(
-  blocks: NoteBlock[],
+  markdown: string,
   labels: NoteChatContextLabels,
   options?: { voiceTranscripts?: string[] },
 ): string {
-  const body = blocksToMarkdown(blocks)
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, (match) => {
-      const altMatch = match.match(/^!\[([^\]]*)\]/);
-      const alt = altMatch?.[1]?.trim() || 'image';
-      return labels.imagePlaceholder(alt || 'image');
-    })
+  const body = markdown
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, (_match, alt: string) => labels.imagePlaceholder(alt?.trim() || 'image'))
     .trim();
 
   const transcripts = (options?.voiceTranscripts ?? [])
@@ -92,15 +114,17 @@ export function extractVoiceTranscripts(syncedAttachments?: NoteAttachment[]): s
 }
 
 async function attachmentFromImageRef(
-  attachmentId: string,
-  alt: string | undefined,
+  noteId: string,
+  image: MarkdownImageRef,
   syncedAttachments?: NoteAttachment[],
 ): Promise<ComposerAttachment | null> {
+  const attachmentId = attachmentIdFromMarkdownSrc(image.src);
+  if (!attachmentId) return null;
   const synced = syncedAttachments?.find((item) => item.id === attachmentId);
   if (synced) {
-    return noteAttachmentToComposer(synced);
+    return noteAttachmentToComposer(noteId, synced);
   }
-  const name = alt?.trim() || 'image';
+  const name = image.alt?.trim() || 'image';
   return {
     id: attachmentId,
     type: 'image',
@@ -120,6 +144,7 @@ function mimeTypeFromName(name: string): string {
 }
 
 function withinSizeLimit(att: ComposerAttachment): boolean {
+  if (att.uri && !att.content) return true;
   if (att.workspaceRelativePath && !att.content) return true;
   if (!att.content) return false;
   const bytes = Math.ceil((att.content.replace(/\s/g, '').length * 3) / 4);
@@ -140,15 +165,16 @@ function pushUnique(
 }
 
 export async function collectNoteAttachmentsForChat(
-  blocks: NoteBlock[],
+  noteId: string,
+  markdown: string,
   editorAttachments: NoteEditorAttachment[],
   syncedAttachments?: NoteAttachment[],
 ): Promise<NoteChatMediaCollection> {
   const raw: ComposerAttachment[] = [];
   const seen = new Set<string>();
 
-  for (const image of collectBlockImages(blocks)) {
-    pushUnique(raw, seen, await attachmentFromImageRef(image.attachmentId, image.alt, syncedAttachments));
+  for (const image of collectMarkdownImages(markdown)) {
+    pushUnique(raw, seen, await attachmentFromImageRef(noteId, image, syncedAttachments));
   }
 
   for (const att of editorAttachments) {
@@ -165,7 +191,7 @@ export async function collectNoteAttachmentsForChat(
   if (syncedAttachments?.length) {
     for (const att of syncedAttachments) {
       if (editorAttachments.some((item) => item.id === att.id)) continue;
-      pushUnique(raw, seen, noteAttachmentToComposer(att));
+      pushUnique(raw, seen, noteAttachmentToComposer(noteId, att));
     }
   }
 
@@ -175,5 +201,3 @@ export async function collectNoteAttachmentsForChat(
     droppedCount: Math.max(0, raw.length - capped.length),
   };
 }
-
-export { blocksToMarkdown };

@@ -8,41 +8,28 @@ import {
   resolveNoteListSnippet,
   resolveNoteListTitle,
 } from '../note-title';
-import type { NoteBlock } from '../../../query/notes';
-
-function paragraphBlocks(text: string): NoteBlock[] {
-  return [{
-    id: 'block_1',
-    type: 'paragraph',
-    text,
-    parentId: null,
-    childIds: [],
-    createdAt: 1,
-    updatedAt: 1,
-  }];
-}
 
 describe('deriveNoteTitle', () => {
   it('returns first 10 characters from note body', () => {
-    expect(deriveNoteTitle(paragraphBlocks('移动app 就做成笔记管理类 人'), 10, '无标题')).toBe('移动app 就做成笔');
+    expect(deriveNoteTitle('移动app 就做成笔记管理类 人', 10, '无标题')).toBe('移动app 就做成笔');
   });
 
   it('returns fallback for empty content', () => {
-    expect(deriveNoteTitle(paragraphBlocks(''), 10, '无标题')).toBe('无标题');
+    expect(deriveNoteTitle('', 10, '无标题')).toBe('无标题');
   });
 
-  it('uses attachment transcript when blocks are empty', () => {
+  it('uses attachment transcript when markdown is empty', () => {
     expect(
-      deriveNoteTitle(paragraphBlocks(''), 10, '无标题', [{ fileName: 'voice.m4a', transcript: '明天开会讨论方案' }]),
+      deriveNoteTitle('', 10, '无标题', [{ fileName: 'voice.m4a', transcript: '明天开会讨论方案' }]),
     ).toBe('明天开会讨论方案');
   });
 });
 
 describe('resolveNoteListTitle', () => {
-  it('derives title from cached note blocks when index title and snippet are empty', () => {
+  it('derives title from cached note markdown when index title and snippet are empty', () => {
     const entry = { title: '', snippet: '' };
     const cachedNote = {
-      blocks: paragraphBlocks('我的笔记内容很长'),
+      markdown: '我的笔记内容很长',
     };
     expect(resolveNoteListTitle(entry, '无标题', cachedNote)).toBe('我的笔记内容很长');
   });
@@ -51,17 +38,17 @@ describe('resolveNoteListTitle', () => {
     const entry = { title: '索引标题', snippet: '摘要' };
     const cachedNote = {
       title: '缓存标题',
-      blocks: paragraphBlocks('正文'),
+      markdown: '正文',
     };
     expect(resolveNoteListTitle(entry, '无标题', cachedNote)).toBe('索引标题');
   });
 });
 
 describe('resolveNoteListSnippet', () => {
-  it('falls back to cached blocks when snippet is missing', () => {
+  it('falls back to cached markdown when snippet is missing', () => {
     const entry = { snippet: '' };
     const cachedNote = {
-      blocks: paragraphBlocks('缓存正文内容'),
+      markdown: '缓存正文内容',
     };
     expect(resolveNoteListSnippet(entry, cachedNote)).toBe('缓存正文内容');
   });
@@ -106,7 +93,7 @@ describe('normalizeNoteIndexEntry', () => {
 });
 
 describe('countNoteCharacters', () => {
-  it('counts characters across block text', () => {
-    expect(countNoteCharacters(paragraphBlocks('你好世界'))).toBe(4);
+  it('counts characters in markdown text', () => {
+    expect(countNoteCharacters('你好世界')).toBe(4);
   });
 });

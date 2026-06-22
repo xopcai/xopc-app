@@ -36,6 +36,14 @@ describe('image-source-utils', () => {
     expect(source?.headers).toEqual({ Authorization: 'Bearer token-1' });
   });
 
+  it('converts media URI images to gateway media read URLs', () => {
+    const source = imageContentToSource({ type: 'image', source: { data: 'media://generated/chat/cat.png' } }, ctx);
+    expect(source?.uri).toBe(
+      'http://gateway.test/api/media/read?uri=media%3A%2F%2Fgenerated%2Fchat%2Fcat.png&sessionKey=main%3Awebchat%3Adefault%3Adirect%3Achat_1',
+    );
+    expect(source?.headers).toEqual({ Authorization: 'Bearer token-1' });
+  });
+
   it('normalizes absolute generated file paths to workspace-relative paths', () => {
     expect(normalizeGeneratedWorkspacePath('/Users/me/.xopc/workspace/media/generated/cat.png'))
       .toBe('media/generated/cat.png');

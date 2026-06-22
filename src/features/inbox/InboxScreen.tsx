@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
@@ -10,9 +10,15 @@ import { BatchActionBar } from '../../components/BatchActionBar';
 import { BatchDeleteConfirmDialog } from '../../components/BatchDeleteConfirmDialog';
 import { AppToast } from '../../components/AppToast';
 import { FloatingHeader } from '../../components/FloatingHeader';
+import { ListSkeleton } from '../../components/ListSkeleton';
 import { ListSelectionCheckbox } from '../../components/ListSelectionCheckbox';
+import { SwipeHintBanner } from '../../components/SwipeHintBanner';
+import { SwipeableRow, type SwipeAction } from '../../components/SwipeableRow';
+import { LIST_DELAY_LONG_PRESS, LIST_DELETE_UNDO_MS } from '../../constants/list-interaction';
 import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_SHORT } from '../../constants/toast';
 import { dismissOrHome } from '../../lib/navigation';
+import { useFlatListEndReached } from '../../lib/use-flat-list-end-reached';
+import { useDelayedDelete } from '../../hooks/use-delayed-delete';
 import { useListSelection } from '../../hooks/use-list-selection';
 import { useMessages, t } from '../../i18n/messages';
 import { AttachmentFileError, pickAttachmentFromSource, type AttachmentPickSource } from '../chat/attachment-file-io';
@@ -31,11 +37,15 @@ import { parseCaptureIntent } from '../notes/capture-parser';
 import { flushPendingNotes, queueMediaCapture, queueNote } from '../notes/notes-sync';
 import { QuickCaptureComposer } from '../notes/QuickCaptureComposer';
 import { InboxItemContent } from './InboxItemContent';
+import { storage } from '../../storage/mmkv';
 
 type CapturePayload =
   | { type: 'text'; text: string }
   | { type: 'attachment'; attachment: ComposerAttachment }
   | { type: 'voice'; uri: string; durationMillis: number; mimeType: string };
+
+const PAGE_SIZE = 20;
+const SWIPE_HINT_SEEN_KEY = 'hasSeenSwipeHint_inbox';
 
 export function InboxScreen() {
   const router = useRouter();
@@ -49,6 +59,7 @@ export function InboxScreen() {
   const li = m.listInteraction;
   const [captureText, setCaptureText] = useState('');
   const [snackMsg, setSnackMsg] = useState('');
+  const [swipeHintSeen, setSwipeHintSeen] = useState(() => storage.getString(SWIPE_HINT_SEEN_KEY) === 'true');
   const [showBatchDelete, setShowBatchDelete] = useState(false);
   const {
     selectionMode,
@@ -58,18 +69,37 @@ export function InboxScreen() {
     startSelection,
     toggleSelected,
   } = useListSelection<string>();
+  const {
+    hiddenIds: pendingDeleteIds,
+    undoId: pendingUndoId,
+    scheduleDelete,
+    undoDelete,
+  } = useDelayedDelete<string>();
 
-  const inboxQuery = useQuery({
+  const inboxQuery = useInfiniteQuery({
     queryKey: queryKeys.notes('inbox'),
-    queryFn: () => fetchNotes({ status: 'inbox', limit: 100 }),
+    queryFn: ({ pageParam }) => fetchNotes({ status: 'inbox', limit: PAGE_SIZE, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.offset + lastPage.limit : undefined,
   });
 
-  const items = inboxQuery.data?.items ?? [];
+  const items = useMemo(
+    () => (inboxQuery.data?.pages.flatMap((page) => page.items) ?? [])
+      .filter((item) => !pendingDeleteIds.has(item.id)),
+    [inboxQuery.data?.pages, pendingDeleteIds],
+  );
 
   const invalidateInbox = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.notes('inbox') });
     invalidateHomeFeed(queryClient);
   }, [queryClient]);
+
+  const handleLoadMore = useCallback(() => {
+    if (!inboxQuery.hasNextPage || inboxQuery.isFetchingNextPage) return;
+    void inboxQuery.fetchNextPage();
+  }, [inboxQuery.fetchNextPage, inboxQuery.hasNextPage, inboxQuery.isFetchingNextPage]);
+
+  const { onEndReached, onMomentumScrollBegin } = useFlatListEndReached(handleLoadMore);
 
   const captureMutation = useMutation({
     mutationFn: async (payload: CapturePayload) => {
@@ -171,6 +201,36 @@ export function InboxScreen() {
     router.push(`/items/${item.id}`);
   }, [router, selectionMode, toggleSelected]);
 
+  const handleItemLongPress = useCallback((item: NoteIndexEntry) => {
+    if (selectionMode) return;
+    startSelection();
+    toggleSelected(item.id);
+  }, [selectionMode, startSelection, toggleSelected]);
+
+  const handleSwipeAction = useCallback((item: NoteIndexEntry, action: SwipeAction) => {
+    if (action.key === 'archive') {
+      archiveMutation.mutate([item.id]);
+      return;
+    }
+
+    if (action.key === 'delete') {
+      scheduleDelete(
+        item.id,
+        async () => {
+          await deleteNote(item.id);
+          await invalidateInbox();
+        },
+        (err) => setSnackMsg(err instanceof Error ? err.message : pm.actionFailed),
+      );
+      setSnackMsg(pm.deleted);
+    }
+  }, [archiveMutation, invalidateInbox, pm.actionFailed, pm.deleted, scheduleDelete]);
+
+  const markSwipeHintSeen = useCallback(() => {
+    storage.set(SWIPE_HINT_SEEN_KEY, true);
+    setSwipeHintSeen(true);
+  }, []);
+
   const headerOverflowMenu = useMemo(
     () => [
       {
@@ -205,7 +265,7 @@ export function InboxScreen() {
 
   const renderItem = useCallback(({ item }: { item: NoteIndexEntry }) => {
     const selected = selectedIds.has(item.id);
-    return (
+    const row = (
       <Pressable
         style={[
           styles.itemCard,
@@ -215,6 +275,8 @@ export function InboxScreen() {
           },
         ]}
         onPress={() => handleItemPress(item)}
+        onLongPress={() => handleItemLongPress(item)}
+        delayLongPress={LIST_DELAY_LONG_PRESS}
         accessibilityState={selectionMode ? { selected } : undefined}
       >
         {selectionMode ? (
@@ -227,12 +289,29 @@ export function InboxScreen() {
         <InboxItemContent note={item} />
       </Pressable>
     );
+
+    if (selectionMode) return row;
+
+    const actions: SwipeAction[] = [
+      { key: 'archive', icon: 'archive-arrow-down-outline', color: 'blue', label: pm.archive },
+      { key: 'delete', icon: 'trash-can-outline', color: 'red', label: pm.delete, destructive: true },
+    ];
+
+    return (
+      <SwipeableRow actions={actions} onActionPress={(action) => handleSwipeAction(item, action)}>
+        {row}
+      </SwipeableRow>
+    );
   }, [
     colors.accent.primary,
     colors.accent.selectionBg,
     colors.border.subtle,
     colors.surface.panel,
+    handleItemLongPress,
     handleItemPress,
+    handleSwipeAction,
+    pm.archive,
+    pm.delete,
     selectedIds,
     selectionMode,
   ]);
@@ -250,29 +329,40 @@ export function InboxScreen() {
         overflowMenuA11yLabel={li.moreMenu}
       />
 
-      <FlatList
-        data={items}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        extraData={{ selectionMode, selectedCount, selectedKey: [...selectedIds].join('|') }}
-        contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPadding }]}
-        refreshControl={
-          <RefreshControl
-            refreshing={inboxQuery.isFetching}
-            onRefresh={async () => {
-              await flushPendingNotes();
-              await inboxQuery.refetch();
-            }}
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyWrap}>
-            <Icon source="tray" size={42} color={colors.text.tertiary} />
-            <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>{im.emptyTitle}</Text>
-            <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>{im.emptyHint}</Text>
-          </View>
-        }
-      />
+      {inboxQuery.isLoading ? (
+        <ListSkeleton count={8} />
+      ) : (
+        <FlatList
+          data={items}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          onEndReached={onEndReached}
+          onEndReachedThreshold={0.5}
+          onMomentumScrollBegin={onMomentumScrollBegin}
+          extraData={{ selectionMode, selectedCount, selectedKey: [...selectedIds].join('|') }}
+          contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPadding }]}
+          refreshControl={
+            <RefreshControl
+              refreshing={inboxQuery.isFetching && !inboxQuery.isLoading && !inboxQuery.isFetchingNextPage}
+              onRefresh={async () => {
+                await flushPendingNotes();
+                await inboxQuery.refetch();
+              }}
+            />
+          }
+          ListHeaderComponent={!selectionMode && !swipeHintSeen && items.length > 0 ? (
+            <SwipeHintBanner seenKey={SWIPE_HINT_SEEN_KEY} hasSeen={swipeHintSeen} onMarkSeen={markSwipeHintSeen} />
+          ) : null}
+          ListFooterComponent={inboxQuery.isFetchingNextPage ? <View style={styles.footerLoader}><Text style={{ color: colors.text.tertiary }}>{m.common.loading}</Text></View> : null}
+          ListEmptyComponent={
+            <View style={styles.emptyWrap}>
+              <Icon source="tray" size={42} color={colors.text.tertiary} />
+              <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>{im.emptyTitle}</Text>
+              <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>{im.emptyHint}</Text>
+            </View>
+          }
+        />
+      )}
 
       {selectionMode ? (
         <BatchActionBar items={batchActions} />
@@ -306,7 +396,8 @@ export function InboxScreen() {
       <AppToast
         visible={!!snackMsg}
         onDismiss={() => setSnackMsg('')}
-        duration={TOAST_DURATION_SHORT}
+        duration={pendingUndoId && snackMsg === pm.deleted ? LIST_DELETE_UNDO_MS : TOAST_DURATION_SHORT}
+        action={pendingUndoId && snackMsg === pm.deleted ? { label: li.undo, onPress: () => undoDelete() } : undefined}
         bottomLift={TOAST_BOTTOM_LIFT_ABOVE_BAR}
       >
         {snackMsg}
@@ -348,4 +439,5 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 18, fontWeight: '600' },
   emptyText: { fontSize: 13, textAlign: 'center', lineHeight: 19 },
+  footerLoader: { alignItems: 'center', paddingVertical: 14 },
 });

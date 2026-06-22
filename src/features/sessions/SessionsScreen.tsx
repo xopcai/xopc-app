@@ -9,8 +9,11 @@ import { AppToast } from '../../components/AppToast';
 import { BatchActionBar } from '../../components/BatchActionBar';
 import { BatchDeleteConfirmDialog } from '../../components/BatchDeleteConfirmDialog';
 import { FloatingHeader } from '../../components/FloatingHeader';
+import { ListSkeleton } from '../../components/ListSkeleton';
 import { SwipeHintBanner } from '../../components/SwipeHintBanner';
+import { LIST_DELETE_UNDO_MS } from '../../constants/list-interaction';
 import { TOAST_DURATION_SHORT } from '../../constants/toast';
+import { useDelayedDelete } from '../../hooks/use-delayed-delete';
 import { useListSelection } from '../../hooks/use-list-selection';
 import { useMessages, t } from '../../i18n/messages';
 import { sessionDisplayName } from '../../lib/session-helpers';
@@ -30,7 +33,7 @@ import {
   useGatewayConfigured,
 } from '../../query/sessions';
 import { storage } from '../../storage/mmkv';
-import { useTheme } from '../../theme';
+import { spacing, useTheme } from '../../theme';
 
 import { RenameDialog } from './RenameDialog';
 import { SessionCard } from './SessionCard';
@@ -62,6 +65,12 @@ export function SessionsScreen() {
     startSelection,
     toggleSelected,
   } = useListSelection<string>();
+  const {
+    hiddenIds: pendingDeleteIds,
+    undoId: pendingUndoId,
+    scheduleDelete,
+    undoDelete,
+  } = useDelayedDelete<string>();
 
   const sessionsQuery = useInfiniteQuery({
     queryKey: queryKeys.sessionsAll,
@@ -75,7 +84,11 @@ export function SessionsScreen() {
     refetchOnReconnect: false,
   });
 
-  const allSessions = sessionsQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const allSessions = useMemo(
+    () => (sessionsQuery.data?.pages.flatMap((page) => page.items) ?? [])
+      .filter((item) => !pendingDeleteIds.has(item.key)),
+    [pendingDeleteIds, sessionsQuery.data?.pages],
+  );
 
   const refreshList = useCallback(async () => {
     await refreshSessionsList(queryClient);
@@ -174,8 +187,14 @@ export function SessionsScreen() {
           setSnackMsg(sa.sessionArchived);
         }
       } else if (action.key === 'delete') {
-        await deleteSession(session.key);
-        await refreshList();
+        scheduleDelete(
+          session.key,
+          async () => {
+            await deleteSession(session.key);
+            await refreshList();
+          },
+          (error) => setSnackMsg(error instanceof Error ? error.message : sa.failedToDelete),
+        );
         setSnackMsg(sa.sessionDeleted);
       }
     } catch (error) {
@@ -187,7 +206,7 @@ export function SessionsScreen() {
         setSnackMsg(error instanceof Error ? error.message : sa.failedToArchive);
       }
     }
-  }, [refreshList, sa]);
+  }, [refreshList, sa, scheduleDelete]);
 
   const markSwipeHintSeen = useCallback(() => {
     storage.set(SWIPE_HINT_SEEN_KEY, true);
@@ -304,9 +323,7 @@ export function SessionsScreen() {
           <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>{m.sessions.gatewayNotConfiguredHint}</Text>
         </View>
       ) : sessionsQuery.isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator />
-        </View>
+        <ListSkeleton count={8} withIcon={false} />
       ) : (
         <FlatList
           data={allSessions}
@@ -358,7 +375,12 @@ export function SessionsScreen() {
         loading={batchDeleteMutation.isPending}
       />
 
-      <AppToast visible={Boolean(snackMsg)} onDismiss={() => setSnackMsg('')} duration={TOAST_DURATION_SHORT}>
+      <AppToast
+        visible={Boolean(snackMsg)}
+        onDismiss={() => setSnackMsg('')}
+        duration={pendingUndoId && snackMsg === sa.sessionDeleted ? LIST_DELETE_UNDO_MS : TOAST_DURATION_SHORT}
+        action={pendingUndoId && snackMsg === sa.sessionDeleted ? { label: li.undo, onPress: () => undoDelete() } : undefined}
+      >
         {snackMsg}
       </AppToast>
     </View>
@@ -368,7 +390,7 @@ export function SessionsScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 8 },
-  list: { paddingVertical: 12, flexGrow: 1 },
+  list: { padding: spacing.lg, paddingTop: spacing.md, gap: spacing.sm, flexGrow: 1 },
   footerLoader: { paddingVertical: 16, alignItems: 'center' },
   emptyTitle: { fontSize: 18, fontWeight: '600' },
   emptyText: { fontSize: 13, textAlign: 'center' },

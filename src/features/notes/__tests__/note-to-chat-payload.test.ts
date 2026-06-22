@@ -7,59 +7,24 @@ import {
   collectNoteAttachmentsForChat,
   extractVoiceTranscripts,
 } from '../note-to-chat-payload';
-import type { NoteEditorAttachment } from '../blocks/attachment.types';
-import type { NoteAttachment, NoteBlock } from '../../../query/notes';
+import type { NoteEditorAttachment } from '../note-to-chat-payload';
+import type { NoteAttachment } from '../../../query/notes';
 
 const labels = {
   imagePlaceholder: (alt: string) => `[Image: ${alt}]`,
   voiceTranscript: (text: string) => `[Voice transcript: ${text}]`,
 };
 
-function paragraphBlocks(text: string): NoteBlock[] {
-  return [{
-    id: 'block_1',
-    type: 'paragraph',
-    text,
-    parentId: null,
-    childIds: [],
-    createdAt: 1,
-    updatedAt: 1,
-  }];
-}
-
 describe('buildNoteChatContextText', () => {
   it('keeps markdown structure without embedding image attachment ids as raw data', () => {
-    const blocks: NoteBlock[] = [
-      {
-        id: 'h1',
-        type: 'heading',
-        text: 'Title',
-        level: 2,
-        parentId: null,
-        childIds: [],
-        createdAt: 1,
-        updatedAt: 1,
-      },
-      {
-        id: 'img',
-        type: 'image',
-        attachmentId: 'att-img',
-        alt: 'screenshot',
-        parentId: null,
-        childIds: [],
-        createdAt: 1,
-        updatedAt: 1,
-      },
-      ...paragraphBlocks('Body text'),
-    ];
-    const text = buildNoteChatContextText(blocks, labels);
+    const text = buildNoteChatContextText('## Title\n\n![screenshot](att-img)\n\nBody text', labels);
     expect(text).toContain('## Title');
     expect(text).toContain('[Image: screenshot]');
     expect(text).toContain('Body text');
   });
 
   it('appends voice transcripts after body text', () => {
-    const text = buildNoteChatContextText(paragraphBlocks('Notes'), labels, {
+    const text = buildNoteChatContextText('Notes', labels, {
       voiceTranscripts: ['Buy milk'],
     });
     expect(text).toBe('Notes\n\n[Voice transcript: Buy milk]');
@@ -84,17 +49,7 @@ describe('extractVoiceTranscripts', () => {
 });
 
 describe('collectNoteAttachmentsForChat', () => {
-  it('collects image blocks via synced attachments', async () => {
-    const blocks: NoteBlock[] = [{
-      id: 'img',
-      type: 'image',
-      attachmentId: 'att-img',
-      alt: 'pic',
-      parentId: null,
-      childIds: [],
-      createdAt: 1,
-      updatedAt: 1,
-    }];
+  it('collects markdown image refs via synced attachments', async () => {
     const synced: NoteAttachment[] = [{
       id: 'att-img',
       type: 'image',
@@ -103,10 +58,10 @@ describe('collectNoteAttachmentsForChat', () => {
       size: 3,
       relativePath: 'inbound/n/pic.png',
     }];
-    const result = await collectNoteAttachmentsForChat(blocks, [], synced);
+    const result = await collectNoteAttachmentsForChat('note-1', '![pic](att-img)', [], synced);
     expect(result.attachments).toHaveLength(1);
     expect(result.attachments[0].type).toBe('image');
-    expect(result.attachments[0].workspaceRelativePath).toBe('inbound/n/pic.png');
+    expect(result.attachments[0].uri).toBe('xopc-attachment://notes/note-1/att-img');
     expect(result.droppedCount).toBe(0);
   });
 
@@ -119,11 +74,11 @@ describe('collectNoteAttachmentsForChat', () => {
       size: 3,
       content: 'YWJj',
     }];
-    const result = await collectNoteAttachmentsForChat([], editor, []);
+    const result = await collectNoteAttachmentsForChat('note-1', '', editor, []);
     expect(result.attachments).toHaveLength(1);
   });
 
-  it('uses workspaceRelativePath for synced attachments without local base64', async () => {
+  it('uses canonical note attachment URI for synced attachments without local base64', async () => {
     const synced: NoteAttachment[] = [{
       id: 'remote',
       type: 'file',
@@ -132,8 +87,8 @@ describe('collectNoteAttachmentsForChat', () => {
       size: 100,
       relativePath: 'inbound/n/doc.pdf',
     }];
-    const result = await collectNoteAttachmentsForChat([], [], synced);
-    expect(result.attachments[0].workspaceRelativePath).toBe('inbound/n/doc.pdf');
+    const result = await collectNoteAttachmentsForChat('note-1', '', [], synced);
+    expect(result.attachments[0].uri).toBe('xopc-attachment://notes/note-1/remote');
     expect(result.attachments[0].content).toBe('');
   });
 
@@ -146,14 +101,14 @@ describe('collectNoteAttachmentsForChat', () => {
       size: 4,
       content: btoa(`file-${index}`),
     }));
-    const result = await collectNoteAttachmentsForChat([], editor, []);
+    const result = await collectNoteAttachmentsForChat('note-1', '', editor, []);
     expect(result.attachments).toHaveLength(MAX_CHAT_ATTACHMENTS);
     expect(result.droppedCount).toBe(2);
   });
 });
 
 describe('composerAttachmentsToWire for note media', () => {
-  it('maps audio attachments to voice wire type with workspace path', () => {
+  it('maps audio attachments to voice wire type with canonical uri', () => {
     const wire = composerAttachmentsToWire([
       {
         id: 'v1',
@@ -162,7 +117,7 @@ describe('composerAttachmentsToWire for note media', () => {
         mimeType: 'audio/mp4',
         size: 100,
         content: '',
-        workspaceRelativePath: 'inbound/n/voice.m4a',
+        uri: 'xopc-attachment://notes/note-1/v1',
         durationSeconds: 12,
       },
     ]);
@@ -172,7 +127,7 @@ describe('composerAttachmentsToWire for note media', () => {
         mimeType: 'audio/mp4',
         name: 'voice.m4a',
         size: 100,
-        workspaceRelativePath: 'inbound/n/voice.m4a',
+        uri: 'xopc-attachment://notes/note-1/v1',
         durationSeconds: 12,
       },
     ]);

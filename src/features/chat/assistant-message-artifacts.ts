@@ -1,4 +1,6 @@
 import type { ImageContent, MessageAttachment, MessageContent } from './messages.types';
+import { normalizeGeneratedWorkspacePath } from './image-source-utils';
+import { isMediaUri } from './media-uri';
 import {
   absolutePathSameAsWorkspaceRelative,
   extractFilePathsFromToolResult,
@@ -211,6 +213,23 @@ export function imageBlockToMessageAttachment(block: ImageContent, index: number
       type: 'image',
       content: raw,
       data: raw,
+    };
+  }
+  if (isMediaUri(raw)) {
+    return {
+      name: `image-${index + 1}`,
+      mimeType: block.source?.media_type || 'image/png',
+      type: 'image',
+      uri: raw,
+    };
+  }
+  const generatedPath = normalizeGeneratedWorkspacePath(raw);
+  if (generatedPath) {
+    return {
+      name: generatedPath.split('/').filter(Boolean).pop() || `image-${index + 1}`,
+      mimeType: block.source?.media_type || 'image/png',
+      type: 'image',
+      workspaceRelativePath: generatedPath,
     };
   }
   const compact = raw.replace(/\s/g, '');

@@ -75,13 +75,13 @@ describe('dispatchAgentSseEvent', () => {
       'user_transcript',
       JSON.stringify(envelope('user_transcript', 'run-1', {
         text: '你好',
-        attachments: [{ workspaceRelativePath: 'inbound/s/voice.m4a', mimeType: 'audio/mp4' }],
+        attachments: [{ uri: 'media://inbound/s/voice.m4a', workspaceRelativePath: 'inbound/s/voice.m4a', mimeType: 'audio/mp4' }],
       })),
       callbacks({ onUserTranscript }) as never,
     );
     expect(onUserTranscript).toHaveBeenCalledWith({
       text: '你好',
-      attachments: [{ workspaceRelativePath: 'inbound/s/voice.m4a', mimeType: 'audio/mp4' }],
+      attachments: [{ uri: 'media://inbound/s/voice.m4a', workspaceRelativePath: 'inbound/s/voice.m4a', mimeType: 'audio/mp4' }],
     });
   });
 

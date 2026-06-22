@@ -1,8 +1,8 @@
 /**
  * Design tokens — single source of truth for all visual constants.
  *
- * Aligned with xopc DESIGN.md: "Calm Intelligence" — neutral grays dominate,
- * blue is the sole accent signal, semantic colors are status-only.
+ * Aligned with xopc DESIGN.md: "Calm Intelligence" — neutral surfaces dominate,
+ * Loop Blue is the primary direction/focus signal, semantic colors are status-only.
  *
  * Usage:
  *   import { colors, spacing, radii, typography } from '../theme/tokens';
@@ -55,87 +55,91 @@ export type SemanticColors = {
   info: string;
 };
 
+export type OverlayColors = {
+  scrim: string;
+};
+
 export type ColorScheme = {
   surface: SurfaceColors;
   text: TextColors;
   border: BorderColors;
   accent: AccentColors;
   semantic: SemanticColors;
+  overlay: OverlayColors;
 };
 
 // ── Surface & Layer ─────────────────────────────────────────
 
 const lightSurface: SurfaceColors = {
-  base: '#F5F5F7',
-  panel: '#FFFFFF',
-  /** White panel on grouped base — clearer field edges than same-as-base gray */
-  input: '#FFFFFF',
-  hover: '#E8E8ED',
-  active: '#DCDCDE',
+  base: '#FFFFFF',
+  panel: '#FAFAFA',
+  input: '#FAFAFA',
+  hover: '#F4F6FF',
+  active: '#EEF2FF',
 };
 
 const darkSurface: SurfaceColors = {
-  base: '#000000',
-  panel: '#1C1C1E',
-  input: '#2C2C2E',
-  hover: '#3A3A3C',
-  active: '#48484A',
+  base: '#0A0A0A',
+  panel: '#121212',
+  input: '#1A1A1A',
+  hover: '#1A1A1A',
+  active: '#202020',
 };
 
 // ── Text ────────────────────────────────────────────────────
 
 const lightText: TextColors = {
-  primary: '#1D1D1F',
-  secondary: '#6E6E73',
-  tertiary: '#86868B',
-  disabled: '#AEAEB2',
+  primary: '#111111',
+  secondary: '#666666',
+  tertiary: '#999999',
+  disabled: '#B7B7B7',
   inverse: '#FFFFFF',
 };
 
 const darkText: TextColors = {
-  primary: '#F5F5F7',
-  secondary: '#A1A1A6',
-  tertiary: '#8E8E93',
-  disabled: '#636366',
+  primary: '#F5F5F5',
+  secondary: '#A1A1A1',
+  tertiary: '#666666',
+  disabled: '#4F4F4F',
   inverse: '#000000',
 };
 
 // ── Border ──────────────────────────────────────────────────
 
 const lightBorder: BorderColors = {
-  subtle: '#EBEBED',
-  default: '#D2D2D7',
-  strong: '#BCBCC0',
+  subtle: '#F1F1F1',
+  default: '#ECECEC',
+  strong: '#D8DCE8',
 };
 
 const darkBorder: BorderColors = {
-  subtle: '#2C2C2E',
-  default: '#38383A',
-  strong: '#48484A',
+  subtle: '#1A1A1A',
+  default: '#222222',
+  strong: '#333333',
 };
 
 // ── Accent & Semantic ───────────────────────────────────────
 
 const lightAccent: AccentColors = {
-  primary: '#2563EB',
-  primaryHover: '#1D4ED8',
-  selectionBg: 'rgba(37,99,235,0.10)',
-  soft: '#EFF6FF',
+  primary: '#3A6BFF',
+  primaryHover: '#2F55D6',
+  selectionBg: 'rgba(58,107,255,0.10)',
+  soft: '#EEF2FF',
 };
 
 const darkAccent: AccentColors = {
-  primary: '#3B82F6',
-  primaryHover: '#60A5FA',
-  selectionBg: 'rgba(59,130,246,0.18)',
-  soft: '#151B2B',
+  primary: '#3A6BFF',
+  primaryHover: '#6F91FF',
+  selectionBg: 'rgba(58,107,255,0.18)',
+  soft: '#151A2B',
 };
 
 export const semantic = {
-  success: { light: '#16A34A', dark: '#86EFAC' },
-  warning: { light: '#D97706', dark: '#FCD34D' },
-  error: { light: '#DC2626', dark: '#FCA5A5' },
-  errorBold: { light: '#EF4444', dark: '#FF453A' },
-  info: { light: '#2563EB', dark: '#93C5FD' },
+  success: { light: '#2CCB7F', dark: '#2CCB7F' },
+  warning: { light: '#FFB84D', dark: '#FFB84D' },
+  error: { light: '#FF5D5D', dark: '#FF5D5D' },
+  errorBold: { light: '#E5484D', dark: '#FF6B6B' },
+  info: { light: '#3A6BFF', dark: '#6F91FF' },
 } as const;
 
 // ── Composed palette per scheme ─────────────────────────────
@@ -152,6 +156,9 @@ export const lightColors: ColorScheme = {
     errorBold: semantic.errorBold.light,
     info: semantic.info.light,
   },
+  overlay: {
+    scrim: 'rgba(0,0,0,0.28)',
+  },
 };
 
 export const darkColors: ColorScheme = {
@@ -165,6 +172,9 @@ export const darkColors: ColorScheme = {
     error: semantic.error.dark,
     errorBold: semantic.errorBold.dark,
     info: semantic.info.dark,
+  },
+  overlay: {
+    scrim: 'rgba(0,0,0,0.52)',
   },
 };
 

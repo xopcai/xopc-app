@@ -4,6 +4,21 @@ Standalone Expo (React Native) app for the [xopc](https://github.com/xopcai/xopc
 
 **Remote access (FRP):** LAN-first routing with broker-terminated TLS on `*.frp.xopc.ai`; remote API calls use HTTPS + gateway Bearer token after QR pairing (`ps`).
 
+## Start here
+
+- Main project: [xopcai/xopc](https://github.com/xopcai/xopc)
+- Mobile app guide: [xopc docs — Mobile app](https://xopcai.github.io/xopc/mobile-app)
+- Remote access guide: [xopc docs — Remote access](https://xopcai.github.io/xopc/remote-access)
+
+If xopc helps you keep long-term AI work moving across terminal, web, desktop, mobile, and messengers, please star the main repo: [github.com/xopcai/xopc](https://github.com/xopcai/xopc).
+
+## How it connects
+
+1. Start `xopc gateway` on the machine that holds your xopc config and model credentials.
+2. In the gateway console, open **Settings → Remote access**.
+3. Choose LAN, FRP public tunnel, Tailscale Serve, or your own HTTPS reverse proxy.
+4. Use **Mobile app pairing** to scan the QR, or set the gateway base URL and optional bearer token in app settings.
+
 ## Layout
 
 - App source: `app/` (Expo Router), `src/`, `app.json`, `metro.config.js`.

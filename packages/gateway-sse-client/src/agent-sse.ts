@@ -11,6 +11,7 @@ export interface ProgressState {
 }
 
 export type UserTranscriptAttachment = {
+  uri?: string;
   workspaceRelativePath?: string;
   mimeType?: string;
   name?: string;
@@ -67,6 +68,7 @@ function normalizeTranscriptAttachments(raw: unknown): UserTranscriptAttachment[
   return rawAttachments
     ?.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
     .map((item) => ({
+      uri: typeof item.uri === 'string' ? item.uri : undefined,
       workspaceRelativePath:
         typeof item.workspaceRelativePath === 'string' ? item.workspaceRelativePath : undefined,
       mimeType: typeof item.mimeType === 'string' ? item.mimeType : undefined,

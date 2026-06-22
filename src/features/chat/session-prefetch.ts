@@ -133,26 +133,6 @@ export async function ensureOptimisticSessionRegistered(sessionKey: string): Pro
   return startRegistration(meta.agentId, meta.chatId, sessionKey);
 }
 
-/** Legacy async resolver — prefer takeOptimisticSessionKey. */
-export async function resolveNewChatSessionKey(agentId?: string): Promise<string> {
-  const sessionKey = takeOptimisticSessionKey(agentId);
-  await ensureOptimisticSessionRegistered(sessionKey).catch(() => sessionKey);
-  return sessionKey;
-}
-
-/** @deprecated Prefer takeOptimisticSessionKey. */
-export function consumePrefetchedSession(
-  agentId?: string,
-  _options?: SessionPrefetchOptions,
-): Promise<string> | null {
-  const now = Date.now();
-  dropExpired(now);
-  const cacheKey = keyOf(agentId);
-  const entry = cache.get(cacheKey);
-  if (!entry) return null;
-  cache.delete(cacheKey);
-  return registerPromises.get(entry.sessionKey) ?? null;
-}
 
 /** Test-only: wipe cache between cases. */
 export function resetSessionPrefetchCacheForTests(): void {

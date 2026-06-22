@@ -23,12 +23,13 @@ export function messageAttachmentsToWire(attachments?: MessageAttachment[]): Wir
       type: a.type ?? 'document',
       mimeType: a.mimeType,
       data: a.data ?? a.content,
+      uri: a.uri,
       name: a.name,
       size: a.size,
       workspaceRelativePath: a.workspaceRelativePath,
       durationSeconds: a.durationSeconds,
     }))
-    .filter((a) => Boolean(a.data || a.workspaceRelativePath));
+    .filter((a) => Boolean(a.data || a.uri || a.workspaceRelativePath));
   return wire.length ? wire : undefined;
 }
 
@@ -65,6 +66,7 @@ export function wireAttachmentsToMessageAttachments(wire: WireAttachment[]): Mes
     size: w.size,
     content: w.data,
     data: w.data,
+    uri: w.uri,
     preview: w.type === 'image' || w.mimeType?.startsWith('image/') ? w.data : undefined,
   }));
 }

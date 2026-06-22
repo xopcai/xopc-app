@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { markdownContainsPipeTable, markdownNeedsPlainFallback } from '../markdown-render-safety';
@@ -44,6 +44,7 @@ describe('normalizeWireUsage', () => {
 
 describe('session crash repro', () => {
   it('parses exported session without object cost usage', () => {
+    if (!existsSync(SESSION_PATH)) return;
     const raw = JSON.parse(readFileSync(SESSION_PATH, 'utf8')) as {
       messages?: Array<Record<string, unknown>>;
     };

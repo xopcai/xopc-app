@@ -1,7 +1,8 @@
 import { memo, useMemo } from 'react';
 import { Dimensions, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import { motion } from '../../motion';
 
@@ -24,10 +25,10 @@ export const ChatOverlayDismissHandle = memo(function ChatOverlayDismissHandle()
         .failOffsetX([-24, 24])
         .onUpdate((event) => {
           if (event.translationY <= 0) {
-            runOnJS(setDismissDragFraction)(0);
+            scheduleOnRN(setDismissDragFraction, 0);
             return;
           }
-          runOnJS(setDismissDragFraction)(event.translationY / SCREEN_HEIGHT);
+          scheduleOnRN(setDismissDragFraction, event.translationY / SCREEN_HEIGHT);
         })
         .onEnd((event) => {
           const fraction = Math.max(0, event.translationY / SCREEN_HEIGHT);
@@ -35,10 +36,10 @@ export const ChatOverlayDismissHandle = memo(function ChatOverlayDismissHandle()
             fraction >= motion.dismiss.completeProgress
             || event.velocityY > motion.dismiss.velocityThreshold
           ) {
-            runOnJS(completeInteractiveDismiss)();
+            scheduleOnRN(completeInteractiveDismiss);
             return;
           }
-          runOnJS(cancelInteractiveDismiss)();
+          scheduleOnRN(cancelInteractiveDismiss);
         }),
     [
       cancelInteractiveDismiss,
