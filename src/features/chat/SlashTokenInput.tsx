@@ -23,8 +23,6 @@ interface SlashTokenInputProps extends Omit<TextInputProps, 'children'> {
   onChangeText: (text: string) => void;
   onCursorChange?: (pos: number) => void;
   cursorPos: number;
-  /** @deprecated Kept for call-site compatibility; pill styling is not rendered. */
-  isDark?: boolean;
 }
 
 export const SlashTokenInput = memo(

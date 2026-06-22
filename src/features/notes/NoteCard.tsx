@@ -3,6 +3,8 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
 import { ListSelectionCheckbox } from '../../components/ListSelectionCheckbox';
+import { SwipeableRow, type SwipeAction } from '../../components/SwipeableRow';
+import { LIST_DELAY_LONG_PRESS } from '../../constants/list-interaction';
 import { useMessages } from '../../i18n/messages';
 import type { NoteIndexEntry, NoteStatus } from '../../query/notes';
 import { useTheme } from '../../theme';
@@ -30,6 +32,8 @@ function statusLabel(
 export type NoteCardProps = {
   note: NoteIndexEntry;
   onPress: (note: NoteIndexEntry) => void;
+  onLongPress?: (note: NoteIndexEntry) => void;
+  onSwipeAction?: (note: NoteIndexEntry, action: SwipeAction) => void;
   selectionMode?: boolean;
   selected?: boolean;
 };
@@ -37,6 +41,8 @@ export type NoteCardProps = {
 export function NoteCard({
   note,
   onPress,
+  onLongPress,
+  onSwipeAction,
   selectionMode = false,
   selected = false,
 }: NoteCardProps) {
@@ -67,8 +73,20 @@ export function NoteCard({
   });
 
   const handlePress = useCallback(() => onPress(note), [note, onPress]);
+  const handleLongPress = useCallback(() => onLongPress?.(note), [note, onLongPress]);
+  const handleSwipeAction = useCallback((action: SwipeAction) => {
+    onSwipeAction?.(note, action);
+  }, [note, onSwipeAction]);
 
-  return (
+  const swipeActions = useMemo<SwipeAction[]>(() => [
+    note.pinned
+      ? { key: 'unpin', icon: 'pin-off-outline', color: 'green', label: pm.unpin }
+      : { key: 'pin', icon: 'pin-outline', color: 'green', label: pm.pin },
+    { key: 'archive', icon: 'archive-arrow-down-outline', color: 'blue', label: pm.archive },
+    { key: 'delete', icon: 'trash-can-outline', color: 'red', label: pm.delete, destructive: true },
+  ], [note.pinned, pm.archive, pm.delete, pm.pin, pm.unpin]);
+
+  const cardContent = (
     <Pressable
       style={({ pressed }) => [
         styles.card,
@@ -81,6 +99,8 @@ export function NoteCard({
         },
       ]}
       onPress={handlePress}
+      onLongPress={handleLongPress}
+      delayLongPress={LIST_DELAY_LONG_PRESS}
       accessibilityState={selectionMode ? { selected } : undefined}
     >
       <View style={styles.topRow}>
@@ -146,6 +166,16 @@ export function NoteCard({
       </View>
     </Pressable>
   );
+
+  if (!selectionMode && onSwipeAction) {
+    return (
+      <SwipeableRow actions={swipeActions} onActionPress={handleSwipeAction} enabled={!selectionMode}>
+        {cardContent}
+      </SwipeableRow>
+    );
+  }
+
+  return cardContent;
 }
 
 const styles = StyleSheet.create({

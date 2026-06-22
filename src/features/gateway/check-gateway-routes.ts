@@ -86,8 +86,3 @@ export function formatReachabilityReason(
   }
 }
 
-/** @deprecated kicks a probe round; left as a thin alias. */
-export async function probeAndApplyPreferredRoute(): Promise<void> {
-  const { runProbeRound } = await import('./probe-coordinator');
-  await runProbeRound('manual', { force: true });
-}

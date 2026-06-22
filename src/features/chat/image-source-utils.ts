@@ -1,4 +1,5 @@
 import type { ImageContent, MessageContent } from './messages.types';
+import { buildGatewayMediaReadPath, isMediaUri } from './media-uri';
 
 export type ImageSource = {
   uri: string;
@@ -62,6 +63,10 @@ export function imageContentToSource(
 
   if (raw.startsWith('/')) {
     return { uri: ctx.apiUrl(raw), headers };
+  }
+
+  if (isMediaUri(raw)) {
+    return { uri: ctx.apiUrl(buildGatewayMediaReadPath(raw, ctx.sessionKey)), headers };
   }
 
   const generatedPath = normalizeGeneratedWorkspacePath(raw);

@@ -19,7 +19,12 @@ import { AppToast } from '../../components/AppToast';
 import { FloatingHeader } from '../../components/FloatingHeader';
 import { BatchActionBar } from '../../components/BatchActionBar';
 import { BatchDeleteConfirmDialog } from '../../components/BatchDeleteConfirmDialog';
+import { ListSkeleton } from '../../components/ListSkeleton';
+import { SwipeHintBanner } from '../../components/SwipeHintBanner';
+import type { SwipeAction } from '../../components/SwipeableRow';
+import { LIST_DELETE_UNDO_MS } from '../../constants/list-interaction';
 import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_DEFAULT } from '../../constants/toast';
+import { useDelayedDelete } from '../../hooks/use-delayed-delete';
 import { useListSelection } from '../../hooks/use-list-selection';
 
 import { AttachmentFileError, pickAttachmentFromSource } from '../chat/attachment-file-io';
@@ -60,6 +65,9 @@ import {
 import { flushPendingNotes, queueMediaCapture, queueNote } from './notes-sync';
 import { captureIntentBadgeKey, parseCaptureIntent } from './capture-parser';
 import type { ComposerAttachment } from '../chat/composer.types';
+import { storage } from '../../storage/mmkv';
+
+const SWIPE_HINT_SEEN_KEY = 'hasSeenSwipeHint_notes';
 
 type CapturePayload =
   | { type: 'text'; text: string }
@@ -94,6 +102,12 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
     startSelection,
     toggleSelected,
   } = useListSelection<string>();
+  const {
+    hiddenIds: pendingDeleteIds,
+    undoId: pendingUndoId,
+    scheduleDelete,
+    undoDelete,
+  } = useDelayedDelete<string>();
   const [showBatchDelete, setShowBatchDelete] = useState(false);
   const [batchTagPicker, setBatchTagPicker] = useState(false);
 
@@ -113,6 +127,7 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
   const [focusTagCreate, setFocusTagCreate] = useState(false);
   const [captureText, setCaptureText] = useState('');
   const [snackMsg, setSnackMsg] = useState('');
+  const [swipeHintSeen, setSwipeHintSeen] = useState(() => storage.getString(SWIPE_HINT_SEEN_KEY) === 'true');
   const [recording, setRecording] = useState(false);
   const recordingRef = useRef<ExpoRecording | null>(null);
   const noteTags = useNoteTagsStore((s) => s.tags);
@@ -236,6 +251,42 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
     router.push(`/items/${note.id}`);
   }, [router, selectionMode, toggleSelected]);
 
+  const handleNoteLongPress = useCallback((note: NoteIndexEntry) => {
+    if (selectionMode) return;
+    startSelection();
+    toggleSelected(note.id);
+  }, [selectionMode, startSelection, toggleSelected]);
+
+  const handleSwipeAction = useCallback((note: NoteIndexEntry, action: SwipeAction) => {
+    if (action.key === 'pin' || action.key === 'unpin') {
+      void updateNote(note.id, { pinned: action.key === 'pin' })
+        .then(refreshList)
+        .then(() => setSnackMsg(pm.updated))
+        .catch((err) => setSnackMsg(err instanceof Error ? err.message : pm.actionFailed));
+      return;
+    }
+
+    if (action.key === 'archive') {
+      void updateNote(note.id, { status: 'archived' })
+        .then(refreshList)
+        .then(() => setSnackMsg(pm.updated))
+        .catch((err) => setSnackMsg(err instanceof Error ? err.message : pm.actionFailed));
+      return;
+    }
+
+    if (action.key === 'delete') {
+      scheduleDelete(
+        note.id,
+        async () => {
+          await deleteNote(note.id);
+          await refreshList();
+        },
+        (err) => setSnackMsg(err instanceof Error ? err.message : pm.actionFailed),
+      );
+      setSnackMsg(pm.deleted);
+    }
+  }, [pm.actionFailed, pm.deleted, pm.updated, refreshList, scheduleDelete]);
+
   const headerOverflowMenu = useMemo(
     () => [
       {
@@ -316,9 +367,14 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
   }, [ensureNoteTags, notes]);
 
   const filteredNotes = useMemo(
-    () => notes.filter((note) => noteMatchesTagFilter(note, tagFilter)),
-    [notes, tagFilter],
+    () => notes.filter((note) => !pendingDeleteIds.has(note.id) && noteMatchesTagFilter(note, tagFilter)),
+    [notes, pendingDeleteIds, tagFilter],
   );
+
+  const markSwipeHintSeen = useCallback(() => {
+    storage.set(SWIPE_HINT_SEEN_KEY, true);
+    setSwipeHintSeen(true);
+  }, []);
 
   const handleOpenCreateTag = useCallback(() => {
     setFocusTagCreate(true);
@@ -415,11 +471,13 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
       <NoteCard
         note={item}
         onPress={handleNotePress}
+        onLongPress={handleNoteLongPress}
+        onSwipeAction={handleSwipeAction}
         selectionMode={selectionMode}
         selected={selectedIds.has(item.id)}
       />
     ),
-    [handleNotePress, selectedIds, selectionMode],
+    [handleNoteLongPress, handleNotePress, handleSwipeAction, selectedIds, selectionMode],
   );
 
   const listBottomPadding = selectionMode
@@ -478,9 +536,7 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
 
       <View style={styles.listArea}>
         {notesQuery.isLoading ? (
-          <View style={styles.center}>
-            <ActivityIndicator size="large" />
-          </View>
+          <ListSkeleton count={8} />
         ) : (
           <FlatList
             data={filteredNotes}
@@ -495,6 +551,9 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
             refreshControl={
               <RefreshControl refreshing={notesQuery.isFetching && !notesQuery.isLoading && !notesQuery.isFetchingNextPage} onRefresh={onRefresh} />
             }
+            ListHeaderComponent={!selectionMode && !swipeHintSeen && filteredNotes.length > 0 ? (
+              <SwipeHintBanner seenKey={SWIPE_HINT_SEEN_KEY} hasSeen={swipeHintSeen} onMarkSeen={markSwipeHintSeen} />
+            ) : null}
             ListEmptyComponent={
               <View style={styles.empty}>
                 <View style={[styles.emptyIconWrap, { backgroundColor: colors.accent.selectionBg }]}>
@@ -602,7 +661,8 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
       <AppToast
         visible={Boolean(snackMsg)}
         onDismiss={() => setSnackMsg('')}
-        duration={TOAST_DURATION_DEFAULT}
+        duration={pendingUndoId && snackMsg === pm.deleted ? LIST_DELETE_UNDO_MS : TOAST_DURATION_DEFAULT}
+        action={pendingUndoId && snackMsg === pm.deleted ? { label: li.undo, onPress: () => undoDelete() } : undefined}
         bottomLift={TOAST_BOTTOM_LIFT_ABOVE_BAR}
       >
         {snackMsg}

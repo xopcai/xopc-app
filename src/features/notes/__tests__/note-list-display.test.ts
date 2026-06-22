@@ -6,7 +6,6 @@ import {
   formatNoteRelativeTime,
   resolveNoteListDisplay,
 } from '../note-list-display';
-import type { NoteBlock } from '../../../query/notes';
 
 const kindLabels = {
   kindThought: '想法',
@@ -29,18 +28,6 @@ const timeLabels = {
   hours: '{{n}} 小时前',
   days: '{{n}} 天前',
 };
-
-function paragraphBlocks(text: string): NoteBlock[] {
-  return [{
-    id: 'block_1',
-    type: 'paragraph',
-    text,
-    parentId: null,
-    childIds: [],
-    createdAt: 1,
-    updatedAt: 1,
-  }];
-}
 
 function makeEntry(overrides: Partial<NoteIndexEntry> = {}): NoteIndexEntry {
   return {
@@ -93,7 +80,6 @@ describe('resolveNoteListDisplay', () => {
       {
         untitled: '无标题',
         cachedNote: {
-          blocks: [],
           attachments: [{ id: 'a1', type: 'audio', mimeType: 'audio/m4a', fileName: 'voice.m4a', size: 1, relativePath: 'voice.m4a', transcript: '记得买牛奶' }],
         },
         kindLabels,
@@ -149,14 +135,14 @@ describe('formatNoteRelativeTime', () => {
   });
 });
 
-describe('cached blocks fallback', () => {
-  it('derives title from cached blocks when index is empty', () => {
+describe('cached markdown fallback', () => {
+  it('derives title from cached markdown when index is empty', () => {
     const display = resolveNoteListDisplay(
       makeEntry({ snippet: '' }),
       {
         untitled: '无标题',
         cachedNote: {
-          blocks: paragraphBlocks('本地缓存正文'),
+          markdown: '本地缓存正文',
         },
         kindLabels,
         emptyHints,

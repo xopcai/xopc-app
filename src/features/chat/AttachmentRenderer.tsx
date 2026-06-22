@@ -2,8 +2,11 @@ import { useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
+import { useGatewayStore } from '../../stores/gateway-store';
 import { AudioMessageBlock } from './AudioMessageBlock';
 import { FilePreviewModal, type PreviewableFile } from './FilePreviewModal';
+import { buildGatewayRawFilePath } from './image-source-utils';
+import { buildGatewayMediaReadPath, isMediaUri } from './media-uri';
 import type { AudioContent, MessageAttachment } from './messages.types';
 import { mimeTypeFromFileName } from './tool-result-file-paths';
 
@@ -23,23 +26,43 @@ function attachmentPayload(att: MessageAttachment): string | undefined {
   return att.preview || att.content || att.data;
 }
 
-function attachmentToPreviewable(att: MessageAttachment, index: number): PreviewableFile {
+function attachmentToPreviewable(
+  att: MessageAttachment,
+  index: number,
+  sessionKey?: string | null,
+): PreviewableFile {
   const name = attachmentName(att, index);
   return {
     name,
     mimeType: att.mimeType || mimeTypeFromFileName(name),
     contentBase64: attachmentPayload(att),
     workspaceRelativePath: att.workspaceRelativePath,
+    remoteUri: isMediaUri(att.uri) ? useGatewayStore.getState().apiUrl(buildGatewayMediaReadPath(att.uri, sessionKey)) : undefined,
     extractedText: att.extractedText,
   };
 }
 
-function imageUri(att: MessageAttachment): string | null {
+function imageSource(
+  att: MessageAttachment,
+  sessionKey: string | null | undefined,
+  apiUrl: (path: string) => string,
+  token: string,
+): { uri: string; headers?: Record<string, string> } | null {
   const payload = attachmentPayload(att)?.trim();
-  if (!payload) return null;
-  if (payload.startsWith('data:')) return payload;
-  const mime = att.mimeType || 'image/png';
-  return `data:${mime};base64,${payload.replace(/\s/g, '')}`;
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  if (payload) {
+    if (payload.startsWith('data:')) return { uri: payload };
+    const mime = att.mimeType || 'image/png';
+    return { uri: `data:${mime};base64,${payload.replace(/\s/g, '')}` };
+  }
+  if (isMediaUri(att.uri)) {
+    return { uri: apiUrl(buildGatewayMediaReadPath(att.uri, sessionKey)), headers };
+  }
+  const rel = att.workspaceRelativePath?.replace(/^\/+/, '').trim();
+  if (rel) {
+    return { uri: apiUrl(buildGatewayRawFilePath(rel, sessionKey ?? undefined)), headers };
+  }
+  return null;
 }
 
 function attachmentToAudioContent(att: MessageAttachment): AudioContent {
@@ -48,12 +71,13 @@ function attachmentToAudioContent(att: MessageAttachment): AudioContent {
   return {
     type: 'audio',
     workspaceRelativePath: att.workspaceRelativePath,
-    uri:
+    uri: att.uri ?? (
       payload && !att.workspaceRelativePath
         ? payload.startsWith('data:') || payload.startsWith('file:')
           ? payload
           : `data:${mimeType};base64,${payload.replace(/\s/g, '')}`
-        : undefined,
+        : undefined
+    ),
     mimeType,
     name: att.name,
     durationSeconds: att.durationSeconds,
@@ -70,6 +94,8 @@ export function AttachmentRenderer({
   compact?: boolean;
 }) {
   const isDark = useColorScheme() === 'dark';
+  const apiUrl = useGatewayStore((s) => s.apiUrl);
+  const token = useGatewayStore((s) => s.token);
   const [active, setActive] = useState<PreviewableFile | null>(null);
   const items = useMemo(() => attachments?.filter(Boolean) ?? [], [attachments]);
   const audioItems = useMemo(() => items.filter(isAudioAttachment), [items]);
@@ -101,9 +127,9 @@ export function AttachmentRenderer({
       <View style={[styles.wrap, compact && styles.wrapCompact]}>
         {nonAudioItems.map((att, index) => {
           const name = attachmentName(att, index);
-          const preview = attachmentToPreviewable(att, index);
-          const uri = isImageAttachment(att) ? imageUri(att) : null;
-          if (uri) {
+          const preview = attachmentToPreviewable(att, index, sessionKey);
+          const source = isImageAttachment(att) ? imageSource(att, sessionKey, apiUrl, token) : null;
+          if (source) {
             return (
               <Pressable
                 key={att.id ?? `${name}-${index}`}
@@ -112,7 +138,7 @@ export function AttachmentRenderer({
                 accessibilityRole="button"
                 accessibilityLabel={`预览 ${name}`}
               >
-                <Image source={{ uri }} style={styles.image} resizeMode="cover" />
+                <Image source={source} style={styles.image} resizeMode="cover" />
               </Pressable>
             );
           }

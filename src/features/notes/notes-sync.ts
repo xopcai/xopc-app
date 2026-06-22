@@ -74,6 +74,3 @@ export function getPendingNotes(): Array<{ id: string; text: string; createdAt: 
     createdAt: op.createdAt,
   }));
 }
-
-// Legacy alias — kept for one release to avoid breaking imports
-export const queueOfflineNote = queueNote;

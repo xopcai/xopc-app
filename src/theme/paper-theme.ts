@@ -12,7 +12,7 @@ function buildPaperTheme(base: MD3Theme, colors: ColorScheme): MD3Theme {
     colors: {
       ...base.colors,
       primary: colors.accent.primary,
-      onPrimary: colors.text.inverse,
+      onPrimary: '#FFFFFF',
       primaryContainer: colors.accent.soft,
       onPrimaryContainer: colors.accent.primary,
       secondary: colors.text.secondary,
@@ -30,7 +30,7 @@ function buildPaperTheme(base: MD3Theme, colors: ColorScheme): MD3Theme {
       outline: colors.border.default,
       outlineVariant: colors.border.subtle,
       error: colors.semantic.error,
-      onError: colors.text.inverse,
+      onError: '#FFFFFF',
       elevation: {
         ...base.colors.elevation,
         level0: colors.surface.base,

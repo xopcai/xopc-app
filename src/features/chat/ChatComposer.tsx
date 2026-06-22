@@ -774,7 +774,6 @@ export const ChatComposer = memo(function ChatComposer({
     onChangeText: onDraftInputChange,
     onCursorChange: setCursorPos,
     cursorPos,
-    isDark,
     multiline: true,
     editable: !disabled,
     onContentSizeChange,

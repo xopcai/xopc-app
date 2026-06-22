@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   collectAssistantWorkspaceOutputPaths,
   filterAssistantAttachmentsDedupedAgainstWorkspacePaths,
+  imageBlockToMessageAttachment,
 } from '../assistant-message-artifacts';
 import type { MessageContent } from '../messages.types';
 
@@ -144,5 +145,35 @@ describe('collectAssistantWorkspaceOutputPaths', () => {
       },
     ];
     expect(collectAssistantWorkspaceOutputPaths(content)).toEqual([]);
+  });
+});
+
+describe('imageBlockToMessageAttachment', () => {
+  it('keeps media URI image blocks as canonical media references', () => {
+    const attachment = imageBlockToMessageAttachment({
+      type: 'image',
+      source: { media_type: 'image/png', data: 'media://generated/chat/image.png' },
+    }, 0);
+
+    expect(attachment).toEqual({
+      name: 'image-1',
+      mimeType: 'image/png',
+      type: 'image',
+      uri: 'media://generated/chat/image.png',
+    });
+  });
+
+  it('keeps generated workspace images as workspace references', () => {
+    const attachment = imageBlockToMessageAttachment({
+      type: 'image',
+      source: { media_type: 'image/webp', data: '/Users/x/ws/media/generated/cat.webp' },
+    }, 0);
+
+    expect(attachment).toEqual({
+      name: 'cat.webp',
+      mimeType: 'image/webp',
+      type: 'image',
+      workspaceRelativePath: 'media/generated/cat.webp',
+    });
   });
 });

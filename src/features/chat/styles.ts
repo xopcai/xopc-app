@@ -2,31 +2,31 @@
 import { StyleSheet } from 'react-native';
 
 export const chatColors = {
-  userBubbleBg: '#DBEAFE', // blue-100
-  userBubbleBgDark: 'rgba(59,130,246,0.18)',
-  assistantBg: '#FFFFFF',
-  assistantBgDark: '#1C1C1E',
-  thinkingBg: '#F3F4F6', // gray-100
+  userBubbleBg: 'rgba(58,107,255,0.10)',
+  userBubbleBgDark: 'rgba(58,107,255,0.18)',
+  assistantBg: '#FAFAFA',
+  assistantBgDark: '#121212',
+  thinkingBg: '#F4F6FF',
   thinkingBgDark: 'rgba(255,255,255,0.06)',
-  thinkingBorder: '#E5E7EB',
+  thinkingBorder: '#ECECEC',
   thinkingBorderDark: 'rgba(255,255,255,0.1)',
-  toolRunning: '#3B82F6', // blue-500
-  toolDone: '#22C55E', // green-500
-  toolError: '#EF4444', // red-500
-  toolBg: '#F9FAFB',
+  toolRunning: '#3A6BFF',
+  toolDone: '#2CCB7F',
+  toolError: '#FF5D5D',
+  toolBg: '#FAFAFA',
   toolBgDark: 'rgba(255,255,255,0.04)',
-  timestamp: '#9CA3AF', // gray-400
-  roleLabelUser: '#2563EB',
-  roleLabelAssistant: '#6B7280',
-  accent: '#2563EB',
-  accentSoft: 'rgba(37,99,235,0.08)',
-  accentSoftDark: 'rgba(59,130,246,0.15)',
-  cursorBlink: '#3B82F6',
-  stepsBg: '#F9FAFB',
+  timestamp: '#999999',
+  roleLabelUser: '#3A6BFF',
+  roleLabelAssistant: '#666666',
+  accent: '#3A6BFF',
+  accentSoft: 'rgba(58,107,255,0.08)',
+  accentSoftDark: 'rgba(58,107,255,0.15)',
+  cursorBlink: '#3A6BFF',
+  stepsBg: '#FAFAFA',
   stepsBgDark: 'rgba(255,255,255,0.04)',
-  stepsBorder: '#E5E7EB',
+  stepsBorder: '#ECECEC',
   stepsBorderDark: 'rgba(255,255,255,0.1)',
-  stepsTimeline: '#E5E7EB',
+  stepsTimeline: '#ECECEC',
   stepsTimelineDark: 'rgba(255,255,255,0.12)',
 } as const;
 

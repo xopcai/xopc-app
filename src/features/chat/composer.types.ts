@@ -3,6 +3,7 @@ export type WireAttachment = {
   type: string;
   mimeType?: string;
   data?: string;
+  uri?: string;
   name?: string;
   size?: number;
   workspaceRelativePath?: string;
@@ -18,6 +19,8 @@ export type ComposerAttachment = {
   size: number;
   /** Base64 payload without data-URI prefix. */
   content: string;
+  /** Canonical server-side media reference such as xopc-attachment://... or media://... */
+  uri?: string;
   /** Local file URI for thumbnails (file://) or remote preview URL. */
   localUri?: string;
   /** Gateway workspace path when the file is already on the server. */
@@ -41,10 +44,11 @@ export function composerAttachmentsToWire(attachments: ComposerAttachment[]): Wi
         name: a.name,
         size: a.size,
         ...(data ? { data } : {}),
+        ...(a.uri ? { uri: a.uri } : {}),
         ...(a.workspaceRelativePath ? { workspaceRelativePath: a.workspaceRelativePath } : {}),
         ...(a.durationSeconds != null ? { durationSeconds: a.durationSeconds } : {}),
       };
       return wire;
     })
-    .filter((a) => Boolean(a.data || a.workspaceRelativePath));
+    .filter((a) => Boolean(a.data || a.uri || a.workspaceRelativePath));
 }

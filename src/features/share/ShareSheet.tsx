@@ -29,7 +29,9 @@ import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheetModal } from '../../components/BottomSheetModal';
 import { t, useMessages } from '../../i18n/messages';
+import { getColors } from '../../theme';
 import { useCreateShare, useThumbnailReadiness, thumbnailUrlWithCacheBust } from '../../query/shares';
 import type {
   ShareAutoPayload,
@@ -46,7 +48,6 @@ export type ShareSheetProps = {
 
 export const ShareSheet = memo(function ShareSheet({ visible, request, onClose }: ShareSheetProps) {
   const scheme = useColorScheme();
-  const insets = useSafeAreaInsets();
   const m = useMessages();
 
   const { mutate, data, error, isPending, reset } = useCreateShare();
@@ -107,29 +108,14 @@ export const ShareSheet = memo(function ShareSheet({ visible, request, onClose }
   const palette = useColors(scheme === 'dark');
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable
-        style={styles.backdrop}
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel={m.share.close}
-      />
-      <View
-        style={[
-          styles.panel,
-          {
-            backgroundColor: palette.surface,
-            paddingBottom: Math.max(insets.bottom, 16),
-          },
-        ]}
+    <>
+      <BottomSheetModal
+        visible={visible}
+        onDismiss={onClose}
+        title={m.share.sheetTitle}
+        maxHeight="86%"
+        scroll={Boolean(data)}
       >
-        <View style={styles.handle} />
-        <View style={styles.headerRow}>
-          <Text variant="titleMedium" style={{ color: palette.text }}>
-            {m.share.sheetTitle}
-          </Text>
-        </View>
-
         {isPending ? (
           <View style={styles.center}>
             <ActivityIndicator />
@@ -155,7 +141,7 @@ export const ShareSheet = memo(function ShareSheet({ visible, request, onClose }
             m={m}
           />
         ) : null}
-      </View>
+      </BottomSheetModal>
       <QrShareView
         visible={qrOpen && Boolean(data)}
         url={data?.share.shareUrl ?? ''}
@@ -169,7 +155,7 @@ export const ShareSheet = memo(function ShareSheet({ visible, request, onClose }
         title={data?.share.title ?? null}
         onClose={() => setPreviewOpen(false)}
       />
-    </Modal>
+    </>
   );
 });
 
@@ -440,47 +426,27 @@ function routingLine(
 }
 
 function useColors(isDark: boolean) {
+  const colors = getColors(isDark);
   return isDark
     ? {
-        surface: '#1C1C1E',
-        tile: '#2C2C2E',
-        text: '#F5F5F7',
-        muted: '#8E8E93',
-        primary: '#2563EB',
+        surface: colors.surface.panel,
+        tile: colors.surface.input,
+        text: colors.text.primary,
+        muted: colors.text.secondary,
+        primary: colors.accent.primary,
       }
     : {
-        surface: '#FFFFFF',
-        tile: '#F2F2F7',
-        text: '#1C1C1E',
-        muted: '#6D6D70',
-        primary: '#2563EB',
+        surface: colors.surface.panel,
+        tile: colors.surface.input,
+        text: colors.text.primary,
+        muted: colors.text.secondary,
+        primary: colors.accent.primary,
       };
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  panel: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 20,
-    paddingTop: 8,
-  },
-  handle: {
-    alignSelf: 'center',
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(127,127,127,0.4)',
-    marginBottom: 12,
-  },
-  headerRow: {
-    paddingBottom: 12,
-  },
   center: {
     alignItems: 'center',
     justifyContent: 'center',

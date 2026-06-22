@@ -1,7 +1,10 @@
+import { useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { Animated } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useReducedMotion } from '../motion';
 import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding, useTheme } from '../theme';
 
 export type BatchActionBarItem = {
@@ -21,12 +24,46 @@ interface BatchActionBarProps {
 export function BatchActionBar({ items }: BatchActionBarProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
+  const progress = useRef(new Animated.Value(reducedMotion ? 1 : 0)).current;
   const barBg = colors.surface.panel;
   const defaultIcon = colors.text.secondary;
   const defaultLabel = colors.text.tertiary;
 
+  useEffect(() => {
+    if (reducedMotion) {
+      progress.setValue(1);
+      return;
+    }
+    Animated.spring(progress, {
+      toValue: 1,
+      damping: 22,
+      stiffness: 260,
+      mass: 0.8,
+      useNativeDriver: true,
+    }).start();
+  }, [progress, reducedMotion]);
+
+  const animatedStyle = {
+    opacity: progress,
+    transform: [
+      {
+        translateY: progress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [16, 0],
+        }),
+      },
+      {
+        scale: progress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.98, 1],
+        }),
+      },
+    ],
+  };
+
   return (
-    <View style={[styles.wrap, { paddingBottom: floatingBottomPadding(insets.bottom) }]}>
+    <Animated.View style={[styles.wrap, animatedStyle, { paddingBottom: floatingBottomPadding(insets.bottom) }]}>
       <View style={[styles.bar, { backgroundColor: barBg, shadowColor: '#000' }]}>
         {items.map((item) => {
           const iconColor = item.destructive ? colors.semantic.error : defaultIcon;
@@ -50,7 +87,7 @@ export function BatchActionBar({ items }: BatchActionBarProps) {
           );
         })}
       </View>
-    </View>
+    </Animated.View>
   );
 }
 

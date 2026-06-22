@@ -1,16 +1,14 @@
 import { memo, useCallback, useEffect, useState } from 'react';
 import {
-  KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
+import { BottomSheetModal } from '../../components/BottomSheetModal';
 import { useMessages } from '../../i18n/messages';
 import { useTheme } from '../../theme';
 import { getTagColors } from './note-tag-utils';
@@ -103,188 +101,125 @@ export const NoteTagPickerSheet = memo(function NoteTagPickerSheet(props: NoteTa
   const selectedTag = props.mode === 'multi' ? null : props.selectedTag;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onDismiss}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <Pressable style={styles.overlay} onPress={onDismiss}>
-          <Pressable
-            style={[styles.sheet, { backgroundColor: colors.surface.panel }]}
-            onPress={(event) => event.stopPropagation()}
-          >
-            <View style={styles.handle} />
-            <View style={styles.headerRow}>
-              <View style={styles.headerText}>
-                <Text style={[styles.title, { color: colors.text.primary }]}>
-                  {isMulti ? pm.tagPickerTitleMulti : pm.tagPickerTitle}
-                </Text>
-                {isMulti ? (
-                  <Text style={[styles.subtitle, { color: colors.text.tertiary }]}>
-                    {pm.tagMultiHint}
-                  </Text>
-                ) : null}
-              </View>
-              {isMulti ? (
-                <Pressable onPress={() => setDraftTags([])} hitSlop={8}>
-                  <Text style={[styles.clearAll, { color: colors.accent.primary }]}>{pm.tagClearAll}</Text>
-                </Pressable>
-              ) : null}
-            </View>
-
-            <ScrollView style={styles.scrollArea} bounces={false} keyboardShouldPersistTaps="handled">
-              {!isMulti ? (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.row,
-                    !selectedTag && { backgroundColor: colors.accent.selectionBg },
-                    pressed && { opacity: 0.75 },
-                  ]}
-                  onPress={() => handleSelectSingle(null)}
-                >
-                  <View style={[styles.chip, { backgroundColor: '#FDE68A' }]}>
-                    <Text style={[styles.chipText, { color: '#92400E' }]}>{pm.defaultTag}</Text>
-                  </View>
-                  <Text style={[styles.rowLabel, { color: colors.text.secondary }]}>{pm.tagUntaggedHint}</Text>
-                  {!selectedTag ? <Icon source="check" size={18} color={colors.accent.primary} /> : null}
-                </Pressable>
-              ) : null}
-
-              {tags.map((tag) => {
-                const palette = getTagColors(tag, tags);
-                const isActive = isMulti ? draftTags.includes(tag) : selectedTag === tag;
-                return (
-                  <Pressable
-                    key={tag}
-                    style={({ pressed }) => [
-                      styles.row,
-                      isActive && { backgroundColor: colors.accent.selectionBg },
-                      pressed && { opacity: 0.75 },
-                    ]}
-                    onPress={() => (isMulti ? toggleDraftTag(tag) : handleSelectSingle(tag))}
-                  >
-                    <View style={[styles.chip, { backgroundColor: palette.bg }]}>
-                      <Text style={[styles.chipText, { color: palette.fg }]}>{tag}</Text>
-                    </View>
-                    {isActive ? <Icon source="check" size={18} color={colors.accent.primary} /> : null}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-
-            <View style={[styles.createBlock, { borderTopColor: colors.border.subtle }]}>
-              <Text style={[styles.createLabel, { color: colors.text.secondary }]}>{pm.tagCreateLabel}</Text>
-              <View style={styles.createRow}>
-                <TextInput
-                  value={draft}
-                  onChangeText={(value) => {
-                    setDraft(value);
-                    if (error) setError('');
-                  }}
-                  placeholder={pm.tagCreatePlaceholder}
-                  placeholderTextColor={colors.text.tertiary}
-                  style={[
-                    styles.input,
-                    {
-                      color: colors.text.primary,
-                      backgroundColor: colors.surface.input,
-                      borderColor: error ? colors.semantic.error : colors.border.default,
-                    },
-                  ]}
-                  autoFocus={focusCreate}
-                  returnKeyType="done"
-                  onSubmitEditing={handleCreate}
-                  maxLength={24}
-                />
-                <Pressable
-                  style={[
-                    styles.createBtn,
-                    {
-                      backgroundColor: draft.trim() ? colors.text.primary : colors.surface.input,
-                    },
-                  ]}
-                  onPress={handleCreate}
-                  disabled={!draft.trim()}
-                >
-                  <Text
-                    style={{
-                      color: draft.trim() ? colors.text.inverse : colors.text.tertiary,
-                      fontWeight: '600',
-                      fontSize: 14,
-                    }}
-                  >
-                    {pm.tagCreateAction}
-                  </Text>
-                </Pressable>
-              </View>
-              {error ? (
-                <Text style={[styles.errorText, { color: colors.semantic.error }]}>{error}</Text>
-              ) : null}
-              {isMulti ? (
-                <Pressable
-                  style={[styles.doneBtn, { backgroundColor: colors.text.primary }]}
-                  onPress={handleApplyMulti}
-                >
-                  <Text style={[styles.doneBtnText, { color: colors.text.inverse }]}>{pm.tagDone}</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          </Pressable>
+    <BottomSheetModal
+      visible={visible}
+      onDismiss={onDismiss}
+      title={isMulti ? pm.tagPickerTitleMulti : pm.tagPickerTitle}
+      subtitle={isMulti ? pm.tagMultiHint : undefined}
+      headerAction={isMulti ? (
+        <Pressable onPress={() => setDraftTags([])} hitSlop={8}>
+          <Text style={[styles.clearAll, { color: colors.accent.primary }]}>{pm.tagClearAll}</Text>
         </Pressable>
-      </KeyboardAvoidingView>
-    </Modal>
+      ) : null}
+      maxHeight="72%"
+      keyboardAvoiding
+      scroll
+      footer={
+        <View style={styles.createBlock}>
+          <Text style={[styles.createLabel, { color: colors.text.secondary }]}>{pm.tagCreateLabel}</Text>
+          <View style={styles.createRow}>
+            <TextInput
+              value={draft}
+              onChangeText={(value) => {
+                setDraft(value);
+                if (error) setError('');
+              }}
+              placeholder={pm.tagCreatePlaceholder}
+              placeholderTextColor={colors.text.tertiary}
+              style={[
+                styles.input,
+                {
+                  color: colors.text.primary,
+                  backgroundColor: colors.surface.input,
+                  borderColor: error ? colors.semantic.error : colors.border.default,
+                },
+              ]}
+              autoFocus={focusCreate}
+              returnKeyType="done"
+              onSubmitEditing={handleCreate}
+              maxLength={24}
+            />
+            <Pressable
+              style={[
+                styles.createBtn,
+                {
+                  backgroundColor: draft.trim() ? colors.text.primary : colors.surface.input,
+                },
+              ]}
+              onPress={handleCreate}
+              disabled={!draft.trim()}
+            >
+              <Text
+                style={{
+                  color: draft.trim() ? colors.text.inverse : colors.text.tertiary,
+                  fontWeight: '600',
+                  fontSize: 14,
+                }}
+              >
+                {pm.tagCreateAction}
+              </Text>
+            </Pressable>
+          </View>
+          {error ? (
+            <Text style={[styles.errorText, { color: colors.semantic.error }]}>{error}</Text>
+          ) : null}
+          {isMulti ? (
+            <Pressable
+              style={[styles.doneBtn, { backgroundColor: colors.text.primary }]}
+              onPress={handleApplyMulti}
+            >
+              <Text style={[styles.doneBtnText, { color: colors.text.inverse }]}>{pm.tagDone}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      }
+    >
+      {!isMulti ? (
+        <Pressable
+          style={({ pressed }) => [
+            styles.row,
+            !selectedTag && { backgroundColor: colors.accent.selectionBg },
+            pressed && { backgroundColor: colors.surface.hover },
+          ]}
+          onPress={() => handleSelectSingle(null)}
+        >
+          <View style={[styles.chip, { backgroundColor: '#FDE68A' }]}>
+            <Text style={[styles.chipText, { color: '#92400E' }]}>{pm.defaultTag}</Text>
+          </View>
+          <Text style={[styles.rowLabel, { color: colors.text.secondary }]}>{pm.tagUntaggedHint}</Text>
+          {!selectedTag ? <Icon source="check" size={18} color={colors.accent.primary} /> : null}
+        </Pressable>
+      ) : null}
+
+      {tags.map((tag) => {
+        const palette = getTagColors(tag, tags);
+        const isActive = isMulti ? draftTags.includes(tag) : selectedTag === tag;
+        return (
+          <Pressable
+            key={tag}
+            style={({ pressed }) => [
+              styles.row,
+              isActive && { backgroundColor: colors.accent.selectionBg },
+              pressed && { backgroundColor: colors.surface.hover },
+            ]}
+            onPress={() => (isMulti ? toggleDraftTag(tag) : handleSelectSingle(tag))}
+          >
+            <View style={[styles.chip, { backgroundColor: palette.bg }]}>
+              <Text style={[styles.chipText, { color: palette.fg }]}>{tag}</Text>
+            </View>
+            {isActive ? <Icon source="check" size={18} color={colors.accent.primary} /> : null}
+          </Pressable>
+        );
+      })}
+    </BottomSheetModal>
   );
 });
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  sheet: {
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingTop: 8,
-    paddingBottom: 24,
-    maxHeight: '72%',
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(128,128,128,0.35)',
-    alignSelf: 'center',
-    marginBottom: 12,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    marginBottom: 8,
-    gap: 12,
-  },
-  headerText: {
-    flex: 1,
-    gap: 2,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  subtitle: {
-    fontSize: 12,
-  },
   clearAll: {
     fontSize: 13,
     fontWeight: '600',
     paddingTop: 2,
-  },
-  scrollArea: {
-    paddingHorizontal: 12,
-    maxHeight: 280,
   },
   row: {
     flexDirection: 'row',
@@ -309,9 +244,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   createBlock: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 20,
-    paddingTop: 14,
     gap: 8,
   },
   createLabel: {

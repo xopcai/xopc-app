@@ -11,11 +11,7 @@ export type NotePatchOperation =
   | { type: 'appendSection'; heading: string; markdown: string }
   | { type: 'prependSection'; heading: string; markdown: string }
   | { type: 'updateFrontmatter'; patch: Record<string, unknown> }
-  | { type: 'updateMetadata'; title?: string | null; tags?: string[]; status?: NoteStatus }
-  // Deprecated editor-internal variants kept only so old block-editor modules typecheck while the app migrates.
-  | { type: 'replaceBlocks'; blocks: NoteBlock[] }
-  | { type: 'insertBlocksAfter'; afterBlockId: string; blocks: NoteBlock[] }
-  | { type: 'updateBlock'; blockId: string; patch: Partial<NoteBlock> };
+  | { type: 'updateMetadata'; title?: string | null; tags?: string[]; status?: NoteStatus };
 
 export interface NoteAiPatch {
   id: string;
@@ -32,16 +28,6 @@ export interface NoteTaskMeta {
   priority?: 'high' | 'medium' | 'low';
   sourceSessionKey?: string;
   sourceNoteId?: string;
-}
-
-export type NoteTextMarkType = 'bold' | 'italic' | 'code' | 'link';
-
-export interface NoteTextMark {
-  id: string;
-  type: NoteTextMarkType;
-  from: number;
-  to: number;
-  href?: string;
 }
 
 export interface NoteIndexEntry {
@@ -71,67 +57,13 @@ export interface NoteAttachment {
   duration?: number;
 }
 
-export type NoteBlockType =
-  | 'paragraph'
-  | 'heading'
-  | 'todo'
-  | 'bulletList'
-  | 'numberedList'
-  | 'quote'
-  | 'callout'
-  | 'toggle'
-  | 'code'
-  | 'divider'
-  | 'image'
-  | 'aiSuggestion';
-
-interface BaseNoteBlock {
-  id: string;
-  type: NoteBlockType;
-  parentId: string | null;
-  childIds: string[];
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface TextNoteBlock extends BaseNoteBlock {
-  type: 'paragraph' | 'heading' | 'bulletList' | 'numberedList' | 'quote' | 'callout' | 'toggle' | 'code' | 'aiSuggestion';
-  text: string;
-  level?: 1 | 2 | 3;
-  indent?: number;
-  collapsed?: boolean;
-  marks?: NoteTextMark[];
-}
-
-export interface TodoNoteBlock extends BaseNoteBlock {
-  type: 'todo';
-  text: string;
-  checked: boolean;
-  marks?: NoteTextMark[];
-}
-
-export interface DividerNoteBlock extends BaseNoteBlock {
-  type: 'divider';
-}
-
-export interface ImageNoteBlock extends BaseNoteBlock {
-  type: 'image';
-  attachmentId: string;
-  alt?: string;
-  width?: number;
-}
-
-export type NoteBlock = TextNoteBlock | TodoNoteBlock | DividerNoteBlock | ImageNoteBlock;
-
 export interface Note {
   id: string;
   title?: string;
   kind: NoteKind;
   status: NoteStatus;
   markdown?: string;
-  /** Deprecated editor-internal fields. Do not send to gateway. */
   text?: string;
-  blocks?: NoteBlock[];
   attachments?: NoteAttachment[];
   createdAt: number;
   updatedAt: number;
@@ -168,7 +100,6 @@ export interface NotesListQuery {
 export interface NoteAiEditRequest {
   instruction: string;
   markdown?: string;
-  blocks?: NoteBlock[];
   context?: {
     type: 'selection' | 'section' | 'block' | 'note';
     range: { start: number; end: number };
@@ -185,21 +116,17 @@ export interface NoteAiEditResult {
   patch: NoteAiPatch;
 }
 
-export interface NoteSyncRequest {
-  noteId: string;
-  markdown: string;
-  localVersion: number;
-  baseRemoteVersion?: number;
-}
-
-export interface NoteSyncResult {
-  conflict: boolean;
-  note: Note;
+export interface ApiError extends Error {
+  status: number;
+  code?: string;
 }
 
 async function readError(res: Response): Promise<Error> {
-  const data = await res.json().catch(() => ({})) as { error?: string; message?: string };
-  return new Error(data.error || data.message || `HTTP ${res.status}`);
+  const data = await res.json().catch(() => ({})) as { code?: string; error?: string; message?: string };
+  const error = new Error(data.error || data.message || `HTTP ${res.status}`) as ApiError;
+  error.status = res.status;
+  error.code = data.code;
+  return error;
 }
 
 export async function fetchNotes(query?: NotesListQuery): Promise<NotesListResult> {
@@ -239,6 +166,7 @@ export async function quickCaptureNote(markdown: string): Promise<{ note: { id: 
 export type CaptureNoteAttachment = {
   mimeType: string;
   fileName: string;
+  file?: Blob;
   localUri?: string;
   data?: string;
   duration?: number;
@@ -252,7 +180,9 @@ export interface CaptureNoteInput {
 }
 
 async function appendCaptureAttachment(form: FormData, attachment: CaptureNoteAttachment): Promise<void> {
-  if (attachment.localUri && Platform.OS !== 'web') {
+  if (attachment.file) {
+    form.append('file', attachment.file, attachment.fileName);
+  } else if (attachment.localUri && Platform.OS !== 'web') {
     form.append('file', { uri: attachment.localUri, name: attachment.fileName, type: attachment.mimeType } as unknown as Blob);
   } else if (attachment.data) {
     const blob = await fetch(`data:${attachment.mimeType};base64,${attachment.data.replace(/\s/g, '')}`).then((res) => res.blob());
@@ -305,16 +235,6 @@ export async function captureNote(input: CaptureNoteInput): Promise<{ note: { id
   return { note };
 }
 
-export async function createBlankNote(): Promise<{ note: { id: string } }> {
-  const platform = Platform.OS === 'ios' ? 'ios' : 'android';
-  const res = await apiFetch('/api/notes', {
-    method: 'POST',
-    body: JSON.stringify({ channel: 'app', platform, markdown: '' }),
-  });
-  if (!res.ok) throw await readError(res);
-  return readCreatedNote(res);
-}
-
 async function readCreatedNote(res: Response): Promise<{ note: { id: string } }> {
   const data = await res.json() as { note?: { id?: string } };
   const id = data.note?.id?.trim();
@@ -331,10 +251,12 @@ export async function updateNote(id: string, patch: Record<string, unknown>): Pr
 
 export async function uploadNoteMedia(
   noteId: string,
-  input: { localUri?: string; name: string; mimeType: string; content?: string; durationMillis?: number },
+  input: { file?: Blob; localUri?: string; name: string; mimeType: string; content?: string; durationMillis?: number },
 ): Promise<NoteAttachment> {
   const form = new FormData();
-  if (input.localUri && Platform.OS !== 'web') {
+  if (input.file) {
+    form.append('file', input.file, input.name);
+  } else if (input.localUri && Platform.OS !== 'web') {
     form.append('file', { uri: input.localUri, name: input.name, type: input.mimeType } as unknown as Blob);
   } else if (input.content) {
     const blob = await fetch(`data:${input.mimeType};base64,${input.content.replace(/\s/g, '')}`).then((res) => res.blob());
@@ -367,15 +289,6 @@ export async function requestNoteAiEdit(id: string, request: NoteAiEditRequest):
   const res = await apiFetch(`/api/notes/${encodeURIComponent(id)}/ai/edit`, { method: 'POST', body: JSON.stringify(request) });
   if (!res.ok) throw await readError(res);
   return res.json() as Promise<NoteAiEditResult>;
-}
-
-export async function syncNote(request: NoteSyncRequest): Promise<NoteSyncResult> {
-  const res = await apiFetch('/api/notes/sync', { method: 'POST', body: JSON.stringify(request) });
-  const data = await res.json().catch(() => ({})) as Partial<NoteSyncResult> & { error?: string; message?: string };
-  if (res.status === 409 && data.note) return { conflict: true, note: data.note };
-  if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
-  if (!data.note) throw new Error('Invalid note sync response');
-  return { conflict: Boolean(data.conflict), note: data.note };
 }
 
 export async function createTask(

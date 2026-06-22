@@ -7,13 +7,13 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { AccessibilityInfo, InteractionManager } from 'react-native';
+import { AccessibilityInfo } from 'react-native';
 import {
-  runOnJS,
   useSharedValue,
   withSpring,
   type SharedValue,
 } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import {
   hapticAskAiDismiss,
@@ -86,7 +86,7 @@ export function WorkspaceTransitionProvider({ children, onClosed }: WorkspaceTra
   }, []);
 
   const runFinalize = useCallback(() => {
-    InteractionManager.runAfterInteractions(() => {
+    requestIdleCallback(() => {
       finalizeHandlerRef.current?.();
     });
   }, []);
@@ -140,7 +140,7 @@ export function WorkspaceTransitionProvider({ children, onClosed }: WorkspaceTra
 
     progress.value = withSpring(1, motion.spring.open, (finished) => {
       if (!finished) return;
-      runOnJS(handleOpenSettled)();
+      scheduleOnRN(handleOpenSettled);
     });
   }, [
     dismissDrag,
@@ -169,7 +169,7 @@ export function WorkspaceTransitionProvider({ children, onClosed }: WorkspaceTra
 
     progress.value = withSpring(0, motion.spring.close, (finished) => {
       if (!finished) return;
-      runOnJS(handleCloseSettled)();
+      scheduleOnRN(handleCloseSettled);
     });
   }, [dismissDrag, handleCloseSettled, phase, progress, reducedMotion]);
 

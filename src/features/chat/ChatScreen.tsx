@@ -133,7 +133,7 @@ export function ChatScreen({ embedded = false, overlay = false, onRequestHome }:
           models={modelsQuery.data?.items ?? []}
           currentModelId={effectiveModelId}
           paddingTop={headerPaddingTop}
-          headerBg={isDark ? '#000000' : '#FFFFFF'}
+          headerBg={colors.surface.base}
           pillText={colors.text.primary}
           pillMuted={colors.text.tertiary}
           onBackPress={overlay ? onRequestHome : isShellEmbedded ? undefined : handleBack}

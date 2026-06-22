@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
-import { runOnJS, useAnimatedReaction } from 'react-native-reanimated';
+import { useAnimatedReaction } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 
 /** Bottom inset for scrollable chat content while the IME is visible. */
 export function useKeyboardListPadding(): number {
@@ -11,7 +12,7 @@ export function useKeyboardListPadding(): number {
     () => Math.abs(height.value),
     (next, prev) => {
       if (next !== prev) {
-        runOnJS(setPadding)(next);
+        scheduleOnRN(setPadding, next);
       }
     },
     [height],

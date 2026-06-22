@@ -37,24 +37,26 @@ export function noteToIndexEntry(note: Note): NoteIndexEntry {
   });
 }
 
-export function blankNoteIndexEntry(id: string, now = Date.now()): NoteIndexEntry {
-  return {
-    id,
-    kind: 'mixed',
-    status: 'processed',
-    createdAt: now,
-    updatedAt: now,
-    lastOpenedAt: now,
-  };
-}
-
 function patchHomeRecentlyOpened(prev: HomeData | undefined, entry: NoteIndexEntry): HomeData {
   return {
+    ...prev,
     recentlyOpened: prependUnique(prev?.recentlyOpened ?? [], entry, HOME_RECENT_LIMIT),
     inboxCount: prev?.inboxCount ?? 0,
     pendingTasks: prev?.pendingTasks ?? [],
     pendingTaskCount: prev?.pendingTaskCount ?? 0,
     recentSessions: prev?.recentSessions ?? [],
+    activeAgent: prev?.activeAgent ?? { id: 'main' },
+    gateway: prev?.gateway ?? {
+      status: 'unknown',
+      ready: false,
+      httpListening: false,
+      version: '',
+      uptime: 0,
+      tunnel: { state: 'disconnected', publicUrl: null, connected: false },
+    },
+    workflowRuns: prev?.workflowRuns ?? { active: [], attention: [], recent: [] },
+    nextCronJobs: prev?.nextCronJobs ?? [],
+    recentCronRuns: prev?.recentCronRuns ?? [],
   };
 }
 

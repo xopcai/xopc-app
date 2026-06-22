@@ -129,7 +129,7 @@ export function resolveNoteListDisplay(
   entry: NoteIndexEntry,
   options: {
     untitled: string;
-    cachedNote?: Pick<Note, 'title' | 'text' | 'blocks' | 'attachments'> | null;
+    cachedNote?: Pick<Note, 'title' | 'markdown' | 'text' | 'attachments'> | null;
     kindLabels: NoteKindLabels;
     emptyHints: NoteEmptyHints;
     timeLabels: RelativeTimeLabels;
@@ -145,7 +145,7 @@ export function resolveNoteListDisplay(
   const primaryTag = entry.tags?.[0]?.trim() || undefined;
   const attachmentText = extractAttachmentPreviewText(options.cachedNote);
 
-  const cachedNote = attachmentText && options.cachedNote && !options.cachedNote.text?.trim()
+  const cachedNote = attachmentText && options.cachedNote && !options.cachedNote.markdown?.trim() && !options.cachedNote.text?.trim()
     ? { ...options.cachedNote, text: attachmentText }
     : options.cachedNote;
 

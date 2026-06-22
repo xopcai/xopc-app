@@ -394,6 +394,7 @@ function normalizeAttachments(raw: unknown): MessageAttachment[] | undefined {
       data: typeof item.data === 'string' ? item.data : undefined,
       preview: typeof item.preview === 'string' ? item.preview : undefined,
       extractedText: typeof item.extractedText === 'string' ? item.extractedText : undefined,
+      uri: typeof item.uri === 'string' ? item.uri : undefined,
       workspaceRelativePath: typeof item.workspaceRelativePath === 'string' ? item.workspaceRelativePath : undefined,
       durationSeconds: typeof item.durationSeconds === 'number' ? item.durationSeconds : undefined,
     }));
@@ -411,7 +412,7 @@ function audioAttachmentToContent(att: MessageAttachment): MessageContent | null
   return {
     type: 'audio',
     workspaceRelativePath: att.workspaceRelativePath,
-    uri: payload ? (payload.startsWith('data:') ? payload : `data:${mimeType};base64,${payload.replace(/\s/g, '')}`) : undefined,
+    uri: att.uri ?? (payload ? (payload.startsWith('data:') ? payload : `data:${mimeType};base64,${payload.replace(/\s/g, '')}`) : undefined),
     mimeType,
     name: att.name,
     durationSeconds: att.durationSeconds,

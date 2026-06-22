@@ -3,18 +3,15 @@
  */
 import { memo, useCallback, useEffect, useState } from 'react';
 import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
   StyleSheet,
-  useColorScheme,
   View,
 } from 'react-native';
 import { IconButton, Text, TextInput } from 'react-native-paper';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheetModal } from '../../components/BottomSheetModal';
 import { useMessages } from '../../i18n/messages';
+import { useTheme } from '../../theme';
 
 type RenameDialogProps = {
   visible: boolean;
@@ -32,8 +29,7 @@ export const RenameDialog = memo(function RenameDialog({
   loading = false,
 }: RenameDialogProps) {
   const m = useMessages();
-  const isDark = useColorScheme() === 'dark';
-  const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const [draft, setDraft] = useState(currentName);
 
   useEffect(() => {
@@ -45,39 +41,18 @@ export const RenameDialog = memo(function RenameDialog({
     if (trimmed) onRename(trimmed);
   }, [draft, onRename]);
 
-  const sheetBg = isDark ? '#1C1C1E' : '#FFFFFF';
-  const textColor = isDark ? '#F5F5F7' : '#1C1C1E';
-  const mutedBg = isDark ? '#2C2C2E' : '#F2F2F7';
-  const mutedText = isDark ? '#8E8E93' : '#6D6D70';
   const canSubmit = Boolean(draft.trim()) && !loading;
 
   return (
-    <Modal
+    <BottomSheetModal
       visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onDismiss}
-      statusBarTranslucent
+      onDismiss={onDismiss}
+      title={m.renameDialog.title}
+      keyboardAvoiding
+      maxHeight="48%"
+      headerAction={<IconButton icon="close" size={20} onPress={onDismiss} disabled={loading} />}
     >
-      <KeyboardAvoidingView
-        style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" />
-        <View
-          style={[
-            styles.sheet,
-            {
-              backgroundColor: sheetBg,
-              paddingBottom: Math.max(insets.bottom, 16),
-            },
-          ]}
-        >
-          <View style={styles.sheetHeader}>
-            <Text style={[styles.title, { color: textColor }]}>{m.renameDialog.title}</Text>
-            <IconButton icon="close" size={20} onPress={onDismiss} disabled={loading} />
-          </View>
-
+      <View style={styles.content}>
           <TextInput
             mode="outlined"
             value={draft}
@@ -86,29 +61,27 @@ export const RenameDialog = memo(function RenameDialog({
             autoFocus
             onSubmitEditing={handleSubmit}
             disabled={loading}
-            outlineColor={isDark ? '#38383A' : '#E5E5EA'}
-            activeOutlineColor="#007AFF"
-            textColor={textColor}
-            placeholderTextColor={mutedText}
+            outlineColor={colors.border.default}
+            activeOutlineColor={colors.accent.primary}
+            textColor={colors.text.primary}
+            placeholderTextColor={colors.text.tertiary}
             style={styles.input}
             contentStyle={styles.inputContent}
           />
 
           <View style={styles.actions}>
             <Pressable
-              style={[styles.actionButton, { backgroundColor: mutedBg }]}
+              style={[styles.actionButton, { backgroundColor: colors.surface.input }]}
               onPress={onDismiss}
               disabled={loading}
             >
-              <Text style={[styles.actionLabel, { color: textColor }]}>{m.renameDialog.cancel}</Text>
+              <Text style={[styles.actionLabel, { color: colors.text.primary }]}>{m.renameDialog.cancel}</Text>
             </Pressable>
             <Pressable
               style={[
                 styles.actionButton,
                 {
-                  backgroundColor: canSubmit
-                    ? (isDark ? '#3A3A3C' : '#E5E5EA')
-                    : (isDark ? '#2C2C2E' : '#F2F2F7'),
+                  backgroundColor: canSubmit ? colors.accent.primary : colors.surface.input,
                 },
               ]}
               onPress={handleSubmit}
@@ -117,7 +90,7 @@ export const RenameDialog = memo(function RenameDialog({
               <Text
                 style={[
                   styles.actionLabel,
-                  { color: canSubmit ? textColor : mutedText },
+                  { color: canSubmit ? '#FFFFFF' : colors.text.tertiary },
                 ]}
               >
                 {m.renameDialog.confirm}
@@ -125,36 +98,13 @@ export const RenameDialog = memo(function RenameDialog({
             </Pressable>
           </View>
         </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </BottomSheetModal>
   );
 });
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-  },
-  sheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 8,
-    paddingHorizontal: 16,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '700',
-    flex: 1,
+  content: {
+    paddingHorizontal: 20,
   },
   input: {
     marginBottom: 16,

@@ -54,6 +54,7 @@ export type MessageAttachment = {
   data?: string;
   preview?: string;
   extractedText?: string;
+  uri?: string;
   workspaceRelativePath?: string;
   durationSeconds?: number;
 };

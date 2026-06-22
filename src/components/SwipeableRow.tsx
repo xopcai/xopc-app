@@ -37,9 +37,9 @@ export type SwipeAction = {
 };
 
 export const ACTION_COLOR_MAP: Record<SwipeActionColor, string> = {
-  green: '#34C759',
-  blue: '#007AFF',
-  red: '#FF3B30',
+  green: '#2CCB7F',
+  blue: '#3A6BFF',
+  red: '#FF5D5D',
 };
 
 // ── Props ────────────────────────────────────────────────────
