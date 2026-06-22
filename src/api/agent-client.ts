@@ -99,12 +99,28 @@ function wrapTerminalCallbacks(cb?: MessagingCallbacks): {
   const markTerminal = () => {
     sawTerminal = true;
   };
+  const guarded = <T extends unknown[]>(fn: ((...args: T) => void) | undefined) =>
+    (...args: T) => {
+      if (sawTerminal) return;
+      fn?.(...args);
+    };
   return {
     get sawTerminal() {
       return sawTerminal;
     },
     wrapped: {
       ...cb,
+      onStreamStart: guarded(cb.onStreamStart),
+      onUserTranscript: guarded(cb.onUserTranscript),
+      onToken: guarded(cb.onToken),
+      onThinking: guarded(cb.onThinking),
+      onThinkingEnd: guarded(cb.onThinkingEnd),
+      onToolStart: guarded(cb.onToolStart),
+      onToolUpdate: guarded(cb.onToolUpdate),
+      onToolEnd: guarded(cb.onToolEnd),
+      onProgress: guarded(cb.onProgress),
+      onTtsAudio: guarded(cb.onTtsAudio),
+      onClarifyRequest: guarded(cb.onClarifyRequest),
       onResult: () => {
         if (sawTerminal) return;
         markTerminal();
