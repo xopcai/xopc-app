@@ -1,14 +1,16 @@
+import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Keyboard, Platform, Pressable, Share, StyleSheet, TextInput, View } from 'react-native';
 import { ActivityIndicator, Button, Icon, Snackbar, Text } from 'react-native-paper';
 
 import { apiFetch } from '../../api/client';
+import { BottomSheetModal } from '../../components/BottomSheetModal';
 import { TOAST_DURATION_SHORT } from '../../constants/toast';
-import { useMessages } from '../../i18n/messages';
-import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
+import { t, useMessages } from '../../i18n/messages';
+import { dismissOrHome, openChat, useDismissOnHardwareBack } from '../../lib/navigation';
 import { queryKeys } from '../../query/keys';
 import { noteToIndexEntry, upsertNoteInListCaches } from '../../query/note-list-cache';
 import { invalidateNoteLists } from '../../query/workspace-sync';
@@ -22,11 +24,19 @@ import {
   type Note,
   type NoteAttachment,
 } from '../../query/notes';
+import { createSession } from '../../query/sessions';
 import { useTheme } from '../../theme';
 
 import { NoteDetailHeader } from '../notes/NoteDetailHeader';
+import { NoteViewActionBar } from '../notes/NoteViewActionBar';
 import { discardLocalNoteState, flushPendingNoteOperations, readLocalNote, saveLocalMarkdownNoteEdit } from '../notes/notes-local';
 import { applyMarkdownPatchResult } from '../notes/markdown/markdown-patch';
+import {
+  buildNoteChatContextText,
+  collectNoteAttachmentsForChat,
+  extractVoiceTranscripts,
+} from '../notes/note-to-chat-payload';
+import { writeNoteChatPrefill } from '../chat/note-chat-prefill-storage';
 import { NoteEditorBridge } from '../notes/editor/NoteEditorBridge';
 import type {
   EditorAiRequest,
@@ -100,6 +110,8 @@ export function PageScreen() {
   const [noteStatus, setNoteStatus] = useState<Note['status']>('processed');
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [snackMsg, setSnackMsg] = useState('');
+  const [moreVisible, setMoreVisible] = useState(false);
+  const [actionLoading, setActionLoading] = useState<'catalyst' | 'openChat' | null>(null);
   const [, setSelection] = useState<EditorSelectionContext | null>(null);
 
   const markdownRef = useRef(markdown);
@@ -346,6 +358,79 @@ export function PageScreen() {
     void flushSave();
   }, [flushSave]);
 
+  const buildChatPrefill = useCallback((instruction: string): string => {
+    const context = buildNoteChatContextText(
+      markdownRef.current,
+      {
+        imagePlaceholder: (alt) => t(pm.noteChatImagePlaceholder, { alt }),
+        voiceTranscript: (text) => t(pm.noteChatVoiceTranscript, { text }),
+      },
+      { voiceTranscripts: extractVoiceTranscripts(note?.attachments) },
+    );
+    const noteTitle = titleRef.current.trim();
+    return [
+      instruction.trim(),
+      noteTitle ? `${pm.catalystChatNoteTitle}: ${noteTitle}` : '',
+      context,
+    ].filter(Boolean).join('\n\n');
+  }, [note?.attachments, pm.catalystChatNoteTitle, pm.noteChatImagePlaceholder, pm.noteChatVoiceTranscript]);
+
+  const handleOpenNoteChat = useCallback(async (kind: 'catalyst' | 'openChat') => {
+    if (!id || !note) return;
+    setActionLoading(kind);
+    try {
+      Keyboard.dismiss();
+      await flushSave();
+      const instruction = kind === 'catalyst' ? pm.catalystChatPrompt : pm.editorSendToChatPrefix;
+      const prefill = buildChatPrefill(instruction);
+      const media = await collectNoteAttachmentsForChat(id, markdownRef.current, [], note.attachments);
+      const key = await createSession(undefined, { forceNew: true });
+      writeNoteChatPrefill(key, {
+        text: prefill,
+        attachments: media.attachments,
+        droppedCount: media.droppedCount,
+      });
+      openChat(router, key, { msg: prefill });
+    } catch (error) {
+      setSnackMsg(error instanceof Error ? error.message : pm.actionFailed);
+    } finally {
+      setActionLoading(null);
+    }
+  }, [buildChatPrefill, flushSave, id, note, pm.actionFailed, pm.catalystChatPrompt, pm.editorSendToChatPrefix, router]);
+
+  const handleShare = useCallback(async () => {
+    setMoreVisible(false);
+    try {
+      await flushSave();
+      const message = markdownRef.current.trim() || titleRef.current.trim() || pm.untitledNote;
+      if (Platform.OS === 'web') {
+        await Clipboard.setStringAsync(message);
+        setSnackMsg(pm.shareNotesCopied);
+        return;
+      }
+      await Share.share({
+        message,
+        title: titleRef.current.trim() || pm.shareNotesTitle,
+      });
+    } catch {
+      await Clipboard.setStringAsync(markdownRef.current.trim() || titleRef.current.trim() || pm.untitledNote);
+      setSnackMsg(pm.shareNotesCopied);
+    }
+  }, [flushSave, pm.shareNotesCopied, pm.shareNotesTitle, pm.untitledNote]);
+
+  const handleSyncNow = useCallback(async () => {
+    setMoreVisible(false);
+    try {
+      await flushSave();
+      const flushed = await flushPendingNoteOperations();
+      if (id) await queryClient.invalidateQueries({ queryKey: queryKeys.note(id) });
+      await invalidateNoteLists(queryClient);
+      setSnackMsg(flushed > 0 ? pm.updated : pm.saved);
+    } catch (error) {
+      setSnackMsg(error instanceof Error ? error.message : pm.actionFailed);
+    }
+  }, [flushSave, id, pm.actionFailed, pm.saved, pm.updated, queryClient]);
+
   const handleRequestImage = useCallback(async (): Promise<EditorImagePickResult> => {
     if (!id) return null;
     const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9, base64: true });
@@ -572,7 +657,11 @@ export function PageScreen() {
 
       {saveState === 'failed' ? (
         <Pressable
-          style={[styles.retryBar, { backgroundColor: colors.surface.panel, borderColor: colors.border.default }]}
+          style={[
+            styles.retryBar,
+            note && id ? styles.retryBarAboveActions : null,
+            { backgroundColor: colors.surface.panel, borderColor: colors.border.default },
+          ]}
           onPress={() => void flushSave()}
           accessibilityRole="button"
           accessibilityLabel={pm.saveFailed}
@@ -581,6 +670,51 @@ export function PageScreen() {
           <Text style={[styles.retryText, { color: colors.text.primary }]}>{pm.saveFailed}</Text>
         </Pressable>
       ) : null}
+
+      {note && id ? (
+        <NoteViewActionBar
+          labels={{
+            catalyst: pm.catalystTitle,
+            openChat: pm.catalystOpenChat,
+            more: pm.viewMore,
+          }}
+          loading={{
+            catalyst: actionLoading === 'catalyst',
+            openChat: actionLoading === 'openChat',
+          }}
+          onCatalyst={() => void handleOpenNoteChat('catalyst')}
+          onOpenChat={() => void handleOpenNoteChat('openChat')}
+          onMore={() => setMoreVisible(true)}
+        />
+      ) : null}
+
+      <BottomSheetModal
+        visible={moreVisible}
+        onDismiss={() => setMoreVisible(false)}
+        title={pm.viewMore}
+        maxHeight="40%"
+      >
+        <View style={styles.moreActions}>
+          <Pressable
+            style={({ pressed }) => [styles.moreAction, pressed && styles.moreActionPressed]}
+            onPress={() => void handleSyncNow()}
+            accessibilityRole="button"
+            accessibilityLabel={pm.syncNow}
+          >
+            <Icon source="cloud-sync-outline" size={22} color={colors.text.secondary} />
+            <Text style={[styles.moreActionLabel, { color: colors.text.primary }]}>{pm.syncNow}</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.moreAction, pressed && styles.moreActionPressed]}
+            onPress={() => void handleShare()}
+            accessibilityRole="button"
+            accessibilityLabel={pm.viewShare}
+          >
+            <Icon source="share-variant-outline" size={22} color={colors.text.secondary} />
+            <Text style={[styles.moreActionLabel, { color: colors.text.primary }]}>{pm.viewShare}</Text>
+          </Pressable>
+        </View>
+      </BottomSheetModal>
 
       <Snackbar
         visible={Boolean(snackMsg)}
@@ -654,8 +788,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  retryBarAboveActions: {
+    bottom: 104,
+  },
   retryText: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  moreActions: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  moreAction: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+  },
+  moreActionPressed: {
+    opacity: 0.72,
+  },
+  moreActionLabel: {
+    fontSize: 15,
+    fontWeight: '500',
   },
 });
