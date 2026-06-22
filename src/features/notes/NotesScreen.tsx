@@ -20,7 +20,6 @@ import { FloatingHeader } from '../../components/FloatingHeader';
 import { BatchActionBar } from '../../components/BatchActionBar';
 import { BatchDeleteConfirmDialog } from '../../components/BatchDeleteConfirmDialog';
 import { ListSkeleton } from '../../components/ListSkeleton';
-import { SwipeHintBanner } from '../../components/SwipeHintBanner';
 import type { SwipeAction } from '../../components/SwipeableRow';
 import { LIST_DELETE_UNDO_MS } from '../../constants/list-interaction';
 import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_DEFAULT } from '../../constants/toast';
@@ -65,9 +64,6 @@ import {
 import { flushPendingNotes, queueMediaCapture, queueNote } from './notes-sync';
 import { captureIntentBadgeKey, parseCaptureIntent } from './capture-parser';
 import type { ComposerAttachment } from '../chat/composer.types';
-import { storage } from '../../storage/mmkv';
-
-const SWIPE_HINT_SEEN_KEY = 'hasSeenSwipeHint_notes';
 
 type CapturePayload =
   | { type: 'text'; text: string }
@@ -127,7 +123,6 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
   const [focusTagCreate, setFocusTagCreate] = useState(false);
   const [captureText, setCaptureText] = useState('');
   const [snackMsg, setSnackMsg] = useState('');
-  const [swipeHintSeen, setSwipeHintSeen] = useState(() => storage.getString(SWIPE_HINT_SEEN_KEY) === 'true');
   const [recording, setRecording] = useState(false);
   const recordingRef = useRef<ExpoRecording | null>(null);
   const noteTags = useNoteTagsStore((s) => s.tags);
@@ -371,11 +366,6 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
     [notes, pendingDeleteIds, tagFilter],
   );
 
-  const markSwipeHintSeen = useCallback(() => {
-    storage.set(SWIPE_HINT_SEEN_KEY, true);
-    setSwipeHintSeen(true);
-  }, []);
-
   const handleOpenCreateTag = useCallback(() => {
     setFocusTagCreate(true);
     setShowTagPicker(true);
@@ -551,9 +541,6 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
             refreshControl={
               <RefreshControl refreshing={notesQuery.isFetching && !notesQuery.isLoading && !notesQuery.isFetchingNextPage} onRefresh={onRefresh} />
             }
-            ListHeaderComponent={!selectionMode && !swipeHintSeen && filteredNotes.length > 0 ? (
-              <SwipeHintBanner seenKey={SWIPE_HINT_SEEN_KEY} hasSeen={swipeHintSeen} onMarkSeen={markSwipeHintSeen} />
-            ) : null}
             ListEmptyComponent={
               <View style={styles.empty}>
                 <View style={[styles.emptyIconWrap, { backgroundColor: colors.accent.selectionBg }]}>

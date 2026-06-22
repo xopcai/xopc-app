@@ -12,7 +12,6 @@ import { AppToast } from '../../components/AppToast';
 import { FloatingHeader } from '../../components/FloatingHeader';
 import { ListSkeleton } from '../../components/ListSkeleton';
 import { ListSelectionCheckbox } from '../../components/ListSelectionCheckbox';
-import { SwipeHintBanner } from '../../components/SwipeHintBanner';
 import { SwipeableRow, type SwipeAction } from '../../components/SwipeableRow';
 import { LIST_DELAY_LONG_PRESS, LIST_DELETE_UNDO_MS } from '../../constants/list-interaction';
 import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_SHORT } from '../../constants/toast';
@@ -37,7 +36,6 @@ import { parseCaptureIntent } from '../notes/capture-parser';
 import { flushPendingNotes, queueMediaCapture, queueNote } from '../notes/notes-sync';
 import { QuickCaptureComposer } from '../notes/QuickCaptureComposer';
 import { InboxItemContent } from './InboxItemContent';
-import { storage } from '../../storage/mmkv';
 
 type CapturePayload =
   | { type: 'text'; text: string }
@@ -45,8 +43,6 @@ type CapturePayload =
   | { type: 'voice'; uri: string; durationMillis: number; mimeType: string };
 
 const PAGE_SIZE = 20;
-const SWIPE_HINT_SEEN_KEY = 'hasSeenSwipeHint_inbox';
-
 export function InboxScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -59,7 +55,6 @@ export function InboxScreen() {
   const li = m.listInteraction;
   const [captureText, setCaptureText] = useState('');
   const [snackMsg, setSnackMsg] = useState('');
-  const [swipeHintSeen, setSwipeHintSeen] = useState(() => storage.getString(SWIPE_HINT_SEEN_KEY) === 'true');
   const [showBatchDelete, setShowBatchDelete] = useState(false);
   const {
     selectionMode,
@@ -226,11 +221,6 @@ export function InboxScreen() {
     }
   }, [archiveMutation, invalidateInbox, pm.actionFailed, pm.deleted, scheduleDelete]);
 
-  const markSwipeHintSeen = useCallback(() => {
-    storage.set(SWIPE_HINT_SEEN_KEY, true);
-    setSwipeHintSeen(true);
-  }, []);
-
   const headerOverflowMenu = useMemo(
     () => [
       {
@@ -350,9 +340,6 @@ export function InboxScreen() {
               }}
             />
           }
-          ListHeaderComponent={!selectionMode && !swipeHintSeen && items.length > 0 ? (
-            <SwipeHintBanner seenKey={SWIPE_HINT_SEEN_KEY} hasSeen={swipeHintSeen} onMarkSeen={markSwipeHintSeen} />
-          ) : null}
           ListFooterComponent={inboxQuery.isFetchingNextPage ? <View style={styles.footerLoader}><Text style={{ color: colors.text.tertiary }}>{m.common.loading}</Text></View> : null}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
