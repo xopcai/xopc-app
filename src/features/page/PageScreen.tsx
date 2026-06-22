@@ -83,14 +83,6 @@ function isImageAttachment(attachment: NoteAttachment): boolean {
   return attachment.type === 'image' || attachment.mimeType.startsWith('image/');
 }
 
-function selectionMetaText(markdown: string | undefined): string | null {
-  const text = markdown?.replace(/\s+/g, ' ').trim();
-  if (!text) return null;
-  if (/^!\[/.test(text)) return null;
-  if (text.includes('xopc-attachment://') || /^data:image\//i.test(text)) return null;
-  return text.length > 72 ? `${text.slice(0, 72)}...` : text;
-}
-
 export function PageScreen() {
   const { id: idParam } = useLocalSearchParams<{ id: string | string[] }>();
   const id = firstRouteParam(idParam);
@@ -108,7 +100,7 @@ export function PageScreen() {
   const [noteStatus, setNoteStatus] = useState<Note['status']>('processed');
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [snackMsg, setSnackMsg] = useState('');
-  const [selection, setSelection] = useState<EditorSelectionContext | null>(null);
+  const [, setSelection] = useState<EditorSelectionContext | null>(null);
 
   const markdownRef = useRef(markdown);
   const titleRef = useRef(title);
@@ -503,9 +495,8 @@ export function PageScreen() {
         : saveState === 'dirty'
           ? pm.savePending
           : pm.saved;
-  const currentBlockMeta = selectionMetaText(selection?.currentBlockMarkdown);
   const shouldShowSaveState = saveState !== 'saved';
-  const shouldShowMetaRow = shouldShowSaveState || Boolean(currentBlockMeta);
+  const shouldShowMetaRow = shouldShowSaveState;
   const showLoading = noteQuery.isLoading && !note;
   const showError = noteQuery.isError && !note;
 
@@ -559,14 +550,6 @@ export function PageScreen() {
                     ]}
                   >
                     {saveLabel}
-                  </Text>
-                ) : null}
-                {shouldShowSaveState && currentBlockMeta ? (
-                  <Text style={[styles.statusDot, { color: colors.text.disabled }]}>·</Text>
-                ) : null}
-                {currentBlockMeta ? (
-                  <Text style={[styles.modeLabel, { color: colors.text.tertiary }]} numberOfLines={1}>
-                    {currentBlockMeta}
                   </Text>
                 ) : null}
               </View>
