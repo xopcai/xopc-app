@@ -43,6 +43,8 @@ type CapturePayload =
   | { type: 'voice'; uri: string; durationMillis: number; mimeType: string };
 
 const PAGE_SIZE = 20;
+const INBOX_ITEM_HEIGHT = 78;
+
 export function InboxScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -388,11 +390,12 @@ const styles = StyleSheet.create({
   },
   listContent: { padding: 16, gap: 10 },
   itemCard: {
+    height: INBOX_ITEM_HEIGHT,
     borderWidth: 1,
     borderRadius: 20,
-    padding: 14,
+    paddingHorizontal: 14,
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 12,
   },
   itemIcon: {
@@ -401,7 +404,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
   },
   emptyWrap: {
     alignItems: 'center',

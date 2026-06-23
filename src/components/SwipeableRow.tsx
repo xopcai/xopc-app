@@ -14,7 +14,6 @@
 
 import { memo, useCallback, useMemo, useRef } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 import { Icon } from 'react-native-paper';
 import ReanimatedSwipeable, {
   type SwipeableMethods,
@@ -60,6 +59,10 @@ const ACTION_GAP = 8;
 const DOCK_HORIZONTAL_PADDING = 8;
 const ACTION_PANEL_MARGIN_LEFT = 12;
 const ACTION_PANEL_MARGIN_RIGHT = 8;
+// Rows expose right-side actions only. Keep both directions deliberate so
+// vertical scrolling does not get stolen by tiny horizontal drift, while an
+// opened row can still be swiped right to close.
+const SWIPE_DRAG_OFFSET = 24;
 
 function actionPanelWidth(actionCount: number): number {
   if (actionCount <= 0) return 0;
@@ -74,78 +77,53 @@ type ActionColorMap = Record<SwipeActionColor, string>;
 
 type RightActionsProps = {
   actions: SwipeAction[];
-  progress: SharedValue<number>;
   onActionPress: (action: SwipeAction) => void;
   close: () => void;
   actionColors: ActionColorMap;
   dockBackgroundColor: string;
   dockBorderColor: string;
-  dockShadowColor: string;
   actionIconColor: string;
 };
 
-function clampProgress(value: number): number {
-  'worklet';
-  return Math.max(0, Math.min(value, 1));
-}
-
 function RightActions({
   actions,
-  progress,
   onActionPress,
   close,
   actionColors,
   dockBackgroundColor,
   dockBorderColor,
-  dockShadowColor,
   actionIconColor,
 }: RightActionsProps) {
   const width = actionPanelWidth(actions.length);
-  const dockAnimatedStyle = useAnimatedStyle(() => {
-    const reveal = clampProgress(progress.value);
-    return {
-      opacity: reveal,
-      transform: [
-        { translateX: (1 - reveal) * 18 },
-        { scale: 0.96 + reveal * 0.04 },
-      ],
-    };
-  }, [progress]);
 
   return (
     <View style={[styles.actionsContainer, { width }]}>
-      <Animated.View
+      <View
         style={[
           styles.actionsDock,
           {
             backgroundColor: dockBackgroundColor,
             borderColor: dockBorderColor,
-            shadowColor: dockShadowColor,
           },
-          dockAnimatedStyle,
         ]}
       >
-        {actions.map((action, index) => (
+        {actions.map((action) => (
           <DockActionButton
             key={action.key}
             action={action}
-            index={index}
-            progress={progress}
             color={actionColors[action.color]}
             iconColor={actionIconColor}
             close={close}
             onActionPress={onActionPress}
           />
         ))}
-      </Animated.View>
+      </View>
     </View>
   );
 }
 
 type DockActionButtonProps = {
   action: SwipeAction;
-  index: number;
-  progress: SharedValue<number>;
   color: string;
   iconColor: string;
   close: () => void;
@@ -154,42 +132,27 @@ type DockActionButtonProps = {
 
 function DockActionButton({
   action,
-  index,
-  progress,
   color,
   iconColor,
   close,
   onActionPress,
 }: DockActionButtonProps) {
-  const animatedStyle = useAnimatedStyle(() => {
-    const reveal = clampProgress(progress.value);
-    return {
-      opacity: reveal,
-      transform: [
-        { translateX: (1 - reveal) * (18 + index * 4) },
-        { scale: 0.82 + reveal * 0.18 },
-      ],
-    };
-  }, [index, progress]);
-
   return (
-    <Animated.View style={animatedStyle}>
-      <Pressable
-        style={({ pressed }) => [
-          styles.actionButton,
-          { backgroundColor: color },
-          pressed && styles.actionButtonPressed,
-        ]}
-        onPress={() => {
-          close();
-          onActionPress(action);
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={action.label}
-      >
-        <Icon source={action.icon} size={21} color={iconColor} />
-      </Pressable>
-    </Animated.View>
+    <Pressable
+      style={({ pressed }) => [
+        styles.actionButton,
+        { backgroundColor: color },
+        pressed && styles.actionButtonPressed,
+      ]}
+      onPress={() => {
+        close();
+        onActionPress(action);
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={action.label}
+    >
+      <Icon source={action.icon} size={21} color={iconColor} />
+    </Pressable>
   );
 }
 
@@ -211,7 +174,6 @@ export const SwipeableRow = memo(function SwipeableRow({
   }), [colors.accent.primary, colors.semantic.error, colors.semantic.success]);
   const dockBackgroundColor = isDark ? colors.surface.input : colors.surface.panel;
   const dockBorderColor = colors.border.default;
-  const dockShadowColor = colors.text.primary;
   const actionIconColor = colors.accent.onPrimary;
 
   const handleClose = useCallback(() => {
@@ -227,16 +189,14 @@ export const SwipeableRow = memo(function SwipeableRow({
   }, [handleClose]);
 
   const renderRightActions = useCallback(
-    (progress: SharedValue<number>) => (
+    () => (
       <RightActions
         actions={actions}
-        progress={progress}
         onActionPress={onActionPress}
         close={handleClose}
         actionColors={actionColors}
         dockBackgroundColor={dockBackgroundColor}
         dockBorderColor={dockBorderColor}
-        dockShadowColor={dockShadowColor}
         actionIconColor={actionIconColor}
       />
     ),
@@ -245,7 +205,6 @@ export const SwipeableRow = memo(function SwipeableRow({
       actions,
       dockBackgroundColor,
       dockBorderColor,
-      dockShadowColor,
       actionIconColor,
       handleClose,
       onActionPress,
@@ -260,11 +219,11 @@ export const SwipeableRow = memo(function SwipeableRow({
     <ReanimatedSwipeable
       ref={swipeableRef}
       renderRightActions={renderRightActions}
-      friction={1.32}
-      rightThreshold={Math.min(panelWidth * 0.46, 72)}
-      dragOffsetFromRightEdge={12}
-      overshootRight
-      overshootFriction={9}
+      friction={1}
+      rightThreshold={Math.min(panelWidth * 0.42, 72)}
+      dragOffsetFromRightEdge={SWIPE_DRAG_OFFSET}
+      dragOffsetFromLeftEdge={SWIPE_DRAG_OFFSET}
+      overshootRight={false}
       enableTrackpadTwoFingerGesture
       containerStyle={styles.swipeableContainer}
       onSwipeableWillOpen={handleSwipeableOpen}
@@ -295,10 +254,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: DOCK_HORIZONTAL_PADDING,
     borderRadius: 29,
     borderWidth: StyleSheet.hairlineWidth,
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
   },
   actionButton: {
     width: ACTION_BUTTON_SIZE,

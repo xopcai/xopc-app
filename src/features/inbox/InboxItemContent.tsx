@@ -29,18 +29,21 @@ export function InboxItemContent({ note }: InboxItemContentProps) {
     [im.itemHints, im.time, note, pm],
   );
 
+  const detailLine = display.subtitle || display.metaLine;
+
   return (
     <View style={styles.copy}>
-      <Text numberOfLines={2} style={[styles.title, { color: colors.text.primary }]}>
+      <Text
+        numberOfLines={1}
+        style={[styles.title, { color: colors.text.primary }]}
+      >
         {display.title}
       </Text>
-      {!!display.subtitle && (
-        <Text numberOfLines={2} style={[styles.subtitle, { color: colors.text.secondary }]}>
-          {display.subtitle}
-        </Text>
-      )}
-      <Text numberOfLines={1} style={[styles.meta, { color: colors.text.tertiary }]}>
-        {display.metaLine}
+      <Text
+        numberOfLines={1}
+        style={[styles.detail, { color: colors.text.secondary }]}
+      >
+        {detailLine}
       </Text>
     </View>
   );
@@ -49,6 +52,5 @@ export function InboxItemContent({ note }: InboxItemContentProps) {
 const styles = StyleSheet.create({
   copy: { flex: 1, gap: 4 },
   title: { fontSize: 15, fontWeight: '600', lineHeight: 21 },
-  subtitle: { fontSize: 13, lineHeight: 18 },
-  meta: { fontSize: 12, lineHeight: 16 },
+  detail: { fontSize: 13, lineHeight: 18 },
 });
