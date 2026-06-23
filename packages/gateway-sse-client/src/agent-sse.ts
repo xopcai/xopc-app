@@ -28,7 +28,14 @@ export type AgentSseCallbacks = {
   onToolUpdate?: (toolName: string, toolCallId: string | undefined, details: unknown) => void;
   onToolEnd: (toolName: string, isError: boolean, result?: unknown, toolCallId?: string) => void;
   onProgress: (progress: ProgressState) => void;
-  onTtsAudio?: (payload: { workspaceRelativePath: string; mimeType: string; name: string }) => void;
+  onTtsAudio?: (payload: {
+    uri?: string;
+    workspaceRelativePath?: string;
+    mimeType: string;
+    name: string;
+    attachTo?: 'last_assistant';
+    messageId?: string;
+  }) => void;
   onClarifyRequest?: (payload: {
     requestId: string;
     question: string;
@@ -169,9 +176,13 @@ export function dispatchAgentSseEvent(
       break;
     case 'tts_audio':
       cb?.onTtsAudio?.({
-        workspaceRelativePath: String(p.workspaceRelativePath || p.uri || ''),
+        uri: typeof p.uri === 'string' ? p.uri : undefined,
+        workspaceRelativePath:
+          typeof p.workspaceRelativePath === 'string' ? p.workspaceRelativePath : undefined,
         mimeType: String(p.mimeType || 'audio/mpeg'),
         name: String(p.name || 'voice.mp3'),
+        attachTo: p.attachTo === 'last_assistant' ? 'last_assistant' : undefined,
+        messageId: typeof p.messageId === 'string' ? p.messageId : undefined,
       });
       break;
     case 'clarify_request': {

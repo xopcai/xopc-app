@@ -8,6 +8,7 @@ export default function AiLayout() {
   return (
     <Stack screenOptions={{ headerShown: false, ...themedScreenOptions }}>
       <Stack.Screen name="agents" />
+      <Stack.Screen name="agents/[id]" />
     </Stack>
   );
 }

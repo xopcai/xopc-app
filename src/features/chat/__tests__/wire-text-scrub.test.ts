@@ -90,6 +90,34 @@ describe('parseSessionMessages startup context', () => {
     expect(ui).toHaveLength(1);
     expect(extractUserMessageText(ui[0]?.content ?? [])).toBe('使用 workflow 帮我探索下 /path');
   });
+
+  it('converts persisted assistant TTS media into an audio block', () => {
+    const ui = parseSessionMessages([
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'hello' }],
+        attachments: [
+          {
+            type: 'voice',
+            uri: 'media://tts/reply.mp3',
+            mimeType: 'audio/mpeg',
+            name: 'reply.mp3',
+          },
+        ],
+        timestamp: 1,
+      },
+    ]);
+
+    expect(ui).toHaveLength(1);
+    expect(ui[0]?.content).toContainEqual(
+      expect.objectContaining({
+        type: 'audio',
+        uri: 'media://tts/reply.mp3',
+        mimeType: 'audio/mpeg',
+        name: 'reply.mp3',
+      }),
+    );
+  });
 });
 
 describe('applyStripToUserContent expanded @file XML', () => {

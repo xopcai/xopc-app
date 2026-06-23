@@ -221,18 +221,6 @@ export function InboxScreen() {
     }
   }, [archiveMutation, invalidateInbox, pm.actionFailed, pm.deleted, scheduleDelete]);
 
-  const headerOverflowMenu = useMemo(
-    () => [
-      {
-        key: 'select',
-        icon: 'checkbox-multiple-marked-outline',
-        label: li.select,
-        onPress: startSelection,
-      },
-    ],
-    [li.select, startSelection],
-  );
-
   const batchActions = useMemo(() => [
     {
       key: 'archive',
@@ -315,8 +303,6 @@ export function InboxScreen() {
       <FloatingHeader
         title={selectionMode ? t(li.selectedCount, { count: selectedCount }) : im.title}
         onBack={selectionMode ? exitSelectionMode : () => dismissOrHome(router)}
-        overflowMenuItems={selectionMode ? undefined : headerOverflowMenu}
-        overflowMenuA11yLabel={li.moreMenu}
       />
 
       {inboxQuery.isLoading ? (

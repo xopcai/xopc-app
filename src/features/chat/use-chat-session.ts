@@ -32,7 +32,7 @@ import {
 } from './composer-send-helpers';
 import { ensureOptimisticSessionRegistered } from './session-prefetch';
 import type { WireAttachment } from './composer.types';
-import type { Message, ProgressState } from './messages.types';
+import type { AudioContent, Message, ProgressState } from './messages.types';
 import type { ClarifyPromptState } from './ClarifyPrompt';
 import {
   appendTextDelta,
@@ -185,6 +185,25 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       flushStreamingMessage,
       STREAMING_RENDER_THROTTLE_MS,
     );
+  }, [flushStreamingMessage]);
+
+  const appendAudioToStreamingAssistant = useCallback((audio: AudioContent) => {
+    const current = streamingMsgRef.current;
+    if (!current || current.role !== 'assistant') return;
+    const message = ensureAssistantMessage(current, Date.now());
+    const key = audio.uri?.trim() || audio.workspaceRelativePath?.trim() || audio.name?.trim();
+    const exists = key
+      ? message.content.some(
+        (block) =>
+          block.type === 'audio' &&
+          (block.uri?.trim() || block.workspaceRelativePath?.trim() || block.name?.trim()) === key,
+      )
+      : false;
+    if (!exists) {
+      message.content.push(audio);
+    }
+    streamingMsgRef.current = message;
+    flushStreamingMessage();
   }, [flushStreamingMessage]);
 
   const clearStreamingMessage = useCallback(() => {
@@ -407,18 +426,13 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       onTtsAudio: (payload) => {
         if (!isCurrentSession()) return;
         touchStreamActivity();
-        updateStreamingMessage((message) => {
-          message.content.push({
-            type: 'audio',
-            workspaceRelativePath: payload.workspaceRelativePath,
-            mimeType: payload.mimeType,
-            name: payload.name,
-          });
-        }, true);
-        if (!streamingRef.current) {
-          setStreaming(true);
-          streamingRef.current = true;
-        }
+        appendAudioToStreamingAssistant({
+          type: 'audio',
+          uri: payload.uri,
+          workspaceRelativePath: payload.workspaceRelativePath,
+          mimeType: payload.mimeType,
+          name: payload.name,
+        });
       },
       onClarifyRequest: (payload) => {
         if (!isCurrentSession()) return;
@@ -478,6 +492,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
     invalidateSessionByKey,
     invalidateSession,
     updateStreamingMessage,
+    appendAudioToStreamingAssistant,
     flushStreamingMessage,
     clearStreamingMessage,
     finalizeMessage,

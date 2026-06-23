@@ -119,7 +119,7 @@ function wrapTerminalCallbacks(cb?: MessagingCallbacks): {
       onToolUpdate: guarded(cb.onToolUpdate),
       onToolEnd: guarded(cb.onToolEnd),
       onProgress: guarded(cb.onProgress),
-      onTtsAudio: guarded(cb.onTtsAudio),
+      onTtsAudio: cb.onTtsAudio,
       onClarifyRequest: guarded(cb.onClarifyRequest),
       onResult: () => {
         if (sawTerminal) return;

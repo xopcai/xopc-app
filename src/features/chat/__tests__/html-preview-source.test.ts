@@ -34,6 +34,21 @@ describe('buildHtmlWebViewSource', () => {
     });
   });
 
+  it('uses agent scope when building workspace raw URL without a session', () => {
+    expect(
+      buildHtmlWebViewSource({
+        workspaceRelativePath: 'docs/guide.html',
+        agentId: 'writer',
+        apiUrl,
+        token: '',
+        gatewayBaseUrl: 'http://gateway.test',
+      }),
+    ).toEqual({
+      uri: 'http://gateway.test/api/workspace/editor/raw?path=docs%2Fguide.html&agentId=writer',
+      headers: undefined,
+    });
+  });
+
   it('falls back to inline html when no workspace path', () => {
     expect(
       buildHtmlWebViewSource({

@@ -1,7 +1,8 @@
 /**
  * Heuristics for when to avoid the native GFM markdown renderer.
- * `react-native-enriched-markdown` can hard-crash on some table shapes
- * (e.g. empty header cells, emoji-heavy cells) — fall back to plain Text.
+ * `react-native-enriched-markdown` can hard-crash on some native table shapes
+ * and its WASM parser can fail during Expo web bundling, so use the JS fallback
+ * for those cases.
  */
 
 function isGfmTableSeparatorLine(line: string): boolean {
@@ -28,8 +29,22 @@ export function markdownContainsPipeTable(content: string): boolean {
   return false;
 }
 
-/** Prefer plain Text fallback instead of native EnrichedMarkdownText. */
+/** Prefer JS markdown fallback instead of native EnrichedMarkdownText. */
 export function markdownNeedsPlainFallback(content: string): boolean {
   if (!content?.trim()) return false;
   return markdownContainsPipeTable(content);
+}
+
+export function shouldUseMarkdownFallback({
+  content,
+  hasEnriched,
+  platform,
+}: {
+  content: string;
+  hasEnriched: boolean;
+  platform: string;
+}): boolean {
+  if (!hasEnriched) return true;
+  if (platform === 'web') return true;
+  return markdownNeedsPlainFallback(content);
 }

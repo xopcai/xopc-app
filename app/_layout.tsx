@@ -124,6 +124,7 @@ export default function RootLayout() {
                 <Stack.Screen name="notes/index" options={{ headerShown: false }} />
                 <Stack.Screen name="sessions" options={{ headerShown: false }} />
                 <Stack.Screen name="items/[id]" options={{ headerShown: false }} />
+                <Stack.Screen name="files/index" options={{ headerShown: false }} />
                 <Stack.Screen
                   name="settings"
                   options={{

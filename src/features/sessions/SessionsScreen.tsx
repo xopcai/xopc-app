@@ -203,18 +203,6 @@ export function SessionsScreen() {
     }
   }, [refreshList, sa, scheduleDelete]);
 
-  const headerOverflowMenu = useMemo(
-    () => [
-      {
-        key: 'select',
-        icon: 'checkbox-multiple-marked-outline',
-        label: li.select,
-        onPress: startSelection,
-      },
-    ],
-    [li.select, startSelection],
-  );
-
   const handleBatchRename = useCallback(() => {
     if (selectedCount !== 1) return;
     const key = [...selectedIds][0];
@@ -301,9 +289,6 @@ export function SessionsScreen() {
       <FloatingHeader
         title={selectionMode ? t(li.selectedCount, { count: selectedCount }) : sm.title}
         onBack={selectionMode ? exitSelectionMode : () => dismissOrHome(router)}
-        rightActions={selectionMode ? undefined : [{ icon: 'robot-outline', onPress: () => router.push('/ai/agents') }]}
-        overflowMenuItems={selectionMode ? undefined : headerOverflowMenu}
-        overflowMenuA11yLabel={li.moreMenu}
       />
 
       {!configured ? (

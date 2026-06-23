@@ -17,6 +17,7 @@ export type HtmlPreviewPaneProps = {
   workspaceRelativePath?: string;
   htmlContent?: string | null;
   sessionKey?: string | null;
+  agentId?: string | null;
   mutedColor: string;
 };
 
@@ -28,6 +29,7 @@ export function HtmlPreviewPane({
   workspaceRelativePath,
   htmlContent,
   sessionKey,
+  agentId,
   mutedColor,
 }: HtmlPreviewPaneProps) {
   const { colors, isDark } = useTheme();
@@ -51,11 +53,12 @@ export function HtmlPreviewPane({
         workspaceRelativePath,
         htmlContent,
         sessionKey,
+        agentId,
         apiUrl,
         token,
         gatewayBaseUrl,
       }),
-    [apiUrl, gatewayBaseUrl, htmlContent, sessionKey, token, workspaceRelativePath],
+    [agentId, apiUrl, gatewayBaseUrl, htmlContent, sessionKey, token, workspaceRelativePath],
   );
 
   const previewUri = previewUriFromSource(source);

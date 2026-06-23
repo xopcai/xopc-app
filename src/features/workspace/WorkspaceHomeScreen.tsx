@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   Pressable,
@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppToast } from '../../components/AppToast';
 import { FloatingHeader } from '../../components/FloatingHeader';
 import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_SHORT } from '../../constants/toast';
-import { openNoteDetail } from '../../lib/navigation';
+import { openChat, openNoteDetail } from '../../lib/navigation';
 import { useMessages, t } from '../../i18n/messages';
 
 import { queryKeys } from '../../query/keys';
@@ -29,11 +29,12 @@ import {
   type HomeWorkflowRun,
 } from '../../query/home';
 import { captureNote, fetchNotes, type NoteIndexEntry } from '../../query/notes';
-import { invalidateHomeFeed } from '../../query/workspace-sync';
+import { invalidateHomeFeed, invalidateSessionLists } from '../../query/workspace-sync';
 import { resolveNoteListTitle } from '../notes/note-title';
 import { readLocalNote } from '../notes/notes-local';
-import { type SessionListItem, useGatewayConfigured } from '../../query/sessions';
-import { useEffectiveDefaultAgentId } from '../../query/agents';
+import { createSession, type SessionListItem, useGatewayConfigured } from '../../query/sessions';
+import { fetchChatAgents, type ChatAgentOption, useEffectiveDefaultAgentId } from '../../query/agents';
+import { useGatewayStore } from '../../stores/gateway-store';
 import {
   FLOATING_BOTTOM_OFFSET,
   floatingBottomPadding,
@@ -55,6 +56,8 @@ import { parseCaptureIntent } from '../notes/capture-parser';
 import { queueMediaCapture, queueNote } from '../notes/notes-sync';
 import { QuickCaptureComposer } from '../notes/QuickCaptureComposer';
 import { WorkspaceSearchOverlay } from '../search/WorkspaceSearchOverlay';
+import { AgentAvatar } from '../ai/AgentAvatar';
+import { readAgentUsage, touchAgentUsage } from '../ai/agent-usage-cache';
 import { useHomeChatPrefetch } from './use-home-chat-prefetch';
 import { useWorkspaceNavigation } from './workspace-navigation-context';
 
@@ -124,18 +127,30 @@ export function WorkspaceHomeScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const configured = useGatewayConfigured();
+  const activeGatewayId = useGatewayStore((s) => s.activeGatewayId);
   const defaultAgentId = useEffectiveDefaultAgentId();
   const { openAskAi, prefetchAskAiSession } = useWorkspaceNavigation();
   const [searchOpen, setSearchOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [captureText, setCaptureText] = useState('');
   const [toastMessage, setToastMessage] = useState('');
+  const [agentUsage, setAgentUsage] = useState(() => readAgentUsage(activeGatewayId));
 
   useHomeChatPrefetch(configured);
+
+  useEffect(() => {
+    setAgentUsage(readAgentUsage(activeGatewayId));
+  }, [activeGatewayId]);
 
   const homeQuery = useQuery({
     queryKey: queryKeys.home,
     queryFn: fetchHome,
+    enabled: configured,
+  });
+
+  const agentsQuery = useQuery({
+    queryKey: queryKeys.agents,
+    queryFn: fetchChatAgents,
     enabled: configured,
   });
 
@@ -163,6 +178,16 @@ export function WorkspaceHomeScreen() {
 
   const homeNotesLoading =
     homeQuery.isLoading || (needsRecentNotesFallback && recentNotesFallbackQuery.isLoading);
+
+  const homeAgents = useMemo(() => {
+    const agents = agentsQuery.data?.items ?? [];
+    return [...agents].sort((a, b) => {
+      const aUsed = agentUsage[a.id] ?? 0;
+      const bUsed = agentUsage[b.id] ?? 0;
+      if (aUsed !== bUsed) return bUsed - aUsed;
+      return (a.name ?? a.id).localeCompare(b.name ?? b.id);
+    });
+  }, [agentUsage, agentsQuery.data?.items]);
 
   const m = useMessages();
   const hm = m.homePage;
@@ -228,6 +253,17 @@ export function WorkspaceHomeScreen() {
       } catch {
         setToastMessage(err instanceof Error ? err.message : pm.actionFailed);
       }
+    },
+  });
+
+  const createAgentSessionMutation = useMutation({
+    mutationFn: (agentId: string) => createSession(agentId),
+    onSuccess: (key) => {
+      invalidateSessionLists(queryClient);
+      openChat(router, key);
+    },
+    onError: (err) => {
+      setToastMessage(err instanceof Error ? err.message : hm.noAgentChatFailed);
     },
   });
 
@@ -412,9 +448,23 @@ export function WorkspaceHomeScreen() {
               onCapture={openCapture}
               onAutomation={() => router.push('/automation')}
             />
+            <AgentStrip
+              agents={homeAgents}
+              loading={agentsQuery.isLoading}
+              busyAgentId={
+                createAgentSessionMutation.isPending
+                  ? createAgentSessionMutation.variables
+                  : undefined
+              }
+              onAgentPress={(agentId) => {
+                setAgentUsage(touchAgentUsage(activeGatewayId, agentId));
+                createAgentSessionMutation.mutate(agentId);
+              }}
+            />
             <LibrarySection
               onNotes={() => router.push('/notes')}
               onSessions={() => router.push('/sessions')}
+              onFiles={() => router.push('/files')}
               onAutomation={() => router.push('/automation')}
               onAgents={() => router.push('/ai/agents')}
             />
@@ -470,6 +520,75 @@ function HomeGatewayStatus({ gateway }: { gateway: HomeGateway }) {
         {hm.gatewayStartingStatus}
       </Text>
     </View>
+  );
+}
+
+function agentName(agent: ChatAgentOption): string {
+  return agent.name?.trim() || agent.id;
+}
+
+function AgentStrip({
+  agents,
+  loading,
+  busyAgentId,
+  onAgentPress,
+}: {
+  agents: ChatAgentOption[];
+  loading: boolean;
+  busyAgentId?: string;
+  onAgentPress: (agentId: string) => void;
+}) {
+  const { colors } = useTheme();
+  const { homePage: hm } = useMessages();
+  const visibleAgents = agents.slice(0, 12);
+
+  if (loading) {
+    return (
+      <Section title={hm.sectionAgents}>
+        <View style={[styles.agentStripLoading, { backgroundColor: colors.surface.panel, borderColor: colors.border.default }]}>
+          <ActivityIndicator size="small" />
+        </View>
+      </Section>
+    );
+  }
+
+  if (visibleAgents.length === 0) return null;
+
+  return (
+    <Section title={hm.sectionAgents}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.agentStripContent}
+      >
+        {visibleAgents.map((agent) => {
+          const busy = busyAgentId === agent.id;
+          return (
+            <Pressable
+              key={agent.id}
+              style={[
+                styles.agentPill,
+                { backgroundColor: colors.surface.panel, borderColor: colors.border.default },
+                busy && styles.disabled,
+              ]}
+              onPress={() => onAgentPress(agent.id)}
+              disabled={busy}
+            >
+              {busy ? (
+                <View style={styles.agentPillAvatar}>
+                  <ActivityIndicator size={20} />
+                </View>
+              ) : (
+                <AgentAvatar agentId={agent.id} avatar={agent.avatar} size={52} />
+              )}
+              <Text numberOfLines={1} style={[styles.agentPillName, { color: colors.text.primary }]}>
+                {agentName(agent)}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </Section>
   );
 }
 
@@ -674,11 +793,13 @@ function ActivitySection({
 function LibrarySection({
   onNotes,
   onSessions,
+  onFiles,
   onAutomation,
   onAgents,
 }: {
   onNotes: () => void;
   onSessions: () => void;
+  onFiles: () => void;
   onAutomation: () => void;
   onAgents: () => void;
 }) {
@@ -688,6 +809,7 @@ function LibrarySection({
       <View style={styles.libraryGrid}>
         <LibraryButton icon="note-text-outline" label={hm.libraryNotes} onPress={onNotes} />
         <LibraryButton icon="message-processing-outline" label={hm.librarySessions} onPress={onSessions} />
+        <LibraryButton icon="folder-outline" label={hm.libraryFiles} onPress={onFiles} />
         <LibraryButton icon="clock-outline" label={hm.libraryAutomation} onPress={onAutomation} />
         <LibraryButton icon="account-supervisor-outline" label={hm.libraryAgents} onPress={onAgents} />
       </View>
@@ -944,6 +1066,40 @@ const styles = StyleSheet.create({
   sectionTitle: { ...typography.heading },
   headerAction: { minHeight: 32, justifyContent: 'center' },
   openText: { ...typography.label, fontWeight: '600' },
+  agentStripLoading: {
+    minHeight: 92,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  agentStripContent: {
+    gap: spacing.md,
+    paddingRight: spacing.lg,
+  },
+  agentPill: {
+    width: 86,
+    minHeight: 96,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  agentPillAvatar: {
+    width: 52,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  agentPillName: {
+    ...typography.caption,
+    maxWidth: '100%',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   panel: {
     borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,

@@ -63,6 +63,7 @@ export const agentsResponseSchema = z.object({
   ok: z.literal(true),
   payload: z.object({
     defaultId: z.string(),
+    builtinToolIds: z.array(z.string()).optional(),
     agents: z.array(
       z
         .object({

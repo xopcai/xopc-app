@@ -19,6 +19,7 @@ export const ChatHeader = memo(function ChatHeader({
   onBackPress,
   onAgentPress,
   onModelSelect,
+  onFilesPress,
   onNewChat,
 }: {
   agentName: string;
@@ -32,6 +33,7 @@ export const ChatHeader = memo(function ChatHeader({
   onBackPress?: () => void;
   onAgentPress: () => void;
   onModelSelect: (modelId: string) => void;
+  onFilesPress?: () => void;
   onNewChat: () => void;
 }) {
   const m = useMessages();
@@ -81,9 +83,21 @@ export const ChatHeader = memo(function ChatHeader({
           </Pressable>
         </View>
 
-        <Pressable style={[styles.iconButton, { backgroundColor: headerBg }]} onPress={onNewChat}>
-          <Icon source="plus" size={22} color={pillMuted} />
-        </Pressable>
+        <View style={styles.rightActions}>
+          <Pressable style={[styles.iconButton, { backgroundColor: headerBg }]} onPress={onNewChat}>
+            <Icon source="plus" size={22} color={pillMuted} />
+          </Pressable>
+          {onFilesPress ? (
+            <Pressable
+              style={[styles.iconButton, { backgroundColor: headerBg }]}
+              onPress={onFilesPress}
+              accessibilityRole="button"
+              accessibilityLabel={m.chat.openSessionFiles}
+            >
+              <Icon source="folder-outline" size={21} color={pillMuted} />
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
       <ModelPickerMenu
@@ -116,6 +130,11 @@ const styles = StyleSheet.create({
   iconPlaceholder: {
     width: 44,
     height: 44,
+  },
+  rightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   headerCenter: {
     flex: 1,

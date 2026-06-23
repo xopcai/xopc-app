@@ -26,17 +26,18 @@ export function buildHtmlWebViewSource(options: {
   workspaceRelativePath?: string;
   htmlContent?: string | null;
   sessionKey?: string | null;
+  agentId?: string | null;
   apiUrl: (path: string) => string;
   token: string;
   gatewayBaseUrl: string;
 }): HtmlWebViewSource | null {
-  const { workspaceRelativePath, htmlContent, sessionKey, apiUrl, token, gatewayBaseUrl } = options;
+  const { workspaceRelativePath, htmlContent, sessionKey, agentId, apiUrl, token, gatewayBaseUrl } = options;
   const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
   const rel = workspaceRelativePath?.trim();
   if (rel) {
     return {
-      uri: apiUrl(buildGatewayRawFilePath(rel, sessionKey ?? undefined)),
+      uri: apiUrl(buildGatewayRawFilePath(rel, sessionKey ?? undefined, agentId ?? undefined)),
       headers,
     };
   }

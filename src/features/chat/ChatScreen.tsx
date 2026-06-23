@@ -8,6 +8,7 @@
  * `useLocalSearchParams`.
  */
 import { useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
@@ -46,6 +47,7 @@ export type ChatScreenProps = {
 
 export function ChatScreen({ embedded = false, overlay = false, onRequestHome }: ChatScreenProps) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const transition = useOptionalWorkspaceTransition();
   const isShellEmbedded = embedded || overlay;
@@ -139,6 +141,7 @@ export function ChatScreen({ embedded = false, overlay = false, onRequestHome }:
           onBackPress={overlay ? onRequestHome : isShellEmbedded ? undefined : handleBack}
           onAgentPress={openAgentsPicker}
           onModelSelect={handleModelSelect}
+          onFilesPress={sessionKey ? () => router.push(`/files?sessionKey=${encodeURIComponent(sessionKey)}`) : undefined}
           onNewChat={handleNewChat}
         />
       </AnimatedView>

@@ -1,7 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { markdownContainsPipeTable, markdownNeedsPlainFallback } from '../markdown-render-safety';
+import {
+  markdownContainsPipeTable,
+  markdownNeedsPlainFallback,
+  shouldUseMarkdownFallback,
+} from '../markdown-render-safety';
 import { parseSessionMessages, dedupeWireMessages, normalizeWireUsage } from '../session-message-parser';
 
 const SESSION_PATH =
@@ -21,6 +25,36 @@ describe('markdown-render-safety', () => {
   it('allows simple markdown without tables', () => {
     const md = '## Title\n\n**bold** and a [link](https://example.com)';
     expect(markdownNeedsPlainFallback(md)).toBe(false);
+  });
+
+  it('uses the JS fallback on web even when the enriched renderer is available', () => {
+    expect(
+      shouldUseMarkdownFallback({
+        content: '## Title\n\nsimple markdown',
+        hasEnriched: true,
+        platform: 'web',
+      }),
+    ).toBe(true);
+  });
+
+  it('uses the JS fallback when the enriched renderer is unavailable', () => {
+    expect(
+      shouldUseMarkdownFallback({
+        content: '## Title\n\nsimple markdown',
+        hasEnriched: false,
+        platform: 'ios',
+      }),
+    ).toBe(true);
+  });
+
+  it('keeps simple native markdown on the enriched renderer', () => {
+    expect(
+      shouldUseMarkdownFallback({
+        content: '## Title\n\nsimple markdown',
+        hasEnriched: true,
+        platform: 'ios',
+      }),
+    ).toBe(false);
   });
 });
 

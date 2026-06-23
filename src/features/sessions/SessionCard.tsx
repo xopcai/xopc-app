@@ -121,9 +121,6 @@ export const SessionCard = memo(function SessionCard({
             </Text>
           </View>
         </View>
-        {!selectionMode ? (
-          <Icon source="chevron-right" size={20} color={colors.text.tertiary} />
-        ) : null}
       </View>
     </Pressable>
   );

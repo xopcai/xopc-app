@@ -1,26 +1,39 @@
 /**
- * Agents — browse gateway agents, set default, or start a chat.
+ * Agents — browse gateway agents, inspect their capabilities, or start a chat.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useCallback } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { ActivityIndicator, Button, Icon, Text } from 'react-native-paper';
 
 import { FloatingHeader } from '../../components/FloatingHeader';
-import {
-  SettingsAgentRow,
-  SettingsSection,
-  useSettingsColors,
-} from '../settings/settings-ui';
-import { pickEffectiveDefaultId, useSetDefaultAgent } from '../settings/use-set-default-agent';
 import { useMessages } from '../../i18n/messages';
 import { dismissOrHome, openChat, useDismissOnHardwareBack } from '../../lib/navigation';
-import { fetchChatAgents } from '../../query/agents';
+import { fetchChatAgents, type ChatAgentOption } from '../../query/agents';
 import { queryKeys } from '../../query/keys';
-import { invalidateSessionLists } from '../../query/workspace-sync';
 import { createSession, useGatewayConfigured } from '../../query/sessions';
+import { invalidateSessionLists } from '../../query/workspace-sync';
 import { usePreferencesStore } from '../../stores/preferences-store';
+import { useSettingsColors } from '../settings/settings-ui';
+import { pickEffectiveDefaultId } from '../settings/use-set-default-agent';
+import { AgentAvatar } from './AgentAvatar';
+
+function displayName(agent: ChatAgentOption): string {
+  return agent.name?.trim() || agent.id;
+}
+
+function matchesAgent(agent: ChatAgentOption, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [
+    agent.id,
+    agent.name,
+    agent.description,
+    agent.workspace,
+    agent.model?.primary,
+  ].some((value) => value?.toLowerCase().includes(q));
+}
 
 export function AgentsScreen() {
   const router = useRouter();
@@ -31,14 +44,13 @@ export function AgentsScreen() {
   const m = useMessages();
   const am = m.agentsPage;
   const localOverride = usePreferencesStore((s) => s.defaultAgentId);
+  const [search, setSearch] = useState('');
 
   const agentsQuery = useQuery({
     queryKey: queryKeys.agents,
     queryFn: fetchChatAgents,
     enabled: configured,
   });
-
-  const setDefaultMut = useSetDefaultAgent();
 
   const createMut = useMutation({
     mutationFn: (agentId: string) => createSession(agentId),
@@ -50,12 +62,23 @@ export function AgentsScreen() {
 
   const agents = agentsQuery.data?.items ?? [];
   const effectiveId = pickEffectiveDefaultId(agentsQuery.data, localOverride);
+  const filteredAgents = useMemo(
+    () => agents.filter((agent) => matchesAgent(agent, search)),
+    [agents, search],
+  );
 
   const handleChatWith = useCallback(
     (agentId: string) => {
       createMut.mutate(agentId);
     },
     [createMut],
+  );
+
+  const openAgent = useCallback(
+    (agentId: string) => {
+      router.push({ pathname: '/ai/agents/[id]', params: { id: agentId } });
+    },
+    [router],
   );
 
   if (!configured) {
@@ -114,31 +137,100 @@ export function AgentsScreen() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.hint, { color: colors.textMuted }]}>{am.listHint}</Text>
+        <View style={[styles.searchBox, { backgroundColor: colors.card }]}>
+          <Icon source="magnify" size={20} color={colors.textMuted} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder={am.searchPlaceholder}
+            placeholderTextColor={colors.textMuted}
+            style={[styles.searchInput, { color: colors.text }]}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {search.trim() ? (
+            <Pressable onPress={() => setSearch('')} hitSlop={8}>
+              <Icon source="close-circle" size={20} color={colors.textMuted} />
+            </Pressable>
+          ) : null}
+        </View>
 
-        <SettingsSection>
-          {agents.map((agent, i) => {
-            const title = agent.name?.trim() || agent.id;
-            const selected = agent.id === effectiveId;
-            return (
-              <SettingsAgentRow
+        {filteredAgents.length === 0 ? (
+          <Text style={[styles.noResults, { color: colors.textMuted }]}>{am.noResults}</Text>
+        ) : (
+          <View style={styles.cards}>
+            {filteredAgents.map((agent) => (
+              <AgentCard
                 key={agent.id}
-                name={title}
-                agentId={agent.id}
-                description={agent.description}
-                selected={selected}
-                isLast={i === agents.length - 1}
+                agent={agent}
+                selected={agent.id === effectiveId}
                 chatLoading={createMut.isPending && createMut.variables === agent.id}
-                onSelect={() => {
-                  if (selected || setDefaultMut.isPending) return;
-                  setDefaultMut.mutate(agent.id);
-                }}
+                onOpen={() => openAgent(agent.id)}
                 onChat={() => handleChatWith(agent.id)}
               />
-            );
-          })}
-        </SettingsSection>
+            ))}
+          </View>
+        )}
       </ScrollView>
+    </View>
+  );
+}
+
+function AgentCard({
+  agent,
+  selected,
+  chatLoading,
+  onOpen,
+  onChat,
+}: {
+  agent: ChatAgentOption;
+  selected: boolean;
+  chatLoading?: boolean;
+  onOpen: () => void;
+  onChat: () => void;
+}) {
+  const colors = useSettingsColors();
+  const am = useMessages().agentsPage;
+  const name = displayName(agent);
+  const subtitle = agent.description?.trim() || agent.id;
+
+  return (
+    <View style={[styles.card, { backgroundColor: colors.card }]}>
+      <Pressable
+        onPress={onOpen}
+        style={({ pressed }) => [styles.cardMain, pressed && styles.pressed]}
+      >
+        <View style={styles.cardHeader}>
+          <AgentAvatar agentId={agent.id} avatar={agent.avatar} size={44} />
+          <View style={styles.cardTitle}>
+            <Text style={[styles.cardName, { color: colors.text }]} numberOfLines={1}>
+              {name}
+            </Text>
+          </View>
+          {selected ? (
+            <View style={[styles.badge, { backgroundColor: colors.accentSoft }]}>
+              <Text style={[styles.badgeText, { color: colors.accent }]}>{am.defaultBadge}</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={[styles.description, { color: colors.textMuted }]} numberOfLines={1}>
+          {subtitle}
+        </Text>
+      </Pressable>
+
+      <Pressable
+        disabled={chatLoading}
+        onPress={onChat}
+        style={({ pressed }) => [styles.chatButton, pressed && styles.pressed]}
+        hitSlop={4}
+      >
+        {chatLoading ? (
+          <ActivityIndicator size={18} />
+        ) : (
+          <Icon source="chat-plus-outline" size={22} color={colors.accent} />
+        )}
+      </Pressable>
     </View>
   );
 }
@@ -156,15 +248,85 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 32,
   },
-  hint: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 12,
-    marginLeft: 4,
-  },
   emptyText: {
     marginTop: 12,
     fontSize: 14,
     textAlign: 'center',
+  },
+  searchBox: {
+    minHeight: 48,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
+  searchInput: {
+    flex: 1,
+    minHeight: 44,
+    fontSize: 16,
+    paddingVertical: 0,
+  },
+  noResults: {
+    fontSize: 14,
+    lineHeight: 20,
+    paddingHorizontal: 4,
+    paddingTop: 8,
+  },
+  cards: {
+    gap: 12,
+  },
+  card: {
+    borderRadius: 12,
+    paddingRight: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cardMain: {
+    flex: 1,
+    minWidth: 0,
+    paddingLeft: 14,
+    paddingVertical: 12,
+  },
+  pressed: {
+    opacity: 0.72,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  cardTitle: {
+    flex: 1,
+    minWidth: 0,
+  },
+  cardName: {
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  badge: {
+    minHeight: 24,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  description: {
+    marginTop: 4,
+    marginLeft: 56,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  chatButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

@@ -13,6 +13,7 @@ export const queryKeys = {
   webchatGoal: (sessionKey: string) => ['webchat', 'goal', sessionKey] as const,
   webchatGoalRuns: (sessionKey: string, limit: number) => ['webchat', 'goal', 'runs', sessionKey, limit] as const,
   shares: ['shares'] as const,
+  workspaceDir: (scope: string, dir: string) => ['workspace', 'dir', scope, dir] as const,
   notes: (query?: string) => ['notes', query?.trim() ?? ''] as const,
   notesAll: ['notes'] as const,
   note: (id: string) => ['note', id] as const,

@@ -14,4 +14,10 @@ describe('workspaceRelativePathToApiPath', () => {
       '/api/workspace/editor/raw?path=tts%2Fout.mp3&sessionKey=main%3Awebchat%3Adefault%3Adirect%3Achat_1',
     );
   });
+
+  it('adds agent scope when session scope is absent', () => {
+    expect(workspaceRelativePathToApiPath('docs/page.html', { agentId: 'writer' })).toBe(
+      '/api/workspace/editor/raw?path=docs%2Fpage.html&agentId=writer',
+    );
+  });
 });

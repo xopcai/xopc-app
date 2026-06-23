@@ -31,8 +31,7 @@ import {
   ActivityIndicator,
   Button,
   Dialog,
-  IconButton,
-  Menu,
+  Icon,
   Paragraph,
   Portal,
   Text,
@@ -40,8 +39,10 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 
 import { FloatingHeader } from '../../components/FloatingHeader';
+import { BottomSheetModal } from '../../components/BottomSheetModal';
 
 import { t, useMessages } from '../../i18n/messages';
+import { LIST_DELAY_LONG_PRESS } from '../../constants/list-interaction';
 import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
 import { useGatewayStore } from '../../stores/gateway-store';
 import { radii, spacing, typography, type ColorScheme } from '../../theme';
@@ -77,7 +78,6 @@ export function MySharesScreen() {
 
   const [extending, setExtending] = useState<ShareListItem | null>(null);
   const [revoking, setRevoking] = useState<ShareListItem | null>(null);
-  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState<{ url: string; title: string } | null>(null);
   const extend = useExtendShare();
   const revoke = useRevokeShare();
@@ -93,9 +93,6 @@ export function MySharesScreen() {
       item={item}
       token={token}
       palette={palette}
-      menuOpen={menuFor === item.id}
-      onMenuOpen={() => setMenuFor(item.id)}
-      onMenuClose={() => setMenuFor(null)}
       onPreview={() => setPreviewing({ url: item.shareUrl, title: item.fileName })}
       onExtend={() => setExtending(item)}
       onRevoke={() => setRevoking(item)}
@@ -186,9 +183,6 @@ function ShareRow({
   item,
   token,
   palette,
-  menuOpen,
-  onMenuOpen,
-  onMenuClose,
   onPreview,
   onExtend,
   onRevoke,
@@ -197,9 +191,6 @@ function ShareRow({
   item: ShareListItem;
   token: string;
   palette: ShareListColors;
-  menuOpen: boolean;
-  onMenuOpen: () => void;
-  onMenuClose: () => void;
   onPreview: () => void;
   onExtend: () => void;
   onRevoke: () => void;
@@ -211,10 +202,13 @@ function ShareRow({
   const downloads = item.downloadCount;
   const thumbnailUri = `${item.shareUrl.replace(/\/+$/, '')}/thumbnail`;
   const thumbHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
+  const [actionsVisible, setActionsVisible] = useState(false);
+
+  const closeActions = () => setActionsVisible(false);
 
   const handleCopy = async () => {
     await Clipboard.setStringAsync(item.shareUrl);
-    onMenuClose();
+    closeActions();
   };
 
   const handleSystemShare = async () => {
@@ -223,17 +217,29 @@ function ShareRow({
     } catch {
       /* user cancelled */
     } finally {
-      onMenuClose();
+      closeActions();
     }
   };
 
   return (
-    <View style={[styles.card, { backgroundColor: palette.cardBg, borderColor: palette.border }]}>
-      <Pressable style={styles.cardLeft} onPress={onPreview} accessibilityRole="button" accessibilityLabel={pm.actionPreview}>
+    <>
+    <Pressable
+      style={({ pressed }) => [
+        styles.card,
+        { backgroundColor: palette.cardBg, borderColor: palette.border },
+        pressed && styles.pressed,
+      ]}
+      onPress={onPreview}
+      onLongPress={() => setActionsVisible(true)}
+      delayLongPress={LIST_DELAY_LONG_PRESS}
+      accessibilityRole="button"
+      accessibilityLabel={pm.actionPreview}
+    >
+      <View style={styles.cardLeft}>
         <View style={[styles.thumb, { backgroundColor: palette.thumbBg }]}>
           <Image source={{ uri: thumbnailUri, headers: thumbHeaders }} style={styles.thumbImage} resizeMode="cover" />
         </View>
-      </Pressable>
+      </View>
 
       <View style={styles.cardMain}>
         <Text style={[styles.fileName, { color: palette.text }]} numberOfLines={1}>
@@ -250,31 +256,122 @@ function ShareRow({
           </Text>
         </View>
       </View>
+    </Pressable>
+    <ShareActionsSheet
+      visible={actionsVisible}
+      item={item}
+      palette={palette}
+      onDismiss={closeActions}
+      onPreview={() => {
+        closeActions();
+        onPreview();
+      }}
+      onCopy={() => void handleCopy()}
+      onShare={() => void handleSystemShare()}
+      onExtend={() => {
+        closeActions();
+        onExtend();
+      }}
+      onRevoke={() => {
+        closeActions();
+        onRevoke();
+      }}
+      m={m}
+    />
+    </>
+  );
+}
 
-      <Menu
-        visible={menuOpen}
-        onDismiss={onMenuClose}
-        anchor={
-          <IconButton icon="dots-vertical" size={20} onPress={onMenuOpen} accessibilityLabel={m.listInteraction.moreMenu} />
-        }
-      >
-        <Menu.Item leadingIcon="eye-outline" onPress={() => { onMenuClose(); onPreview(); }} title={pm.actionPreview} />
-        <Menu.Item leadingIcon="content-copy" onPress={handleCopy} title={pm.actionCopy} />
-        <Menu.Item leadingIcon="share-variant" onPress={handleSystemShare} title={pm.actionShare} />
-        <Menu.Item
-          leadingIcon="clock-plus-outline"
-          onPress={() => { onMenuClose(); onExtend(); }}
-          title={pm.actionExtend}
+function ShareActionsSheet({
+  visible,
+  item,
+  palette,
+  onDismiss,
+  onPreview,
+  onCopy,
+  onShare,
+  onExtend,
+  onRevoke,
+  m,
+}: {
+  visible: boolean;
+  item: ShareListItem;
+  palette: ShareListColors;
+  onDismiss: () => void;
+  onPreview: () => void;
+  onCopy: () => void;
+  onShare: () => void;
+  onExtend: () => void;
+  onRevoke: () => void;
+  m: ReturnType<typeof useMessages>;
+}) {
+  const pm = m.sharingPage;
+  return (
+    <BottomSheetModal
+      visible={visible}
+      onDismiss={onDismiss}
+      title={item.fileName}
+      subtitle={item.shareUrl}
+      maxHeight="60%"
+    >
+      <View style={styles.sheetBody}>
+        <ShareSheetAction icon="eye-outline" label={pm.actionPreview} palette={palette} onPress={onPreview} />
+        <ShareSheetAction icon="content-copy" label={pm.actionCopy} palette={palette} onPress={onCopy} />
+        <ShareSheetAction icon="share-variant" label={pm.actionShare} palette={palette} onPress={onShare} />
+        <ShareSheetAction
+          icon="clock-plus-outline"
+          label={pm.actionExtend}
+          palette={palette}
+          onPress={onExtend}
           disabled={item.revoked}
         />
-        <Menu.Item
-          leadingIcon="link-off"
-          onPress={() => { onMenuClose(); onRevoke(); }}
-          title={pm.actionRevoke}
+        <ShareSheetAction
+          icon="link-off"
+          label={pm.actionRevoke}
+          palette={palette}
+          onPress={onRevoke}
           disabled={item.revoked}
+          destructive
         />
-      </Menu>
-    </View>
+      </View>
+    </BottomSheetModal>
+  );
+}
+
+function ShareSheetAction({
+  icon,
+  label,
+  palette,
+  onPress,
+  disabled,
+  destructive,
+}: {
+  icon: string;
+  label: string;
+  palette: ShareListColors;
+  onPress: () => void;
+  disabled?: boolean;
+  destructive?: boolean;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.sheetAction,
+        pressed && styles.pressed,
+        disabled && styles.disabled,
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <View style={[styles.sheetActionIcon, { backgroundColor: palette.thumbBg }]}>
+        <Icon source={icon} size={22} color={destructive ? palette.error : palette.muted} />
+      </View>
+      <Text style={[styles.sheetActionText, { color: destructive ? palette.error : palette.text }]}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -396,6 +493,7 @@ function useShareListColors(colors: ColorScheme) {
     border: colors.border.default,
     text: colors.text.primary,
     muted: colors.text.secondary,
+    error: colors.semantic.error,
   };
 }
 
@@ -414,6 +512,8 @@ const styles = StyleSheet.create({
   },
   cardLeft: {},
   cardMain: { flex: 1, gap: spacing.xs, minWidth: 0 },
+  pressed: { opacity: 0.75 },
+  disabled: { opacity: 0.45 },
   thumb: {
     width: 56,
     height: 56,
@@ -425,6 +525,25 @@ const styles = StyleSheet.create({
   urlLine: typography.micro,
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   metaText: { ...typography.micro, flexShrink: 1 },
+  sheetBody: {
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
+  },
+  sheetAction: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  sheetActionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetActionText: { ...typography.ui, fontWeight: '600' },
   chip: {
     borderRadius: radii.full,
     paddingHorizontal: spacing.sm,

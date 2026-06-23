@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
+import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding, useTheme } from '../../theme';
@@ -49,40 +50,44 @@ export function NoteViewActionBar({
   ] as const;
 
   return (
-    <View style={[styles.wrap, { paddingBottom: floatingBottomPadding(insets.bottom) }]}>
-      <View
-        style={[
-          styles.bar,
-          {
-            backgroundColor: barBg,
-            borderColor: colors.border.default,
-            shadowColor: colors.text.primary,
-          },
-        ]}
-      >
-        {items.map((item) => (
-          <Pressable
-            key={item.key}
-            style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
-            onPress={item.onPress}
-            accessibilityRole="button"
-            accessibilityLabel={item.label}
-          >
-            <Icon source={item.icon} size={18} color={iconColor} />
-            <Text numberOfLines={1} style={[styles.label, { color: labelColor }]}>{item.label}</Text>
-          </Pressable>
-        ))}
+    <KeyboardStickyView
+      offset={{ closed: 0, opened: 0 }}
+      style={styles.sticky}
+    >
+      <View style={[styles.wrap, { paddingBottom: floatingBottomPadding(insets.bottom) }]}>
+        <View
+          style={[
+            styles.bar,
+            {
+              backgroundColor: barBg,
+              borderColor: colors.border.default,
+              shadowColor: colors.text.primary,
+            },
+          ]}
+        >
+          {items.map((item) => (
+            <Pressable
+              key={item.key}
+              style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
+              onPress={item.onPress}
+              accessibilityRole="button"
+              accessibilityLabel={item.label}
+            >
+              <Icon source={item.icon} size={18} color={iconColor} />
+              <Text numberOfLines={1} style={[styles.label, { color: labelColor }]}>{item.label}</Text>
+            </Pressable>
+          ))}
+        </View>
       </View>
-    </View>
+    </KeyboardStickyView>
   );
 }
 
 const styles = StyleSheet.create({
+  sticky: {
+    marginBottom: FLOATING_BOTTOM_OFFSET,
+  },
   wrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: FLOATING_BOTTOM_OFFSET,
     alignItems: 'center',
     paddingTop: 6,
     zIndex: 20,

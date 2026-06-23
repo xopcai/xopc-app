@@ -23,10 +23,13 @@ function looksLikeBase64(value: string): boolean {
 export function buildGatewayRawFilePath(
   workspaceRelativePath: string,
   sessionKey?: string,
+  agentId?: string,
 ): string {
   const params = new URLSearchParams({ path: workspaceRelativePath });
   if (sessionKey) {
     params.set('sessionKey', sessionKey);
+  } else if (agentId) {
+    params.set('agentId', agentId);
   }
   return `/api/workspace/editor/raw?${params.toString()}`;
 }

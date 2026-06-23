@@ -108,6 +108,29 @@ describe('dispatchAgentSseEvent', () => {
     expect(cb.onToolEnd).toHaveBeenCalledWith('workflow', false, result, 'tc1');
   });
 
+  it('dispatches TTS audio payload with media uri and target metadata', () => {
+    const onTtsAudio = vi.fn();
+    dispatchAgentSseEvent(
+      'tts_audio',
+      JSON.stringify(envelope('tts_audio', 'run-1', {
+        uri: 'media://tts/reply.mp3',
+        mimeType: 'audio/mpeg',
+        name: 'reply.mp3',
+        attachTo: 'last_assistant',
+        messageId: 'msg_run_1',
+      })),
+      callbacks({ onTtsAudio }) as never,
+    );
+    expect(onTtsAudio).toHaveBeenCalledWith({
+      uri: 'media://tts/reply.mp3',
+      workspaceRelativePath: undefined,
+      mimeType: 'audio/mpeg',
+      name: 'reply.mp3',
+      attachTo: 'last_assistant',
+      messageId: 'msg_run_1',
+    });
+  });
+
   it('calls terminal callbacks for run_end and error', () => {
     const cb = callbacks();
     dispatchAgentSseEvent('run_end', JSON.stringify(envelope('run_end', 'run-1', { status: 'success' })), cb);

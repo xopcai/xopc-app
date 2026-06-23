@@ -1,7 +1,7 @@
-import * as Clipboard from 'expo-clipboard';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Image,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -17,6 +17,7 @@ import { useGatewayStore } from '../../stores/gateway-store';
 import { useTheme } from '../../theme';
 import { ShareSheet } from '../share/ShareSheet';
 import { prefetchShare } from '../share/share-prefetch';
+import { useCreateShare } from '../../query/shares';
 import { HtmlPreviewPane } from './HtmlPreviewPane';
 import { isHtmlFile } from './html-preview-source';
 import { MarkdownView } from './MarkdownView';
@@ -44,6 +45,7 @@ export type FilePreviewModalProps = {
   visible: boolean;
   file: PreviewableFile | null;
   sessionKey?: string | null;
+  agentId?: string | null;
   onClose: () => void;
 };
 
@@ -96,7 +98,11 @@ function dataUri(mimeType: string, base64: string): string {
   return `data:${mimeType || 'application/octet-stream'};base64,${base64}`;
 }
 
-async function loadPreview(file: PreviewableFile, sessionKey?: string | null): Promise<LoadedPreview> {
+async function loadPreview(
+  file: PreviewableFile,
+  sessionKey?: string | null,
+  agentId?: string | null,
+): Promise<LoadedPreview> {
   const name = file.name || fileName(file.workspaceRelativePath ?? 'preview');
   const mimeType = file.mimeType || mimeTypeFromFileName(name);
   const absolutePath = file.absolutePath;
@@ -127,7 +133,7 @@ async function loadPreview(file: PreviewableFile, sessionKey?: string | null): P
       return { kind, mimeType, text: null, base64: globalThis.btoa(binary), absolutePath };
     }
     if (file.workspaceRelativePath) {
-      const loaded = await readWorkspaceFileBase64(file.workspaceRelativePath, { sessionKey });
+      const loaded = await readWorkspaceFileBase64(file.workspaceRelativePath, { sessionKey, agentId });
       return { kind, mimeType, text: null, base64: loaded.contentBase64, absolutePath: loaded.absolutePath ?? absolutePath };
     }
     return { kind, mimeType, text: null, base64: null, absolutePath };
@@ -162,7 +168,7 @@ async function loadPreview(file: PreviewableFile, sessionKey?: string | null): P
       return { kind, mimeType, text: file.textContent, base64: null, absolutePath };
     }
     if (file.workspaceRelativePath) {
-      const loaded = await readWorkspaceFile(file.workspaceRelativePath, { sessionKey });
+      const loaded = await readWorkspaceFile(file.workspaceRelativePath, { sessionKey, agentId });
       return { kind, mimeType, text: loaded.content, base64: null, absolutePath: loaded.absolutePath ?? absolutePath };
     }
     const fromBase64 = normalizeBase64Payload(file.contentBase64);
@@ -184,17 +190,28 @@ async function loadPreview(file: PreviewableFile, sessionKey?: string | null): P
   };
 }
 
-function buildShareRequestForFile(file: PreviewableFile, sessionKey?: string | null): ShareAutoRequest | null {
+function buildShareRequestForFile(
+  file: PreviewableFile,
+  sessionKey?: string | null,
+  agentId?: string | null,
+): ShareAutoRequest | null {
   const rel = file.workspaceRelativePath?.trim();
   if (!rel) return null;
   return {
     path: rel.replace(/\\/g, '/').replace(/^\/+/, ''),
     audience: 'friend',
     ...(sessionKey?.trim() ? { sessionKey: sessionKey.trim() } : {}),
+    ...(!sessionKey?.trim() && agentId?.trim() ? { agentId: agentId.trim() } : {}),
   };
 }
 
-export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePreviewModalProps) {
+function buildDownloadUrlForFile(
+  file: PreviewableFile,
+): string | null {
+  return file.remoteUri ?? null;
+}
+
+export function FilePreviewModal({ visible, file, sessionKey, agentId, onClose }: FilePreviewModalProps) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const m = useMessages();
@@ -203,11 +220,12 @@ export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePre
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<LoadedPreview | null>(null);
   const [shareTarget, setShareTarget] = useState<ShareAutoRequest | null>(null);
+  const createDownloadShare = useCreateShare();
 
   const title = useMemo(() => (file ? file.name || fileName(file.workspaceRelativePath ?? 'Preview') : ''), [file]);
   const shareRequest = useMemo(
-    () => (file ? buildShareRequestForFile(file, sessionKey) : null),
-    [file, sessionKey],
+    () => (file ? buildShareRequestForFile(file, sessionKey, agentId) : null),
+    [agentId, file, sessionKey],
   );
 
   // Warm the share cache the moment the preview opens — by the time the user
@@ -223,7 +241,7 @@ export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePre
     setLoaded(null);
     if (!visible || !file) return;
     setLoading(true);
-    void loadPreview(file, sessionKey)
+    void loadPreview(file, sessionKey, agentId)
       .then((next) => {
         if (!cancelled) setLoaded(next);
       })
@@ -236,12 +254,20 @@ export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePre
     return () => {
       cancelled = true;
     };
-  }, [file, sessionKey, visible]);
+  }, [agentId, file, sessionKey, visible]);
 
-  const copyablePath = loaded?.absolutePath ?? file?.absolutePath;
-  const copyPath = () => {
-    if (copyablePath) {
-      void Clipboard.setStringAsync(copyablePath);
+  const canDownload = Boolean(file?.workspaceRelativePath || file?.remoteUri);
+  const downloadFile = () => {
+    if (!file) return;
+    const remoteUrl = buildDownloadUrlForFile(file);
+    if (remoteUrl) {
+      void Linking.openURL(remoteUrl);
+      return;
+    }
+    if (shareRequest) {
+      void createDownloadShare.mutateAsync(shareRequest)
+        .then((payload) => Linking.openURL(payload.share.lanUrl ?? payload.share.shareUrl))
+        .catch(() => undefined);
     }
   };
 
@@ -257,13 +283,14 @@ export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePre
           <Text variant="titleMedium" numberOfLines={1} style={[styles.title, { color: textColor }]}> 
             {title}
           </Text>
-          {copyablePath ? (
+          {canDownload ? (
             <IconButton
-              icon="content-copy"
+              icon="download-outline"
               size={20}
               iconColor={textColor}
-              onPress={copyPath}
-              accessibilityLabel={m.chat.fileReferenceCopyPath}
+              onPress={downloadFile}
+              accessibilityLabel={m.chat.filePreviewDownload}
+              disabled={createDownloadShare.isPending}
             />
           ) : null}
           {shareRequest ? (
@@ -308,6 +335,7 @@ export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePre
               workspaceRelativePath={loaded.workspaceRelativePath ?? file?.workspaceRelativePath}
               htmlContent={loaded.text}
               sessionKey={sessionKey}
+              agentId={agentId}
               mutedColor={muted}
             />
           ) : loaded?.kind === 'text' && loaded.text != null ? (

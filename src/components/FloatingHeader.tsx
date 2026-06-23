@@ -4,12 +4,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMessages } from '../i18n/messages';
 import { useTheme } from '../theme';
-import { ListOverflowMenu, type OverflowMenuItem } from './ListOverflowMenu';
 import { XopcLogo } from './XopcLogo';
 
 type FloatingHeaderAction = {
   icon: string;
   onPress: () => void;
+  accessibilityLabel?: string;
 };
 
 interface FloatingHeaderProps {
@@ -19,8 +19,6 @@ interface FloatingHeaderProps {
   rightIcon?: string;
   onRightPress?: () => void;
   rightActions?: FloatingHeaderAction[];
-  overflowMenuItems?: OverflowMenuItem[];
-  overflowMenuA11yLabel?: string;
   searchPlaceholder?: string;
   onSearchPress?: () => void;
 }
@@ -32,8 +30,6 @@ export function FloatingHeader({
   rightIcon,
   onRightPress,
   rightActions,
-  overflowMenuItems,
-  overflowMenuA11yLabel,
   searchPlaceholder,
   onSearchPress,
 }: FloatingHeaderProps) {
@@ -42,8 +38,7 @@ export function FloatingHeader({
   const insets = useSafeAreaInsets();
   const backgroundColor = colors.surface.input;
   const actions = rightActions ?? (rightIcon && onRightPress ? [{ icon: rightIcon, onPress: onRightPress }] : []);
-  const hasOverflowMenu = (overflowMenuItems?.length ?? 0) > 0;
-  const showRightCluster = actions.length > 0 || hasOverflowMenu;
+  const showRightCluster = actions.length > 0;
 
   return (
     <View style={[styles.wrap, { paddingTop: insets.top + 8 }]}>
@@ -80,16 +75,16 @@ export function FloatingHeader({
       {showRightCluster ? (
         <View style={styles.actionsRow}>
           {actions.map((action) => (
-            <Pressable key={action.icon} style={[styles.iconButton, { backgroundColor }]} onPress={action.onPress}>
+            <Pressable
+              key={action.icon}
+              style={[styles.iconButton, { backgroundColor }]}
+              onPress={action.onPress}
+              accessibilityRole="button"
+              accessibilityLabel={action.accessibilityLabel}
+            >
               <Icon source={action.icon} size={22} color={colors.text.secondary} />
             </Pressable>
           ))}
-          {hasOverflowMenu ? (
-            <ListOverflowMenu
-              items={overflowMenuItems ?? []}
-              accessibilityLabel={overflowMenuA11yLabel ?? m.listInteraction.moreMenu}
-            />
-          ) : null}
         </View>
       ) : (
         <View style={styles.iconPlaceholder} />

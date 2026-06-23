@@ -282,18 +282,6 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
     }
   }, [pm.actionFailed, pm.deleted, pm.updated, refreshList, scheduleDelete]);
 
-  const headerOverflowMenu = useMemo(
-    () => [
-      {
-        key: 'select',
-        icon: 'checkbox-multiple-marked-outline',
-        label: li.select,
-        onPress: startSelection,
-      },
-    ],
-    [li.select, startSelection],
-  );
-
   const runBatchMutation = useCallback(
     async (runner: () => Promise<unknown>, successMsg: string) => {
       if (selectedCount === 0) return;
@@ -490,8 +478,6 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
       <FloatingHeader
         title={selectionMode ? t(li.selectedCount, { count: selectedCount }) : pm.title}
         onBack={selectionMode ? exitSelectionMode : embedded ? undefined : handleBack}
-        overflowMenuItems={selectionMode ? undefined : headerOverflowMenu}
-        overflowMenuA11yLabel={li.moreMenu}
       />
 
       {!selectionMode ? (
