@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const memory = new Map<string, string>();
+const tokenMemory = new Map<string, string>();
 
 vi.mock('../../storage/mmkv', () => ({
   KEYS: {
@@ -10,6 +11,7 @@ vi.mock('../../storage/mmkv', () => ({
     profiles: 'gateway.profiles',
     activeId: 'gateway.activeId',
     routeWinnerPrefix: 'gateway.routeWinner:',
+    routeOverridePrefix: 'gateway.routeOverride:',
     pendingRunPrefix: 'xopc:pendingRun:',
     language: 'prefs.language',
     themePreference: 'prefs.themePreference',
@@ -27,6 +29,20 @@ vi.mock('../../storage/mmkv', () => ({
   pendingRunStorageKey: (chatId: string) => `xopc:pendingRun:${chatId}`,
 }));
 
+vi.mock('../../storage/gateway-token-storage', () => ({
+  readGatewayToken: (profileId: string) => tokenMemory.get(profileId) ?? '',
+  writeGatewayToken: (profileId: string, token: string) => {
+    if (token) tokenMemory.set(profileId, token);
+    else tokenMemory.delete(profileId);
+  },
+  deleteGatewayToken: (profileId: string) => {
+    tokenMemory.delete(profileId);
+  },
+  __clearGatewayTokenMemoryForTests: () => {
+    tokenMemory.clear();
+  },
+}));
+
 vi.mock('../../api/connection-strategy', () => ({
   resolvePreferredBaseUrl: vi.fn(async (tunnel: string) => tunnel.replace(/\/+$/, '')),
   raceGatewayRoutes: vi.fn(async (tunnel: string, lan: string | undefined) => ({
@@ -42,6 +58,7 @@ import { useGatewayStore } from '../gateway-store';
 
 function resetStore(): void {
   memory.clear();
+  tokenMemory.clear();
   useGatewayStore.setState({
     profiles: [],
     activeGatewayId: null,
@@ -70,6 +87,7 @@ describe('useGatewayStore', () => {
     expect(st.profiles[0]?.baseUrl).toBe('https://gw1.example.com');
     expect(st.profiles[0]?.lanUrl).toBe('http://192.168.1.10:18790');
     expect(st.profiles[0]?.token).toBe('legacy-token');
+    expect(tokenMemory.get(st.profiles[0]?.id ?? '')).toBe('legacy-token');
     expect(st.activeGatewayId).toBe(st.profiles[0]?.id);
     expect(st.baseUrl).toBe('https://gw1.example.com');
     expect(st.lanUrl).toBe('http://192.168.1.10:18790');
@@ -78,6 +96,7 @@ describe('useGatewayStore', () => {
     expect(memory.has(KEYS.baseUrl)).toBe(false);
     expect(memory.has(KEYS.lanUrl)).toBe(false);
     expect(memory.has(KEYS.token)).toBe(false);
+    expect(JSON.parse(memory.get(KEYS.profiles) ?? '[]')[0]?.token).toBe('');
   });
 
   it('adds, updates, switches, and removes profiles', () => {
@@ -102,10 +121,13 @@ describe('useGatewayStore', () => {
     useGatewayStore.getState().updateProfile(secondId, { token: 'b2' });
     expect(useGatewayStore.getState().token).toBe('b2');
     expect(useGatewayStore.getState().profiles.find((p) => p.id === secondId)?.token).toBe('b2');
+    expect(JSON.parse(memory.get(KEYS.profiles) ?? '[]').find((p: { id: string }) => p.id === secondId)?.token).toBe('');
+    expect(tokenMemory.get(secondId)).toBe('b2');
 
     useGatewayStore.getState().removeProfile(firstId);
     expect(useGatewayStore.getState().profiles).toHaveLength(1);
     expect(useGatewayStore.getState().activeGatewayId).toBe(secondId);
+    expect(tokenMemory.has(firstId)).toBe(false);
   });
 
   it('clears flat fields when the last profile is removed', () => {
@@ -153,6 +175,7 @@ describe('useGatewayStore', () => {
     expect(st.profiles).toHaveLength(1);
     expect(st.baseUrl).toBe('https://persist.example.com');
     expect(st.token).toBe('save-me');
+    expect(JSON.parse(memory.get(KEYS.profiles) ?? '[]')[0]?.token).toBe('');
   });
 
   it('apiUrl falls back to lanUrl when activeBaseUrl was cleared', () => {

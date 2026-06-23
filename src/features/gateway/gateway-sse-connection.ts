@@ -124,9 +124,8 @@ export class GatewaySseConnection {
   }
 
   private buildUrl(): string {
-    const { apiUrl, token } = useGatewayStore.getState();
+    const { apiUrl } = useGatewayStore.getState();
     const url = new URL(apiUrl('/api/events'));
-    if (token) url.searchParams.set('token', token);
     return url.toString();
   }
 
@@ -134,7 +133,8 @@ export class GatewaySseConnection {
     if (this._closed) return;
     this.transport?.close();
 
-    if (typeof EventSource !== 'undefined' && typeof document !== 'undefined') {
+    const { token } = useGatewayStore.getState();
+    if (!token && typeof EventSource !== 'undefined' && typeof document !== 'undefined') {
       this.transport = this.openEventSource();
       return;
     }

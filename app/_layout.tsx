@@ -7,22 +7,22 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { PaperProvider } from 'react-native-paper';
 
-import { tryConsumeGatewayDeeplink } from '../src/features/gateway/apply-gateway-deeplink';
-import { themedStackScreenOptions } from '../src/lib/stack-screen-theme';
-import { createPaperTheme, getColors } from '../src/theme';
-import { GatewayConnectLandingContext } from '../src/features/gateway/gateway-connect-context';
-import { GatewayConnectLandingModal } from '../src/features/gateway/GatewayConnectLandingModal';
-import { useGatewayConnectionWatch } from '../src/features/gateway/use-gateway-connection-watch';
-import { useGatewaySse } from '../src/features/gateway/use-gateway-sse';
-import { refreshNetworkSnapshotWithDeadline } from '../src/features/gateway/network-info';
-import { queryClient } from '../src/query/query-client';
-import { useGatewayConfigured } from '../src/query/sessions';
-import { useGatewayStore } from '../src/stores/gateway-store';
+import { tryConsumeGatewayDeeplink } from '@/features/gateway/apply-gateway-deeplink';
+import { themedStackScreenOptions } from '@/lib/stack-screen-theme';
+import { createPaperTheme, getColors } from '@/theme';
+import { GatewayConnectLandingContext } from '@/features/gateway/gateway-connect-context';
+import { GatewayConnectLandingModal } from '@/features/gateway/GatewayConnectLandingModal';
+import { useGatewayConnectionWatch } from '@/features/gateway/use-gateway-connection-watch';
+import { useGatewaySse } from '@/features/gateway/use-gateway-sse';
+import { refreshNetworkSnapshotWithDeadline } from '@/features/gateway/network-info';
+import { queryClient } from '@/query/query-client';
+import { useGatewayConfigured } from '@/query/sessions';
+import { useGatewayStore } from '@/stores/gateway-store';
 import {
   subscribeSystemAppearance,
   usePreferencesStore,
-} from '../src/stores/preferences-store';
-import { useNoteTagsStore } from '../src/stores/note-tags-store';
+} from '@/stores/preferences-store';
+import { useNoteTagsStore } from '@/stores/note-tags-store';
 
 export default function RootLayout() {
   const router = useRouter();

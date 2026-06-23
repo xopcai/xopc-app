@@ -1,4 +1,4 @@
-import { InboxScreen } from '../../src/features/inbox/InboxScreen';
+import { InboxScreen } from '@/features/inbox/InboxScreen';
 
 export default function InboxRoute() {
   return <InboxScreen />;

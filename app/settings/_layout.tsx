@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 
-import { useMessages } from '../../src/i18n/messages';
-import { useThemedStackScreenOptions } from '../../src/lib/stack-screen-theme';
+import { useMessages } from '@/i18n/messages';
+import { useThemedStackScreenOptions } from '@/lib/stack-screen-theme';
 
 export default function SettingsLayout() {
   const m = useMessages();

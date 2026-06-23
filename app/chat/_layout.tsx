@@ -5,7 +5,7 @@
  */
 import { Stack } from 'expo-router';
 
-import { useThemedStackScreenOptions } from '../../src/lib/stack-screen-theme';
+import { useThemedStackScreenOptions } from '@/lib/stack-screen-theme';
 
 export default function ChatDetailLayout() {
   const themedScreenOptions = useThemedStackScreenOptions();

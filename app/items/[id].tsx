@@ -1,4 +1,4 @@
-import { PageScreen } from '../../src/features/page/PageScreen';
+import { PageScreen } from '@/features/page/PageScreen';
 
 export default function ItemRoute() {
   return <PageScreen />;

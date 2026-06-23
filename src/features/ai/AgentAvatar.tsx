@@ -91,13 +91,11 @@ function resolveDicebear(agentId: string, avatar: string | undefined): { styleId
   return parsed ?? { styleId: 'adventurer', seed: agentId };
 }
 
-function avatarUri(agentId: string, avatar: string | undefined, token: string): string | null {
+function avatarUri(agentId: string, avatar: string | undefined): string | null {
   const trimmed = avatar?.trim() ?? '';
   if (!trimmed) return null;
   if (trimmed === XOPC_CUSTOM_AVATAR) {
-    const base = useGatewayStore.getState().apiUrl(`/api/agents/${encodeURIComponent(agentId)}/avatar`);
-    if (!token) return base;
-    return `${base}?token=${encodeURIComponent(token)}`;
+    return useGatewayStore.getState().apiUrl(`/api/agents/${encodeURIComponent(agentId)}/avatar`);
   }
   if (/^(https?:|data:image\/)/i.test(trimmed)) return trimmed;
   return null;
@@ -121,7 +119,8 @@ export function AgentAvatar({
     setFailed(false);
   }, [agentId, avatar, activeBaseUrl, token]);
 
-  const uri = useMemo(() => avatarUri(agentId, avatar, token), [agentId, avatar, activeBaseUrl, token]);
+  const uri = useMemo(() => avatarUri(agentId, avatar), [agentId, avatar, activeBaseUrl]);
+  const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
   const dicebear = useMemo(() => resolveDicebear(agentId, avatar), [agentId, avatar]);
   const svg = useMemo(
     () => dicebearSvg(dicebear.styleId, dicebear.seed, Math.max(size * 2, 96)),
@@ -138,7 +137,7 @@ export function AgentAvatar({
         ]}
       >
         <Image
-          source={{ uri }}
+          source={{ uri, headers: authHeaders }}
           style={{ width: size, height: size, borderRadius: radius }}
           resizeMode="cover"
           onError={() => setFailed(true)}

@@ -7,6 +7,11 @@ import {
   type RouteOverride,
 } from '../features/gateway/route-override';
 import { KEYS, storage } from '../storage/mmkv';
+import {
+  deleteGatewayToken,
+  readGatewayToken,
+  writeGatewayToken,
+} from '../storage/gateway-token-storage';
 
 import {
   buildGatewayProfile,
@@ -120,12 +125,43 @@ function parseProfilesJson(raw: string): GatewayProfile[] | null {
         name: profile.name?.trim() || gatewayProfileNameFromUrl(profile.baseUrl),
         baseUrl: normalizeBaseUrl(profile.baseUrl),
         lanUrl: profile.lanUrl ? normalizeBaseUrl(profile.lanUrl) : null,
-        token: (profile.token ?? '').trim(),
+        token: typeof profile.token === 'string' ? profile.token.trim() : '',
         updatedAt: profile.updatedAt ?? Date.now(),
       }));
   } catch {
     return null;
   }
+}
+
+function profileForStorage(profile: GatewayProfile): GatewayProfile {
+  return { ...profile, token: '' };
+}
+
+function hydrateProfileTokens(profiles: GatewayProfile[]): GatewayProfile[] {
+  return profiles.map((profile) => {
+    const secureToken = readGatewayToken(profile.id);
+    const legacyToken = profile.token.trim();
+    const token = secureToken || legacyToken;
+    if (!secureToken && legacyToken) {
+      writeGatewayToken(profile.id, legacyToken);
+    }
+    return { ...profile, token };
+  });
+}
+
+function persistProfiles(profiles: GatewayProfile[], activeGatewayId: string | null): void {
+  if (profiles.length > 0) {
+    for (const profile of profiles) {
+      writeGatewayToken(profile.id, profile.token);
+    }
+    storage.set(KEYS.profiles, JSON.stringify(profiles.map(profileForStorage)));
+    if (activeGatewayId) storage.set(KEYS.activeId, activeGatewayId);
+    else storage.delete(KEYS.activeId);
+  } else {
+    storage.delete(KEYS.profiles);
+    storage.delete(KEYS.activeId);
+  }
+  deleteLegacyGatewayKeys();
 }
 
 function deleteLegacyGatewayKeys(): void {
@@ -242,7 +278,7 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
   hydrateFromStorage: () => {
     const profilesJson = storage.getString(KEYS.profiles);
     if (profilesJson) {
-      const profiles = parseProfilesJson(profilesJson) ?? [];
+      const profiles = hydrateProfileTokens(parseProfilesJson(profilesJson) ?? []);
       const storedActiveId = storage.getString(KEYS.activeId) ?? null;
       const activeGatewayId =
         storedActiveId && profiles.some((p) => p.id === storedActiveId)
@@ -254,6 +290,7 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
         activeGatewayId,
         ...flatFieldsFromProfile(activeProfile),
       });
+      persistProfiles(profiles, activeGatewayId);
       return;
     }
 
@@ -272,9 +309,7 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
         activeGatewayId: profile.id,
         ...flatFieldsFromProfile(profile),
       });
-      storage.set(KEYS.profiles, JSON.stringify([profile]));
-      storage.set(KEYS.activeId, profile.id);
-      deleteLegacyGatewayKeys();
+      persistProfiles([profile], profile.id);
       return;
     }
 
@@ -287,15 +322,7 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
 
   persist: () => {
     const { profiles, activeGatewayId } = get();
-    if (profiles.length > 0) {
-      storage.set(KEYS.profiles, JSON.stringify(profiles));
-      if (activeGatewayId) storage.set(KEYS.activeId, activeGatewayId);
-      else storage.delete(KEYS.activeId);
-    } else {
-      storage.delete(KEYS.profiles);
-      storage.delete(KEYS.activeId);
-    }
-    deleteLegacyGatewayKeys();
+    persistProfiles(profiles, activeGatewayId);
   },
 
   onUnauthorized: () => {
@@ -388,6 +415,7 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
     if (idx < 0) return;
 
     const nextProfiles = profiles.filter((p) => p.id !== id);
+    deleteGatewayToken(id);
     if (activeGatewayId !== id) {
       set({ profiles: nextProfiles });
       get().persist();

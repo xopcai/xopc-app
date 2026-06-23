@@ -24,6 +24,7 @@ import { AttachmentFileError, pickAttachmentFromSource, type AttachmentPickSourc
 import type { ComposerAttachment } from '../chat/composer.types';
 import { deleteNote, fetchNotes, captureNote, updateNote, type NoteIndexEntry } from '../../query/notes';
 import { queryKeys } from '../../query/keys';
+import { useGatewayConfigured } from '../../query/sessions';
 import { invalidateHomeFeed } from '../../query/workspace-sync';
 import { NOTE_KIND_ICONS } from '../notes/note-list-display';
 import { useTheme, FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
@@ -55,6 +56,7 @@ export function InboxScreen() {
   const pm = m.notesPage;
   const cm = m.chat;
   const li = m.listInteraction;
+  const configured = useGatewayConfigured();
   const [captureText, setCaptureText] = useState('');
   const [snackMsg, setSnackMsg] = useState('');
   const [showBatchDelete, setShowBatchDelete] = useState(false);
@@ -78,6 +80,7 @@ export function InboxScreen() {
     queryFn: ({ pageParam }) => fetchNotes({ status: 'inbox', limit: PAGE_SIZE, offset: pageParam }),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.offset + lastPage.limit : undefined,
+    enabled: configured,
   });
 
   const items = useMemo(

@@ -1,4 +1,4 @@
-const { withPodfile } = require('@expo/config-plugins');
+const { withPodfile } = require('expo/config-plugins');
 
 const TSINGHUA_SOURCE =
   "source 'https://mirrors.tuna.tsinghua.edu.cn/git/CocoaPods/Specs.git'";
