@@ -29,8 +29,7 @@ export type AgentSseCallbacks = {
   onToolEnd: (toolName: string, isError: boolean, result?: unknown, toolCallId?: string) => void;
   onProgress: (progress: ProgressState) => void;
   onTtsAudio?: (payload: {
-    uri?: string;
-    workspaceRelativePath?: string;
+    uri: string;
     mimeType: string;
     name: string;
     attachTo?: 'last_assistant';
@@ -174,17 +173,18 @@ export function dispatchAgentSseEvent(
         cb?.onProgress({ stage: 'compaction', message: p.message, timestamp: Date.now() });
       }
       break;
-    case 'tts_audio':
+    case 'tts_audio': {
+      const uri = typeof p.uri === 'string' ? p.uri.trim() : '';
+      if (!uri) break;
       cb?.onTtsAudio?.({
-        uri: typeof p.uri === 'string' ? p.uri : undefined,
-        workspaceRelativePath:
-          typeof p.workspaceRelativePath === 'string' ? p.workspaceRelativePath : undefined,
+        uri,
         mimeType: String(p.mimeType || 'audio/mpeg'),
         name: String(p.name || 'voice.mp3'),
         attachTo: p.attachTo === 'last_assistant' ? 'last_assistant' : undefined,
         messageId: typeof p.messageId === 'string' ? p.messageId : undefined,
       });
       break;
+    }
     case 'clarify_request': {
       const requestId = typeof p.requestId === 'string' ? p.requestId.trim() : '';
       const question = typeof p.question === 'string' ? p.question.trim() : '';

@@ -123,7 +123,6 @@ describe('dispatchAgentSseEvent', () => {
     );
     expect(onTtsAudio).toHaveBeenCalledWith({
       uri: 'media://tts/reply.mp3',
-      workspaceRelativePath: undefined,
       mimeType: 'audio/mpeg',
       name: 'reply.mp3',
       attachTo: 'last_assistant',

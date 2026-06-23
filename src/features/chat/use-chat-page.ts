@@ -30,10 +30,6 @@ import { getColors } from '../../theme';
 
 import { EMPTY_CHAT_GOAL_PREFILL } from './chat-empty-shortcuts';
 import { buildUserResendPayload, findPrecedingUserMessage } from './composer-send-helpers';
-import {
-  filterOptimisticMessagesCoveredBySession,
-  streamingMessageCoveredBySession,
-} from './display-message-reconcile';
 import type { ComposerAttachment, WireAttachment } from './composer.types';
 import type { Message } from './messages.types';
 import { MAX_PENDING_FOLLOW_UPS } from './pending-follow-up.types';
@@ -175,17 +171,11 @@ export function useChatPage(options: UseChatPageOptions = {}) {
 
   const displayMessages = useMemo<Message[]>(() => {
     if (sessionRefreshComplete) return sessionMessages;
-    const optimisticMessages = filterOptimisticMessagesCoveredBySession(
-      sessionMessages,
-      chatSession.optimisticMessages,
-    );
     const base =
-      optimisticMessages.length > 0
-        ? [...sessionMessages, ...optimisticMessages]
+      chatSession.optimisticMessages.length > 0
+        ? [...sessionMessages, ...chatSession.optimisticMessages]
         : sessionMessages;
-    if (!chatSession.streamingMsg || streamingMessageCoveredBySession(sessionMessages, chatSession.streamingMsg)) {
-      return base;
-    }
+    if (!chatSession.streamingMsg) return base;
     return [...base, chatSession.streamingMsg];
   }, [sessionRefreshComplete, sessionMessages, chatSession.optimisticMessages, chatSession.streamingMsg]);
 

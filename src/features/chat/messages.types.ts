@@ -60,6 +60,7 @@ export type MessageAttachment = {
 };
 
 export interface Message {
+  id?: string;
   role: 'user' | 'assistant' | 'user-with-attachments';
   content: MessageContent[];
   attachments?: MessageAttachment[];

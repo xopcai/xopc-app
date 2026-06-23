@@ -8,7 +8,7 @@ import { useMessages } from '../../i18n/messages';
 import { useGatewayStore } from '../../stores/gateway-store';
 import { useTheme } from '../../theme';
 import type { AudioContent } from './messages.types';
-import { audioNameFromPath, buildGatewayAudioUrl } from './audio-url';
+import { audioNameFromPath, resolveAudioPlaybackUrl } from './audio-url';
 
 function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return '0:00';
@@ -38,13 +38,9 @@ export const AudioMessageBlock = memo(function AudioMessageBlock({
   const [durationMillis, setDurationMillis] = useState((audio.durationSeconds ?? 0) * 1000);
   const [error, setError] = useState<string | null>(null);
 
-  const uri = useMemo(() => {
-    if (audio.uri?.trim()) return audio.uri.trim();
-    if (!audio.workspaceRelativePath?.trim()) return '';
-    return buildGatewayAudioUrl(audio.workspaceRelativePath, sessionKey);
-  }, [audio.uri, audio.workspaceRelativePath, sessionKey]);
+  const uri = useMemo(() => resolveAudioPlaybackUrl(audio, sessionKey), [audio, sessionKey]);
 
-  const title = audio.name?.trim() || audioNameFromPath(audio.workspaceRelativePath, 'voice.mp3');
+  const title = audio.name?.trim() || audioNameFromPath(audio.workspaceRelativePath ?? audio.uri, 'voice.mp3');
 
   const unload = useCallback(() => {
     const player = playerRef.current;

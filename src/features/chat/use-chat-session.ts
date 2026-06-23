@@ -188,9 +188,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
   }, [flushStreamingMessage]);
 
   const appendAudioToStreamingAssistant = useCallback((audio: AudioContent) => {
-    const current = streamingMsgRef.current;
-    if (!current || current.role !== 'assistant') return;
-    const message = ensureAssistantMessage(current, Date.now());
+    const message = ensureAssistantMessage(streamingMsgRef.current, Date.now());
     const key = audio.uri?.trim() || audio.workspaceRelativePath?.trim() || audio.name?.trim();
     const exists = key
       ? message.content.some(
@@ -223,6 +221,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
     setOptimisticMessages([]);
     setAwaitingSessionRefresh(false);
   }, [clearStreamingMessage]);
+
 
   // ── Session invalidation ─────────────────────────────────
   const invalidateSessionByKey = useCallback((targetSessionKey: string) => {
@@ -426,13 +425,13 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       onTtsAudio: (payload) => {
         if (!isCurrentSession()) return;
         touchStreamActivity();
-        appendAudioToStreamingAssistant({
+        const audio: AudioContent = {
           type: 'audio',
           uri: payload.uri,
-          workspaceRelativePath: payload.workspaceRelativePath,
           mimeType: payload.mimeType,
           name: payload.name,
-        });
+        };
+        appendAudioToStreamingAssistant(audio);
       },
       onClarifyRequest: (payload) => {
         if (!isCurrentSession()) return;

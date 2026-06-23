@@ -29,6 +29,7 @@ export type WireContentBlock = {
   uri?: string;
   durationSeconds?: number;
   id?: string;
+  messageId?: string;
   name?: string;
   input?: unknown;
   args?: unknown;
@@ -39,6 +40,8 @@ export type WireContentBlock = {
 };
 
 export type WireMessage = {
+  id?: string;
+  messageId?: string;
   role?: string;
   content?: unknown;
   timestamp?: string | number;
@@ -53,6 +56,14 @@ export type WireMessage = {
 
 // ── Stable key helpers ─────────────────────────────────────
 
+function wireMessageId(message: WireMessage): string | undefined {
+  return typeof message.id === 'string' && message.id.trim()
+    ? message.id.trim()
+    : typeof message.messageId === 'string' && message.messageId.trim()
+      ? message.messageId.trim()
+      : undefined;
+}
+
 function stableWireContentKey(content: unknown): string {
   if (typeof content === 'string') return content;
   try {
@@ -64,11 +75,12 @@ function stableWireContentKey(content: unknown): string {
 
 export function wireMessageStableKey(raw: Record<string, unknown>, index: number): string {
   const message = raw as WireMessage;
+  const id = wireMessageId(message) ?? '';
   const role = String(message.role ?? '');
   const timestamp = message.timestamp == null ? '' : String(message.timestamp);
   const toolCallId = String(message.tool_call_id ?? message.toolCallId ?? '');
   const contentKey = stableWireContentKey(message.content);
-  return `${role}:${timestamp}:${toolCallId}:${contentKey || index}`;
+  return `${id}:${role}:${timestamp}:${toolCallId}:${contentKey || index}`;
 }
 
 export function dedupeWireMessages(raw: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
@@ -186,7 +198,7 @@ export function parseContentBlock(b: Record<string, unknown>): MessageContent | 
       type: 'audio',
       workspaceRelativePath: block.workspaceRelativePath,
       uri: block.uri ?? (typeof block.data === 'string' && block.data.startsWith('data:') ? block.data : undefined),
-      mimeType: block.mimeType,
+      mimeType: block.mimeType ?? (t === 'tts_audio' ? 'audio/mpeg' : undefined),
       name: block.name,
       durationSeconds: block.durationSeconds,
     };
@@ -468,6 +480,7 @@ export function parseSessionMessages(raw: Array<Record<string, unknown>>): Messa
       const fromContent = extractAttachmentsFromUserContent(m.content);
       const attachments = mergeUserAttachments(normalizeAttachments(m.attachments), fromContent);
       out.push({
+        id: wireMessageId(m),
         role: roleTyped,
         content: applyStripToUserContent(roleTyped, normalizeContentBlocks(m.content)),
         attachments,
@@ -479,6 +492,7 @@ export function parseSessionMessages(raw: Array<Record<string, unknown>>): Messa
     if (role === 'assistant') {
       const attachments = normalizeAttachments(m.attachments);
       out.push({
+        id: wireMessageId(m),
         role: 'assistant',
         content: appendAudioAttachments(buildAssistantContent(m), attachments),
         attachments,
