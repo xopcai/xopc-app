@@ -431,7 +431,7 @@ export default function GatewayEditScreen() {
 
         {!isNew ? (
           <View style={styles.deleteRow}>
-            <Button mode="outlined" textColor="#FF3B30" onPress={confirmDelete}>
+            <Button mode="outlined" textColor={colors.error} onPress={confirmDelete}>
               {s.deleteGateway}
             </Button>
           </View>

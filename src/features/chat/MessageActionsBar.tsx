@@ -1,6 +1,8 @@
 import { memo } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
+
+import { useTheme } from '../../theme';
 
 export type MessageAction = {
   icon: string;
@@ -16,8 +18,8 @@ export const MessageActionsBar = memo(function MessageActionsBar({
   actions: MessageAction[];
   align: 'left' | 'right';
 }) {
-  const isDark = useColorScheme() === 'dark';
-  const iconColor = isDark ? '#9CA3AF' : '#6B7280';
+  const { colors } = useTheme();
+  const iconColor = colors.text.secondary;
 
   if (actions.length === 0) return null;
 

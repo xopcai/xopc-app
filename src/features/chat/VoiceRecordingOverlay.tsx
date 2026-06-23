@@ -1,10 +1,11 @@
 /**
- * WeChat-style voice overlay: center = send voice, left X = cancel, right 字 = to text.
+ * Voice overlay: center sends voice, left cancels, right converts to text.
  */
 import { memo, useMemo } from 'react';
 import { ActivityIndicator, Modal, StyleSheet, Text, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 
+import { getColors } from '../../theme';
 import { VoiceMeterBars } from './VoiceMeterBars';
 
 export type VoiceRecordingZone = 'center' | 'cancel' | 'text';
@@ -16,6 +17,7 @@ export const VoiceRecordingOverlay = memo(function VoiceRecordingOverlay({
   meterSamples,
   centerHint,
   textHint,
+  textGlyph,
   cancelHint,
   transcribingLabel,
   isDark,
@@ -26,16 +28,18 @@ export const VoiceRecordingOverlay = memo(function VoiceRecordingOverlay({
   meterSamples: number[];
   centerHint: string;
   textHint: string;
+  textGlyph: string;
   cancelHint: string;
   transcribingLabel: string;
   isDark: boolean;
 }) {
-  const accent = '#007AFF';
-  const waveTrack = isDark ? 'rgba(100,160,255,0.35)' : 'rgba(0,122,255,0.25)';
-  const bubbleBg = isDark ? '#3D5C3D' : '#C8F0C8';
-  const sideIdle = isDark ? 'rgba(60,60,60,0.95)' : 'rgba(30,30,30,0.88)';
-  const sideActiveCancel = isDark ? 'rgba(80,40,40,0.98)' : 'rgba(50,50,50,0.95)';
-  const sideActiveText = isDark ? 'rgba(40,70,50,0.98)' : 'rgba(50,50,50,0.95)';
+  const colors = getColors(isDark);
+  const accent = colors.accent.primary;
+  const waveTrack = colors.accent.selectionBg;
+  const bubbleBg = colors.surface.panel;
+  const sideIdle = colors.surface.active;
+  const sideActiveCancel = colors.semantic.errorBold;
+  const sideActiveText = colors.accent.primary;
 
   const mainHint = useMemo(() => {
     if (transcribing) return transcribingLabel;
@@ -47,22 +51,22 @@ export const VoiceRecordingOverlay = memo(function VoiceRecordingOverlay({
   const mainHintColor = transcribing
     ? accent
     : zone === 'cancel'
-      ? '#EF4444'
-      : 'rgba(255,255,255,0.92)';
+      ? colors.semantic.errorBold
+      : colors.accent.onPrimary;
 
   const showCancelHint = !transcribing && zone === 'cancel';
   const showTextHint = !transcribing && zone === 'text';
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
-      <View style={styles.backdrop} pointerEvents="none">
+      <View style={[styles.backdrop, { backgroundColor: colors.overlay.scrim }]} pointerEvents="none">
         <View style={styles.content}>
           <View style={styles.bubbleSection}>
             <View style={[styles.bubble, { backgroundColor: bubbleBg }]}>
               {transcribing ? (
                 <ActivityIndicator size="small" color={accent} />
               ) : (
-                <VoiceMeterBars samples={meterSamples} accentColor="#2E9B4B" trackColor={waveTrack} />
+                <VoiceMeterBars samples={meterSamples} accentColor={colors.semantic.success} trackColor={waveTrack} />
               )}
             </View>
             <Text style={[styles.mainHint, { color: mainHintColor }]} numberOfLines={2}>
@@ -74,7 +78,9 @@ export const VoiceRecordingOverlay = memo(function VoiceRecordingOverlay({
             <View style={styles.actionBand}>
               <View style={styles.actionSlot}>
                 {showCancelHint ? (
-                  <Text style={[styles.actionHint, styles.actionHintCancel]}>{cancelHint}</Text>
+                  <Text style={[styles.actionHint, styles.actionHintCancel, { color: colors.semantic.errorBold }]}>
+                    {cancelHint}
+                  </Text>
                 ) : (
                   <View style={styles.actionHintPlaceholder} />
                 )}
@@ -84,13 +90,13 @@ export const VoiceRecordingOverlay = memo(function VoiceRecordingOverlay({
                     { backgroundColor: zone === 'cancel' ? sideActiveCancel : sideIdle },
                   ]}
                 >
-                  <Icon source="close" size={26} color="#FFFFFF" />
+                  <Icon source="close" size={26} color={colors.accent.onPrimary} />
                 </View>
               </View>
 
               <View style={styles.actionSlot}>
                 {showTextHint ? (
-                  <Text style={styles.actionHint}>{textHint}</Text>
+                  <Text style={[styles.actionHint, { color: colors.accent.onPrimary }]}>{textHint}</Text>
                 ) : (
                   <View style={styles.actionHintPlaceholder} />
                 )}
@@ -100,15 +106,15 @@ export const VoiceRecordingOverlay = memo(function VoiceRecordingOverlay({
                     { backgroundColor: zone === 'text' ? sideActiveText : sideIdle },
                   ]}
                 >
-                  <Text style={styles.zoneChar}>字</Text>
+                  <Text style={[styles.zoneChar, { color: colors.accent.onPrimary }]}>{textGlyph}</Text>
                 </View>
               </View>
             </View>
           ) : null}
 
           <View style={styles.bottomArc}>
-            <View style={[styles.arcInner, { backgroundColor: isDark ? '#3A3A3C' : '#E8E8ED' }]}>
-              <Icon source="microphone-outline" size={26} color={isDark ? '#8E8E93' : '#8E8E93'} />
+            <View style={[styles.arcInner, { backgroundColor: colors.surface.input }]}>
+              <Icon source="microphone-outline" size={26} color={colors.text.secondary} />
             </View>
           </View>
         </View>
@@ -120,7 +126,6 @@ export const VoiceRecordingOverlay = memo(function VoiceRecordingOverlay({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   content: {
     flex: 1,
@@ -173,10 +178,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
     minHeight: 18,
-    color: 'rgba(255,255,255,0.9)',
   },
   actionHintCancel: {
-    color: '#EF4444',
+    fontWeight: '700',
   },
   actionHintPlaceholder: {
     minHeight: 18,
@@ -191,7 +195,6 @@ const styles = StyleSheet.create({
   zoneChar: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#FFFFFF',
   },
   bottomArc: {
     alignItems: 'center',

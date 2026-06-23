@@ -15,6 +15,7 @@ import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingHeader } from '../../components/FloatingHeader';
+import { t, useMessages } from '../../i18n/messages';
 import { openNoteDetail } from '../../lib/navigation';
 import { sessionDisplayName } from '../../lib/session-helpers';
 import { queryKeys } from '../../query/keys';
@@ -35,6 +36,8 @@ export function WorkspaceSearchOverlay({ visible, onClose }: WorkspaceSearchOver
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const m = useMessages();
+  const sm = m.workspaceSearch;
   const configured = useGatewayConfigured();
   const [searchText, setSearchText] = useState('');
   const inputRef = useRef<TextInput>(null);
@@ -92,11 +95,11 @@ export function WorkspaceSearchOverlay({ visible, onClose }: WorkspaceSearchOver
   const renderItem = useCallback(({ item }: { item: SearchResult }) => {
     const isNote = item.type === 'note';
     const title = isNote
-      ? item.note.snippet || '无内容笔记'
-      : sessionDisplayName(item.session);
+      ? item.note.snippet || sm.emptyNoteTitle
+      : sessionDisplayName(item.session, m.sessions.untitled);
     const meta = isNote
-      ? '笔记'
-      : `${item.session.messageCount} 条消息`;
+      ? sm.noteMeta
+      : t(sm.sessionMessages, { count: item.session.messageCount });
 
     return (
       <Pressable
@@ -119,25 +122,25 @@ export function WorkspaceSearchOverlay({ visible, onClose }: WorkspaceSearchOver
         <Icon source="chevron-right" size={18} color={colors.text.tertiary} />
       </Pressable>
     );
-  }, [colors, openResult]);
+  }, [colors, m.sessions.untitled, openResult, sm.emptyNoteTitle, sm.noteMeta, sm.sessionMessages]);
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
-        <FloatingHeader title="搜索" onBack={onClose} />
+        <FloatingHeader title={sm.title} onBack={onClose} />
 
         <View style={styles.content}>
           {!configured ? (
             <View style={styles.center}>
               <Icon source="cloud-off-outline" size={40} color={colors.text.tertiary} />
-              <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>未连接网关</Text>
-              <Text style={[styles.emptyHint, { color: colors.text.tertiary }]}>连接后即可搜索笔记和会话。</Text>
+              <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>{sm.gatewayDisconnectedTitle}</Text>
+              <Text style={[styles.emptyHint, { color: colors.text.tertiary }]}>{sm.gatewayDisconnectedHint}</Text>
             </View>
           ) : !query ? (
             <View style={styles.center}>
               <Icon source="magnify" size={42} color={colors.text.tertiary} />
-              <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>搜索工作空间</Text>
-              <Text style={[styles.emptyHint, { color: colors.text.tertiary }]}>输入关键词，检索笔记和会话内容。</Text>
+              <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>{sm.idleTitle}</Text>
+              <Text style={[styles.emptyHint, { color: colors.text.tertiary }]}>{sm.idleHint}</Text>
             </View>
           ) : isLoading ? (
             <View style={styles.center}>
@@ -154,15 +157,15 @@ export function WorkspaceSearchOverlay({ visible, onClose }: WorkspaceSearchOver
                 isSearching ? (
                   <View style={styles.searchingRow}>
                     <ActivityIndicator size="small" />
-                    <Text style={[styles.searchingText, { color: colors.text.tertiary }]}>正在搜索…</Text>
+                    <Text style={[styles.searchingText, { color: colors.text.tertiary }]}>{sm.searching}</Text>
                   </View>
                 ) : null
               }
               ListEmptyComponent={
                 <View style={styles.center}>
                   <Icon source="file-search-outline" size={40} color={colors.text.tertiary} />
-                  <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>没有结果</Text>
-                  <Text style={[styles.emptyHint, { color: colors.text.tertiary }]}>换个关键词试试。</Text>
+                  <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>{sm.noResultsTitle}</Text>
+                  <Text style={[styles.emptyHint, { color: colors.text.tertiary }]}>{sm.noResultsHint}</Text>
                 </View>
               }
             />
@@ -179,7 +182,7 @@ export function WorkspaceSearchOverlay({ visible, onClose }: WorkspaceSearchOver
               <TextInput
                 ref={inputRef}
                 style={[styles.searchInput, { color: colors.text.primary }]}
-                placeholder="搜索笔记和会话…"
+                placeholder={sm.placeholder}
                 placeholderTextColor={colors.text.tertiary}
                 value={searchText}
                 onChangeText={setSearchText}

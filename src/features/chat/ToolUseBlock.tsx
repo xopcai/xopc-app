@@ -6,12 +6,13 @@
  * - **inline** (`inline={true}`): compact row inside an AssistantStepsBlock timeline.
  */
 import { memo, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 
 import { TOOL_NAMES_WITH_WORKSPACE_OUTPUT } from './assistant-message-artifacts';
 import type { ToolUseContent } from './messages.types';
 import { chatColors } from './styles';
+import { useTheme } from '../../theme';
 import { getFriendlyToolTitle } from './tool-friendly-title';
 import { formatParamsJson, getKeyDetailLine } from './tool-input-preview';
 import { extractFilePathsFromToolResult } from './tool-result-file-paths';
@@ -43,14 +44,17 @@ export type ToolUseBlockLabels = {
   showLessResults: string;
 };
 
-function statusColor(status: ToolUseContent['status']) {
+function statusColor(
+  status: ToolUseContent['status'],
+  colors: ReturnType<typeof useTheme>['colors'],
+) {
   switch (status) {
     case 'running':
-      return chatColors.toolRunning;
+      return colors.accent.primary;
     case 'done':
-      return chatColors.toolDone;
+      return colors.semantic.success;
     case 'error':
-      return chatColors.toolError;
+      return colors.semantic.error;
   }
 }
 
@@ -76,10 +80,13 @@ export const ToolUseBlock = memo(function ToolUseBlock({
   sessionKey?: string | null;
   labels?: ToolUseBlockLabels;
 }) {
-  const isDark = useColorScheme() === 'dark';
+  const { colors, isDark } = useTheme();
   const [expanded, setExpanded] = useState(false);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
-  const color = statusColor(block.status);
+  const color = statusColor(block.status, colors);
+  const muted = colors.text.secondary;
+  const subtle = colors.text.tertiary;
+  const bodyColor = colors.text.primary;
   const isRunning = block.status === 'running';
   const isError = block.status === 'error';
 
@@ -157,18 +164,18 @@ export const ToolUseBlock = memo(function ToolUseBlock({
       <View style={inlineStyles.row}>
         <View style={inlineStyles.iconCol}>
           {isRunning ? (
-            <ActivityIndicator size={12} color={isDark ? '#9CA3AF' : '#6B7280'} />
+            <ActivityIndicator size={12} color={muted} />
           ) : isError ? (
-            <Icon source="close-circle-outline" size={14} color={chatColors.toolError} />
+            <Icon source="close-circle-outline" size={14} color={colors.semantic.error} />
           ) : (
-            <Icon source="check-circle-outline" size={14} color={isDark ? '#22C55E' : '#16A34A'} />
+            <Icon source="check-circle-outline" size={14} color={colors.semantic.success} />
           )}
         </View>
         <View style={inlineStyles.content}>
           <View style={inlineStyles.titleRow}>
             <Text
               variant="labelSmall"
-              style={[inlineStyles.label, { color: isDark ? '#D1D5DB' : '#374151' }]}
+              style={[inlineStyles.label, { color: bodyColor }]}
               numberOfLines={2}
             >
               {title}
@@ -178,7 +185,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
                 {friendlyLabels.toolRunning}
               </Text>
             ) : isError ? (
-              <Text variant="labelSmall" style={{ fontSize: 10, color: chatColors.toolError }}>
+              <Text variant="labelSmall" style={{ fontSize: 10, color: colors.semantic.error }}>
                 {friendlyLabels.toolError}
               </Text>
             ) : null}
@@ -187,7 +194,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
             <Text
               variant="bodySmall"
               numberOfLines={2}
-              style={[inlineStyles.detailText, { color: isDark ? '#9CA3AF' : '#6B7280' }]}
+              style={[inlineStyles.detailText, { color: muted }]}
             >
               {detailLine}
             </Text>
@@ -196,7 +203,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
             <Text
               variant="bodySmall"
               numberOfLines={2}
-              style={[inlineStyles.errorText, { color: chatColors.toolError }]}
+              style={[inlineStyles.errorText, { color: colors.semantic.error }]}
             >
               {resultText}
             </Text>
@@ -212,7 +219,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
               <Icon
                 source={detailsExpanded ? 'chevron-up' : 'chevron-down'}
                 size={14}
-                color={isDark ? '#6B7280' : '#9CA3AF'}
+                color={subtle}
               />
               <Text variant="labelSmall" style={inlineStyles.detailsLabel}>
                 {friendlyLabels.stepDetails}
@@ -220,7 +227,10 @@ export const ToolUseBlock = memo(function ToolUseBlock({
             </Pressable>
           ) : null}
           {detailsExpanded && !isRunning ? (
-            <ScrollView style={inlineStyles.detailsScroll} nestedScrollEnabled>
+            <ScrollView
+              style={[inlineStyles.detailsScroll, { backgroundColor: colors.surface.input }]}
+              nestedScrollEnabled
+            >
               {paramsJson ? (
                 <View style={inlineStyles.detailsSection}>
                   <Text variant="labelSmall" style={inlineStyles.detailsHeading}>
@@ -228,7 +238,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
                   </Text>
                   <Text
                     variant="bodySmall"
-                    style={[inlineStyles.mono, { color: isDark ? '#9CA3AF' : '#6B7280' }]}
+                    style={[inlineStyles.mono, { color: muted }]}
                     selectable
                   >
                     {paramsJson}
@@ -241,7 +251,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
                 </Text>
                 <Text
                   variant="bodySmall"
-                  style={[inlineStyles.mono, { color: isDark ? '#9CA3AF' : '#6B7280' }]}
+                  style={[inlineStyles.mono, { color: muted }]}
                   selectable
                 >
                   {outputPreview || friendlyLabels.noOutput}
@@ -293,7 +303,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
         )}
         <Text
           variant="labelSmall"
-          style={[styles.name, { color: isDark ? '#D1D5DB' : '#374151' }]}
+          style={[styles.name, { color: bodyColor }]}
           numberOfLines={1}
         >
           {title}
@@ -302,7 +312,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
           <Icon
             source={expanded ? 'chevron-up' : 'chevron-down'}
             size={14}
-            color={isDark ? '#6B7280' : '#9CA3AF'}
+            color={subtle}
           />
         ) : null}
       </Pressable>
@@ -312,7 +322,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
             variant="bodySmall"
             style={[
               styles.result,
-              { color: isDark ? '#9CA3AF' : '#6B7280' },
+              { color: muted },
             ]}
             selectable
           >
@@ -388,7 +398,6 @@ const inlineStyles = StyleSheet.create({
   detailsScroll: {
     maxHeight: 192,
     borderRadius: 6,
-    backgroundColor: 'rgba(0,0,0,0.03)',
     padding: 8,
   },
   detailsSection: {

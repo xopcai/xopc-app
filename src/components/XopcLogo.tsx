@@ -22,9 +22,9 @@ interface XopcLogoProps {
 
 /** Matches web `logo.svg` (light) and `logo-dark.svg` (dark). */
 export function XopcLogo({ size = 32 }: XopcLogoProps) {
-  const { isDark } = useTheme();
-  const stroke = isDark ? '#5ec8ff' : '#0080c8';
-  const fill = isDark ? '#ebebef' : '#374151';
+  const { colors } = useTheme();
+  const stroke = colors.accent.primary;
+  const fill = colors.text.primary;
 
   return (
     <Svg width={size} height={size} viewBox="14.5 14.5 71 71" fill="none" accessibilityLabel="xopc">

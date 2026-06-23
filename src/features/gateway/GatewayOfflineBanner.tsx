@@ -1,8 +1,9 @@
 import { memo } from 'react';
-import { StyleSheet, useColorScheme, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
+import { useTheme } from '../../theme';
 
 type GatewayOfflineBannerProps = {
   visible: boolean;
@@ -12,20 +13,20 @@ export const GatewayOfflineBanner = memo(function GatewayOfflineBanner({
   visible,
 }: GatewayOfflineBannerProps) {
   const m = useMessages();
-  const isDark = useColorScheme() === 'dark';
+  const { colors } = useTheme();
   if (!visible) return null;
   return (
     <View
       style={[
         styles.bar,
         {
-          backgroundColor: isDark ? 'rgba(245, 158, 11, 0.14)' : '#FFFBEB',
-          borderBottomColor: isDark ? 'rgba(245, 158, 11, 0.24)' : '#FDE68A',
+          backgroundColor: colors.surface.input,
+          borderBottomColor: colors.border.default,
         },
       ]}
     >
-      <Icon source="cloud-off-outline" size={16} color={isDark ? '#FCD34D' : '#D97706'} />
-      <Text style={[styles.message, { color: isDark ? '#FDE68A' : '#92400E' }]} numberOfLines={2}>
+      <Icon source="cloud-off-outline" size={16} color={colors.semantic.warning} />
+      <Text style={[styles.message, { color: colors.semantic.warning }]} numberOfLines={2}>
         {m.gateway.offlineBanner}
       </Text>
     </View>

@@ -10,7 +10,6 @@ import {
   Modal,
   Platform,
   StyleSheet,
-  useColorScheme,
   View,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
@@ -19,6 +18,7 @@ import { Button, IconButton, Text, TextInput } from 'react-native-paper';
 import { AppToast } from '../../components/AppToast';
 import { TOAST_DURATION_SHORT } from '../../constants/toast';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../../theme';
 
 import { gatewaySettingsSchema } from '../../config/schema';
 import { useMessages } from '../../i18n/messages';
@@ -77,7 +77,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
   const router = useRouter();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
-  const isDark = useColorScheme() === 'dark';
+  const { colors: themeColors } = useTheme();
   const m = useMessages();
   const l = m.gatewayConnect;
   const s = m.settings;
@@ -113,13 +113,14 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
   }, [visible, unauthorized]);
 
   const colors = {
-    bg: isDark ? '#000000' : '#F2F2F7',
-    card: isDark ? '#1C1C1E' : '#FFFFFF',
-    border: isDark ? '#38383A' : '#E5E5EA',
-    text: isDark ? '#F5F5F7' : '#1C1C1E',
-    muted: isDark ? '#8E8E93' : '#6D6D70',
-    dangerBg: isDark ? 'rgba(255,59,48,0.15)' : 'rgba(255,59,48,0.12)',
-    dangerBorder: isDark ? 'rgba(255,59,48,0.35)' : 'rgba(255,59,48,0.3)',
+    bg: themeColors.surface.base,
+    card: themeColors.surface.panel,
+    border: themeColors.border.default,
+    text: themeColors.text.primary,
+    muted: themeColors.text.secondary,
+    dangerBg: themeColors.surface.input,
+    dangerBorder: themeColors.semantic.errorBold,
+    danger: themeColors.semantic.errorBold,
   };
 
   const applyParsed = useCallback((parsed: ParsedGatewayQr) => {
@@ -321,7 +322,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
             style={styles.field}
           />
           {baseUrlError ? (
-            <Text variant="bodySmall" style={styles.fieldError}>
+            <Text variant="bodySmall" style={[styles.fieldError, { color: colors.danger }]}>
               {baseUrlError}
             </Text>
           ) : null}
@@ -345,7 +346,7 @@ export function GatewayConnectLandingModal({ visible, onRequestClose }: GatewayC
           </View>
 
           {saveError ? (
-            <Text variant="bodySmall" style={styles.saveError}>
+            <Text variant="bodySmall" style={[styles.saveError, { color: colors.danger }]}>
               {saveError}
             </Text>
           ) : null}
@@ -453,7 +454,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   fieldError: {
-    color: '#FF3B30',
     marginTop: 4,
   },
   row: {
@@ -461,7 +461,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   saveError: {
-    color: '#FF3B30',
     marginTop: 12,
   },
   actions: {

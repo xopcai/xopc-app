@@ -15,6 +15,7 @@ import {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
+import { useMessages } from '../../i18n/messages';
 import {
   hapticAskAiDismiss,
   hapticAskAiPress,
@@ -58,6 +59,7 @@ type WorkspaceTransitionProviderProps = {
 };
 
 export function WorkspaceTransitionProvider({ children, onClosed }: WorkspaceTransitionProviderProps) {
+  const m = useMessages();
   const reducedMotion = useReducedMotion();
   const progress = useSharedValue(0);
   const dismissDrag = useSharedValue(0);
@@ -99,9 +101,9 @@ export function WorkspaceTransitionProvider({ children, onClosed }: WorkspaceTra
     setPhase('open');
     transitionBusyRef.current = false;
     hapticAskAiSettle();
-    announce('AI 对话已打开');
+    announce(m.chat.overlayOpenedAnnouncement);
     runFinalize();
-  }, [announce, runFinalize]);
+  }, [announce, m.chat.overlayOpenedAnnouncement, runFinalize]);
 
   const handleCloseSettled = useCallback(() => {
     setPhase('closed');
@@ -110,9 +112,9 @@ export function WorkspaceTransitionProvider({ children, onClosed }: WorkspaceTra
     dismissDrag.value = 0;
     transitionBusyRef.current = false;
     hapticAskAiDismiss();
-    announce('已返回工作空间');
+    announce(m.chat.overlayClosedAnnouncement);
     onClosed?.();
-  }, [announce, dismissDrag, onClosed]);
+  }, [announce, dismissDrag, m.chat.overlayClosedAnnouncement, onClosed]);
 
   const notifyComposerAnchor = useCallback((rect: LayoutRect) => {
     setComposerAnchor(rect);

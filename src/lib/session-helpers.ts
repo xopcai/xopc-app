@@ -35,7 +35,7 @@ export function groupSessions(
 }
 
 /** Display name for a session — never exposes the internal session key. */
-export function sessionDisplayName(item: SessionListItem): string {
+export function sessionDisplayName(item: SessionListItem, fallback = 'New chat'): string {
   const title = item.name?.trim() || item.title?.trim() || item.displayName?.trim();
-  return title || '新对话';
+  return title || fallback;
 }

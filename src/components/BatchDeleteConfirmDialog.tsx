@@ -3,6 +3,7 @@ import { StyleSheet } from 'react-native';
 import { Button, Dialog, Paragraph, Portal } from 'react-native-paper';
 
 import { t, useMessages } from '../i18n/messages';
+import { useTheme } from '../theme';
 
 type BatchDeleteConfirmDialogProps = {
   visible: boolean;
@@ -20,6 +21,7 @@ export const BatchDeleteConfirmDialog = memo(function BatchDeleteConfirmDialog({
   loading = false,
 }: BatchDeleteConfirmDialogProps) {
   const m = useMessages();
+  const { colors } = useTheme();
   const li = m.listInteraction;
 
   return (
@@ -37,7 +39,7 @@ export const BatchDeleteConfirmDialog = memo(function BatchDeleteConfirmDialog({
             onPress={onConfirm}
             disabled={loading}
             loading={loading}
-            textColor="#EF4444"
+            textColor={colors.semantic.errorBold}
           >
             {li.batchDeleteConfirm}
           </Button>

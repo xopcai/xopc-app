@@ -1,10 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Linking, StyleSheet, useColorScheme, View } from 'react-native';
+import { Linking, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Text } from 'react-native-paper';
 import { WebView, type WebViewNavigation } from 'react-native-webview';
 
+import { t, useMessages } from '../../i18n/messages';
 import { useGatewayStore } from '../../stores/gateway-store';
 import { resolveEffectiveGatewayBaseUrl } from '../../stores/gateway-types';
+import { radii, spacing, typography, useTheme } from '../../theme';
 import {
   buildHtmlWebViewSource,
   shouldAllowHtmlWebViewNavigation,
@@ -28,7 +30,9 @@ export function HtmlPreviewPane({
   sessionKey,
   mutedColor,
 }: HtmlPreviewPaneProps) {
-  const isDark = useColorScheme() === 'dark';
+  const { colors, isDark } = useTheme();
+  const m = useMessages();
+  const cm = m.chat;
   const apiUrl = useGatewayStore((s) => s.apiUrl);
   const token = useGatewayStore((s) => s.token);
   const gatewayBaseUrl = useGatewayStore((s) =>
@@ -71,7 +75,7 @@ export function HtmlPreviewPane({
   if (!source) {
     return (
       <View style={styles.center}>
-        <Text style={{ color: mutedColor }}>无法加载 HTML 预览。</Text>
+        <Text style={[styles.message, { color: mutedColor }]}>{cm.htmlPreviewUnavailable}</Text>
       </View>
     );
   }
@@ -95,7 +99,7 @@ export function HtmlPreviewPane({
         onLoadEnd={() => setLoading(false)}
         onError={(event) => {
           setLoading(false);
-          setWebError(event.nativeEvent.description || 'WebView 加载失败');
+          setWebError(event.nativeEvent.description || cm.htmlPreviewWebViewFailed);
         }}
         onHttpError={(event) => {
           if (event.nativeEvent.statusCode >= 400) {
@@ -109,17 +113,19 @@ export function HtmlPreviewPane({
         <View
           style={[
             styles.loadingOverlay,
-            { backgroundColor: isDark ? 'rgba(17,24,39,0.82)' : 'rgba(255,255,255,0.88)' },
+            { backgroundColor: isDark ? colors.surface.panel : colors.surface.base },
           ]}
           pointerEvents="none"
         >
           <ActivityIndicator />
-          <Text style={{ color: mutedColor }}>正在渲染页面…</Text>
+          <Text style={[styles.message, { color: mutedColor }]}>{cm.htmlPreviewRendering}</Text>
         </View>
       ) : null}
       {webError ? (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>HTML 渲染失败：{webError}</Text>
+        <View style={[styles.errorBanner, { backgroundColor: colors.surface.input }]}>
+          <Text style={[styles.errorText, { color: colors.semantic.errorBold }]}>
+            {t(cm.htmlPreviewRenderFailed, { message: webError })}
+          </Text>
         </View>
       ) : null}
     </View>
@@ -144,21 +150,22 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    gap: spacing.md,
+    opacity: 0.92,
   },
   errorBanner: {
     position: 'absolute',
     left: 12,
     right: 12,
     bottom: 12,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  message: {
+    ...typography.label,
   },
   errorText: {
-    color: '#B91C1C',
-    fontSize: 13,
-    lineHeight: 18,
+    ...typography.label,
   },
 });

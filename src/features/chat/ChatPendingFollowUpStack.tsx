@@ -1,9 +1,10 @@
 import { memo } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
 import { MAX_PENDING_FOLLOW_UPS, type PendingFollowUp } from './pending-follow-up.types';
 import { useMessages } from '../../i18n/messages';
+import { useTheme } from '../../theme';
 
 export const ChatPendingFollowUpStack = memo(function ChatPendingFollowUpStack({
   items,
@@ -25,10 +26,10 @@ export const ChatPendingFollowUpStack = memo(function ChatPendingFollowUpStack({
   steeringBusyId?: string | null;
 }) {
   const m = useMessages();
-  const isDark = useColorScheme() === 'dark';
-  const muted = isDark ? '#8E8E93' : '#8E8E93';
-  const text = isDark ? '#F5F5F7' : '#1C1C1E';
-  const accent = '#007AFF';
+  const { colors } = useTheme();
+  const muted = colors.text.secondary;
+  const text = colors.text.primary;
+  const accent = colors.accent.primary;
 
   if (items.length === 0) return null;
 
@@ -61,11 +62,11 @@ export const ChatPendingFollowUpStack = memo(function ChatPendingFollowUpStack({
               styles.row,
               {
                 borderColor: editingFollowUpId === item.id
-                  ? `${accent}80`
-                  : isDark ? 'rgba(255,255,255,0.12)' : 'rgba(120,120,128,0.22)',
+                  ? colors.accent.primary
+                  : colors.border.default,
                 backgroundColor: editingFollowUpId === item.id
-                  ? isDark ? 'rgba(0,122,255,0.12)' : 'rgba(0,122,255,0.08)'
-                  : isDark ? 'rgba(255,255,255,0.04)' : 'rgba(120,120,128,0.08)',
+                  ? colors.accent.selectionBg
+                  : colors.surface.input,
               },
             ]}
           >
@@ -95,7 +96,7 @@ export const ChatPendingFollowUpStack = memo(function ChatPendingFollowUpStack({
                 hitSlop={6}
                 accessibilityLabel={m.chat.followUpQueueMoveUp}
               >
-                <Icon source="chevron-up" size={18} color={disabled || index === 0 ? `${muted}66` : muted} />
+                <Icon source="chevron-up" size={18} color={disabled || index === 0 ? colors.text.disabled : muted} />
               </Pressable>
               <Pressable
                 disabled={disabled || index >= items.length - 1}
@@ -106,7 +107,7 @@ export const ChatPendingFollowUpStack = memo(function ChatPendingFollowUpStack({
                 <Icon
                   source="chevron-down"
                   size={18}
-                  color={disabled || index >= items.length - 1 ? `${muted}66` : muted}
+                  color={disabled || index >= items.length - 1 ? colors.text.disabled : muted}
                 />
               </Pressable>
               <Pressable
@@ -118,7 +119,7 @@ export const ChatPendingFollowUpStack = memo(function ChatPendingFollowUpStack({
                 <Icon
                   source="star-four-points-outline"
                   size={16}
-                  color={disabled || !canSteer || isSteering ? `${accent}55` : accent}
+                  color={disabled || !canSteer || isSteering ? colors.text.disabled : accent}
                 />
               </Pressable>
               <Pressable

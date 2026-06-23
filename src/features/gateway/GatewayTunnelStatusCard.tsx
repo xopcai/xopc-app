@@ -32,18 +32,18 @@ function statusLabel(key: TunnelStatusUiKey, g: MessageBundle['gateway']): strin
   }
 }
 
-function statusDotColor(key: TunnelStatusUiKey, accent: string): string {
+function statusDotColor(key: TunnelStatusUiKey, colors: ReturnType<typeof useSettingsColors>): string {
   switch (key) {
     case 'connected':
-      return '#34C759';
+      return colors.success;
     case 'connecting':
-      return '#FF9500';
+      return colors.warning;
     case 'error':
-      return '#FF3B30';
+      return colors.error;
     case 'loading':
-      return accent;
+      return colors.accent;
     default:
-      return '#8E8E93';
+      return colors.textMuted;
   }
 }
 
@@ -59,7 +59,7 @@ export function GatewayTunnelStatusCard({ refreshToken = 0 }: GatewayTunnelStatu
   return (
     <SettingsSection title={g.remoteAccessTitle} style={styles.section}>
       <View style={styles.row}>
-        <View style={[styles.dot, { backgroundColor: statusDotColor(uiKey, colors.accent) }]} />
+        <View style={[styles.dot, { backgroundColor: statusDotColor(uiKey, colors) }]} />
         <View style={styles.textCol}>
           <Text variant="bodyLarge" style={{ color: colors.text }}>
             {label}

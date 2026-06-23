@@ -6,15 +6,15 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  useColorScheme,
   View,
 } from 'react-native';
 import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ShareAutoRequest } from '../../api/share';
-import { useMessages } from '../../i18n/messages';
+import { t, useMessages } from '../../i18n/messages';
 import { useGatewayStore } from '../../stores/gateway-store';
+import { useTheme } from '../../theme';
 import { ShareSheet } from '../share/ShareSheet';
 import { prefetchShare } from '../share/share-prefetch';
 import { HtmlPreviewPane } from './HtmlPreviewPane';
@@ -196,8 +196,9 @@ function buildShareRequestForFile(file: PreviewableFile, sessionKey?: string | n
 
 export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePreviewModalProps) {
   const insets = useSafeAreaInsets();
-  const isDark = useColorScheme() === 'dark';
+  const { colors } = useTheme();
   const m = useMessages();
+  const cm = m.chat;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<LoadedPreview | null>(null);
@@ -244,10 +245,10 @@ export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePre
     }
   };
 
-  const surface = isDark ? '#111827' : '#FFFFFF';
-  const textColor = isDark ? '#F9FAFB' : '#111827';
-  const muted = isDark ? '#9CA3AF' : '#6B7280';
-  const border = isDark ? 'rgba(255,255,255,0.12)' : '#E5E7EB';
+  const surface = colors.surface.base;
+  const textColor = colors.text.primary;
+  const muted = colors.text.secondary;
+  const border = colors.border.default;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
@@ -274,18 +275,20 @@ export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePre
               accessibilityLabel={m.chat.shareFile}
             />
           ) : null}
-          <IconButton icon="close" size={22} iconColor={textColor} onPress={onClose} accessibilityLabel="关闭预览" />
+          <IconButton icon="close" size={22} iconColor={textColor} onPress={onClose} accessibilityLabel={cm.filePreviewClose} />
         </View>
 
         <View style={styles.body}>
           {loading ? (
             <View style={styles.center}>
               <ActivityIndicator />
-              <Text style={{ color: muted }}>正在加载预览…</Text>
+              <Text style={{ color: muted }}>{cm.filePreviewLoading}</Text>
             </View>
           ) : error ? (
             <View style={styles.center}>
-              <Text style={[styles.error, { color: '#EF4444' }]}>预览加载失败：{error}</Text>
+              <Text style={[styles.error, { color: colors.semantic.errorBold }]}>
+                {t(cm.filePreviewLoadFailed, { message: error })}
+              </Text>
             </View>
           ) : loaded?.kind === 'image' && loaded.base64 ? (
             <ScrollView
@@ -315,16 +318,16 @@ export function FilePreviewModal({ visible, file, sessionKey, onClose }: FilePre
             </ScrollView>
           ) : loaded?.kind === 'binary' && loaded.text ? (
             <ScrollView contentContainerStyle={styles.textContent}>
-              <Text style={[styles.notice, { color: muted }]}>移动端暂不支持该文件类型的内嵌预览，以下为可提取文本。</Text>
+              <Text style={[styles.notice, { color: muted }]}>{cm.filePreviewUnsupportedWithText}</Text>
               <Text selectable style={[styles.mono, { color: textColor }]}> 
                 {loaded.text}
               </Text>
             </ScrollView>
           ) : (
             <View style={styles.center}>
-              <Text style={[styles.notice, { color: muted }]}>移动端暂不支持该文件类型的内嵌预览。</Text>
+              <Text style={[styles.notice, { color: muted }]}>{cm.filePreviewUnsupported}</Text>
               <Pressable style={[styles.closeButton, { borderColor: border }]} onPress={onClose} accessibilityRole="button">
-                <Text style={{ color: textColor }}>关闭</Text>
+                <Text style={{ color: textColor }}>{m.common.close}</Text>
               </Pressable>
             </View>
           )}

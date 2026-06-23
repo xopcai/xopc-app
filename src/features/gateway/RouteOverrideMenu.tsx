@@ -1,7 +1,5 @@
 /**
- * Bottom-sheet menu for the manual route override. Long-pressing the drawer
- * pill opens this sheet so power users can pin LAN, pin Cloud, or fall back
- * to auto. We also surface a "test now" action that forces a probe round.
+ * Bottom-sheet menu for the manual route override.
  */
 import { memo, useCallback } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
@@ -9,8 +7,8 @@ import { Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMessages } from '../../i18n/messages';
-import { useResolvedIsDark } from '../../lib/stack-screen-theme';
 import { useGatewayStore } from '../../stores/gateway-store';
+import { radii, spacing, typography, useTheme } from '../../theme';
 
 import {
   copyForConnectionState,
@@ -29,7 +27,7 @@ export const RouteOverrideMenu = memo(function RouteOverrideMenu({
   onRequestClose,
 }: RouteOverrideMenuProps) {
   const insets = useSafeAreaInsets();
-  const isDark = useResolvedIsDark();
+  const { colors: themeColors } = useTheme();
   const m = useMessages();
   const o = m.gateway.routeOverride;
 
@@ -41,13 +39,13 @@ export const RouteOverrideMenu = memo(function RouteOverrideMenu({
   const stateCopy = copyForConnectionState(state, m.gateway.state);
 
   const colors = {
-    bg: isDark ? '#1C1C1E' : '#FFFFFF',
-    overlay: 'rgba(0,0,0,0.5)',
-    text: isDark ? '#F5F5F7' : '#1C1C1E',
-    muted: isDark ? '#8E8E93' : '#6D6D70',
-    border: isDark ? '#2C2C2E' : '#E5E5EA',
-    selected: isDark ? 'rgba(0,122,255,0.18)' : 'rgba(0,122,255,0.10)',
-    accent: '#0A84FF',
+    bg: themeColors.surface.panel,
+    overlay: themeColors.overlay.scrim,
+    text: themeColors.text.primary,
+    muted: themeColors.text.tertiary,
+    border: themeColors.border.default,
+    selected: themeColors.accent.selectionBg,
+    accent: themeColors.accent.primary,
   };
 
   const handlePick = useCallback(
@@ -88,7 +86,7 @@ export const RouteOverrideMenu = memo(function RouteOverrideMenu({
           },
         ]}
       >
-        <View style={styles.handle} />
+        <View style={[styles.handle, { backgroundColor: colors.border }]} />
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <Text variant="titleSmall" style={{ color: colors.text }}>
             {o.title}
@@ -182,10 +180,10 @@ function Choice({
         <Icon source={icon} size={20} color={selected ? accent : colors.muted} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={{ color: colors.text, fontSize: 15, fontWeight: selected ? '600' : '500' }}>
+        <Text style={[styles.choiceTitle, { color: colors.text, fontWeight: selected ? '600' : '500' }]}>
           {title}
         </Text>
-        <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>{subtitle}</Text>
+        <Text style={[styles.choiceSubtitle, { color: colors.muted }]}>{subtitle}</Text>
       </View>
       {selected ? <Icon source="check" size={18} color={accent} /> : null}
     </Pressable>
@@ -201,29 +199,29 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
-    paddingTop: 8,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    paddingTop: spacing.sm,
   },
   handle: {
     alignSelf: 'center',
     width: 36,
     height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(142,142,147,0.4)',
-    marginBottom: 8,
+    borderRadius: spacing.xxs,
+    marginBottom: spacing.sm,
+    opacity: 0.7,
   },
   header: {
-    paddingHorizontal: 18,
-    paddingBottom: 12,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   choice: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+    gap: spacing.lg - spacing.xxs,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg - spacing.xxs,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   choiceIcon: {
@@ -232,13 +230,20 @@ const styles = StyleSheet.create({
   },
   footer: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
   },
   testRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 6,
+    gap: spacing.sm,
+    paddingVertical: spacing.xs + spacing.xxs,
+  },
+  choiceTitle: {
+    ...typography.body,
+  },
+  choiceSubtitle: {
+    ...typography.caption,
+    marginTop: spacing.xxs,
   },
 });

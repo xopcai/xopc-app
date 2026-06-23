@@ -12,6 +12,10 @@ export function useSettingsColors() {
     textMuted: colors.text.tertiary,
     border: colors.border.default,
     accent: colors.accent.primary,
+    accentSoft: colors.accent.selectionBg,
+    success: colors.semantic.success,
+    warning: colors.semantic.warning,
+    error: colors.semantic.error,
     sectionLabel: colors.text.tertiary,
   };
 }
@@ -56,7 +60,7 @@ export function SettingsRow({
   const resolvedIconColor = iconColor ?? colors.accent;
   const content = (
     <View style={styles.row}>
-      <View style={[styles.iconWrap, { backgroundColor: `${resolvedIconColor}18` }]}>
+      <View style={[styles.iconWrap, { backgroundColor: colors.accentSoft }]}>
         <Icon source={icon} size={18} color={resolvedIconColor} />
       </View>
       <Text style={[styles.rowLabel, { color: colors.text }]} numberOfLines={1}>
@@ -143,7 +147,7 @@ export function SettingsAgentRow({
         onPress={onSelect}
         style={({ pressed }) => [styles.agentRowMain, pressed && styles.rowPressed]}
       >
-        <View style={[styles.iconWrap, { backgroundColor: `${colors.accent}18` }]}>
+        <View style={[styles.iconWrap, { backgroundColor: colors.accentSoft }]}>
           <Icon source="robot-outline" size={18} color={colors.accent} />
         </View>
         <View style={styles.optionText}>

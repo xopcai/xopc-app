@@ -279,7 +279,7 @@ export function WorkspaceHomeScreen() {
     const sessions = (home?.recentSessions ?? []).slice(0, 2).map((session) => ({
       id: `session:${session.key}`,
       kind: 'session' as const,
-      title: sessionDisplayName(session),
+      title: sessionDisplayName(session, m.sessions.untitled),
       meta: `${hm.chatItemMeta} · ${timeLabel(session.updatedAt, hm)}`,
       icon: 'message-processing-outline',
       onPress: () => handleSessionPress(session.key),
@@ -293,7 +293,7 @@ export function WorkspaceHomeScreen() {
       onPress: () => handleNotePress(note),
     }));
     return [...activeWorkflows, ...sessions, ...notes].slice(0, 5);
-  }, [handleNotePress, handleSessionPress, hm, home?.recentSessions, home?.workflowRuns.active, homeNotes, router]);
+  }, [handleNotePress, handleSessionPress, hm, home?.recentSessions, home?.workflowRuns.active, homeNotes, m.sessions.untitled, router]);
 
   if (!configured) {
     return (
@@ -460,7 +460,8 @@ export function WorkspaceHomeScreen() {
 
 function HomeGatewayStatus({ gateway }: { gateway: HomeGateway }) {
   const { colors } = useTheme();
-  const { homePage: hm } = useMessages();
+  const m = useMessages();
+  const hm = m.homePage;
   if (gateway.ready) return null;
   return (
     <View style={[styles.statusBanner, { backgroundColor: colors.surface.panel, borderColor: colors.border.default }]}>
@@ -611,13 +612,14 @@ function ActivitySection({
   onAutomation: () => void;
 }) {
   const { colors } = useTheme();
-  const { homePage: hm } = useMessages();
+  const m = useMessages();
+  const hm = m.homePage;
   const activityTitle =
     activeWorkflow?.title ??
     attentionWorkflow?.title ??
     (nextCronJob ? cronTitle(nextCronJob, hm.automation) : undefined) ??
     (recentCronRun ? cronTitle(recentCronRun, hm.automation) : undefined) ??
-    (recentSession ? sessionDisplayName(recentSession) : hm.noAgentActivity);
+    (recentSession ? sessionDisplayName(recentSession, m.sessions.untitled) : hm.noAgentActivity);
   const activitySubtitle =
     activeWorkflow
       ? workflowProgress(activeWorkflow, hm)
@@ -635,8 +637,8 @@ function ActivitySection({
     <Section title={hm.sectionActivity}>
       <View style={[styles.panel, { backgroundColor: colors.surface.panel, borderColor: colors.border.default }]}>
         <View style={styles.activityIntro}>
-          <View style={[styles.iconBubble, styles.aiBubble]}>
-            <Icon source="creation-outline" size={18} color="#6D5DFB" />
+          <View style={[styles.iconBubble, { backgroundColor: colors.accent.selectionBg }]}>
+            <Icon source="creation-outline" size={18} color={colors.accent.primary} />
           </View>
           <View style={styles.rowCopy}>
             <Text numberOfLines={1} style={[styles.rowTitle, { color: colors.text.primary }]}>{activityTitle}</Text>
@@ -832,7 +834,7 @@ function BottomCommandBar({
         onPressIn={onAskAiPressIn}
         accessibilityLabel={askLabel}
       >
-        <Icon source="creation-outline" size={18} color="#6D5DFB" />
+        <Icon source="creation-outline" size={18} color={colors.accent.primary} />
         <Text numberOfLines={1} style={[styles.askCommandText, { color: colors.text.primary }]}>{askLabel}</Text>
       </Pressable>
       <Pressable style={itemStyle} onPress={onCapture} disabled={captureActive} accessibilityLabel={captureLabel}>
@@ -977,7 +979,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  aiBubble: { backgroundColor: 'rgba(109,93,251,0.12)' },
   rowCopy: { flex: 1, gap: 2 },
   rowTitle: { ...typography.ui, fontWeight: '600' },
   rowSubtitle: { ...typography.caption },

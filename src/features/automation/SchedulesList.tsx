@@ -8,7 +8,6 @@ import { AppToast } from '../../components/AppToast';
 import { TOAST_DURATION_DEFAULT } from '../../constants/toast';
 
 import { useMessages } from '../../i18n/messages';
-import { useResolvedIsDark } from '../../lib/stack-screen-theme';
 import {
   cronJobMessage,
   fetchCronJobs,
@@ -21,13 +20,14 @@ import {
 import { queryKeys } from '../../query/keys';
 import { useGatewayConfigured } from '../../query/sessions';
 import { usePreferencesStore } from '../../stores/preferences-store';
+import { useTheme } from '../../theme';
 
 import { formatScheduleLabel } from './cron-schedule';
 
 export function SchedulesList() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const isDark = useResolvedIsDark();
+  const { colors } = useTheme();
   const configured = useGatewayConfigured();
   const m = useMessages();
   const pm = m.schedulesPage;
@@ -68,11 +68,11 @@ export function SchedulesList() {
 
   const jobs = jobsQuery.data ?? [];
 
-  const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
-  const textPrimary = isDark ? '#E5E7EB' : '#1F2937';
-  const textSecondary = isDark ? '#9CA3AF' : '#6B7280';
-  const enabledColor = isDark ? '#86EFAC' : '#16A34A';
-  const disabledColor = isDark ? '#FCA5A5' : '#DC2626';
+  const cardBg = colors.surface.panel;
+  const textPrimary = colors.text.primary;
+  const textSecondary = colors.text.secondary;
+  const enabledColor = colors.semantic.success;
+  const disabledColor = colors.semantic.error;
 
   const scheduleLabels = {
     every15Min: pm.every15Min,
@@ -123,7 +123,7 @@ export function SchedulesList() {
                 {scheduleText}
               </Text>
             </View>
-            <View style={[styles.badge, { backgroundColor: item.enabled ? 'rgba(22,163,74,0.12)' : 'rgba(220,38,38,0.12)' }]}>
+            <View style={[styles.badge, { backgroundColor: item.enabled ? colors.accent.selectionBg : colors.surface.input }]}>
               <Text style={{ color: statusColor, fontSize: 12, fontWeight: '600' }}>
                 {statusText}
               </Text>
@@ -178,6 +178,8 @@ export function SchedulesList() {
     },
     [
       cardBg,
+      colors.accent.selectionBg,
+      colors.surface.input,
       disabledColor,
       enabledColor,
       locale,

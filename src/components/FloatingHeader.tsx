@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useMessages } from '../i18n/messages';
 import { useTheme } from '../theme';
 import { ListOverflowMenu, type OverflowMenuItem } from './ListOverflowMenu';
 import { XopcLogo } from './XopcLogo';
@@ -36,9 +37,10 @@ export function FloatingHeader({
   searchPlaceholder,
   onSearchPress,
 }: FloatingHeaderProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
+  const m = useMessages();
   const insets = useSafeAreaInsets();
-  const backgroundColor = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.05)';
+  const backgroundColor = colors.surface.input;
   const actions = rightActions ?? (rightIcon && onRightPress ? [{ icon: rightIcon, onPress: onRightPress }] : []);
   const hasOverflowMenu = (overflowMenuItems?.length ?? 0) > 0;
   const showRightCluster = actions.length > 0 || hasOverflowMenu;
@@ -62,11 +64,11 @@ export function FloatingHeader({
           style={[styles.titlePill, styles.searchPill, { backgroundColor }]}
           onPress={onSearchPress}
           accessibilityRole="search"
-          accessibilityLabel={searchPlaceholder ?? '搜索'}
+          accessibilityLabel={searchPlaceholder ?? m.common.search}
         >
           <Icon source="magnify" size={20} color={colors.text.tertiary} />
           <Text numberOfLines={1} style={[styles.searchPlaceholder, { color: colors.text.tertiary }]}>
-            {searchPlaceholder ?? '搜索'}
+            {searchPlaceholder ?? m.common.search}
           </Text>
         </Pressable>
       ) : (
@@ -85,7 +87,7 @@ export function FloatingHeader({
           {hasOverflowMenu ? (
             <ListOverflowMenu
               items={overflowMenuItems ?? []}
-              accessibilityLabel={overflowMenuA11yLabel ?? 'More'}
+              accessibilityLabel={overflowMenuA11yLabel ?? m.listInteraction.moreMenu}
             />
           ) : null}
         </View>

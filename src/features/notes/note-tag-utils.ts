@@ -1,15 +1,18 @@
 import type { Note, NoteIndexEntry } from '../../query/notes';
+import { colors as tokenColors, type ColorScheme } from '../../theme/tokens';
 
 export type NoteTagFilter = 'all' | string;
 
-export const NOTE_TAG_PALETTE = [
-  { bg: '#FDE68A', fg: '#92400E' },
-  { bg: '#BFDBFE', fg: '#1E40AF' },
-  { bg: '#BBF7D0', fg: '#166534' },
-  { bg: '#FBCFE8', fg: '#9D174D' },
-  { bg: '#DDD6FE', fg: '#5B21B6' },
-  { bg: '#FECACA', fg: '#991B1B' },
-] as const;
+function noteTagPalette(colors: ColorScheme) {
+  return [
+    { bg: colors.accent.soft, fg: colors.accent.primary },
+    { bg: colors.surface.input, fg: colors.semantic.success },
+    { bg: colors.surface.input, fg: colors.semantic.warning },
+    { bg: colors.surface.input, fg: colors.semantic.errorBold },
+    { bg: colors.surface.input, fg: colors.text.secondary },
+    { bg: colors.accent.selectionBg, fg: colors.accent.primary },
+  ] as const;
+}
 
 export function normalizeTagName(raw: string): string {
   return raw.trim().replace(/\s+/g, ' ');
@@ -53,10 +56,15 @@ export function getTagPaletteIndex(tag: string, tags: readonly string[]): number
   return index >= 0 ? index : 0;
 }
 
-export function getTagColors(tag: string | null, tags: readonly string[]) {
-  if (!tag) return NOTE_TAG_PALETTE[0];
+export function getTagColors(
+  tag: string | null,
+  tags: readonly string[],
+  colors: ColorScheme = tokenColors.light,
+) {
+  const palette = noteTagPalette(colors);
+  if (!tag) return palette[0];
   const index = getTagPaletteIndex(tag, tags);
-  return NOTE_TAG_PALETTE[index % NOTE_TAG_PALETTE.length];
+  return palette[index % palette.length];
 }
 
 export function collectTagsFromNotes(notes: readonly Pick<NoteIndexEntry, 'tags'>[]): string[] {

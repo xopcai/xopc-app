@@ -47,13 +47,13 @@ export const SessionCard = memo(function SessionCard({
   selectionMode = false,
   selected = false,
 }: SessionCardProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const m = useMessages();
   const sa = m.sessionActions;
 
   const isPinned = session.status === 'pinned';
   const isArchived = session.status === 'archived';
-  const title = useMemo(() => sessionDisplayName(session), [session]);
+  const title = useMemo(() => sessionDisplayName(session, m.sessions.untitled), [m.sessions.untitled, session]);
   const time = useMemo(() => relativeTime(session.updatedAt), [session.updatedAt]);
 
   const handlePress = useCallback(() => onPress(), [onPress]);
@@ -78,7 +78,7 @@ export const SessionCard = memo(function SessionCard({
       onPress={handlePress}
       onLongPress={handleLongPress}
       delayLongPress={LIST_DELAY_LONG_PRESS}
-      android_ripple={{ color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}
+      android_ripple={{ color: colors.surface.hover }}
       accessibilityState={selectionMode ? { selected } : undefined}
       style={({ pressed }) => [
         styles.card,

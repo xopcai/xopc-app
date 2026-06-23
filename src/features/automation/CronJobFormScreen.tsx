@@ -16,7 +16,6 @@ import { AppToast } from '../../components/AppToast';
 import { FloatingHeader } from '../../components/FloatingHeader';
 import { TOAST_DURATION_DEFAULT } from '../../constants/toast';
 import { useMessages } from '../../i18n/messages';
-import { useResolvedIsDark } from '../../lib/stack-screen-theme';
 import {
   createCronJob,
   cronJobMessage,
@@ -27,6 +26,7 @@ import {
 } from '../../query/cron';
 import { queryKeys } from '../../query/keys';
 import { useGatewayConfigured } from '../../query/sessions';
+import { useTheme } from '../../theme';
 
 import { CronSchedulePicker } from './CronSchedulePicker';
 import {
@@ -44,7 +44,7 @@ export function CronJobFormScreen() {
   const isEdit = Boolean(jobId);
 
   const configured = useGatewayConfigured();
-  const isDark = useResolvedIsDark();
+  const { colors } = useTheme();
   const m = useMessages();
   const pm = m.cronForm;
 
@@ -122,8 +122,8 @@ export function CronJobFormScreen() {
     ]);
   }, [deleteMutation, m.common.cancel, pm.deleteConfirm, pm.deleteMessage, pm.deleteTitle]);
 
-  const screenBg = isDark ? '#111827' : '#F9FAFB';
-  const textSecondary = isDark ? '#9CA3AF' : '#6B7280';
+  const screenBg = colors.surface.base;
+  const textSecondary = colors.text.secondary;
   const notEditable = isEdit && jobQuery.data && !isEditableCronJob(jobQuery.data);
 
   const title = isEdit ? pm.editTitle : pm.createTitle;
@@ -183,7 +183,7 @@ export function CronJobFormScreen() {
           <CronSchedulePicker value={schedule} onChange={setSchedule} />
 
           {notEditable ? (
-            <Text style={[styles.warning, { color: isDark ? '#FCA5A5' : '#DC2626' }]}>{pm.notEditable}</Text>
+            <Text style={[styles.warning, { color: colors.semantic.error }]}>{pm.notEditable}</Text>
           ) : (
             <Button
               mode="contained"
@@ -198,7 +198,7 @@ export function CronJobFormScreen() {
           {isEdit ? (
             <Button
               mode="outlined"
-              textColor={isDark ? '#FCA5A5' : '#DC2626'}
+              textColor={colors.semantic.error}
               onPress={confirmDelete}
               loading={deleteMutation.isPending}
               disabled={saveMutation.isPending || deleteMutation.isPending}

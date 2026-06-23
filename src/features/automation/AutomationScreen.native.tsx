@@ -7,8 +7,8 @@ import { Text } from 'react-native-paper';
 import { FloatingHeader } from '../../components/FloatingHeader';
 import { useMessages } from '../../i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
-import { useResolvedIsDark } from '../../lib/stack-screen-theme';
 import { useGatewayConfigured } from '../../query/sessions';
+import { radii, spacing, typography, useTheme } from '../../theme';
 
 import { CronRunsList } from './CronRunsList';
 import { SchedulesList } from './SchedulesList';
@@ -23,18 +23,18 @@ const TAB_INDEX: Record<AutomationTab, number> = {
 export function AutomationScreen() {
   const router = useRouter();
   useDismissOnHardwareBack(router);
-  const isDark = useResolvedIsDark();
+  const { colors } = useTheme();
   const configured = useGatewayConfigured();
   const m = useMessages();
   const pm = m.automationPage;
   const [tab, setTab] = useState<AutomationTab>('schedules');
   const pagerRef = useRef<PagerView>(null);
 
-  const screenBg = isDark ? '#111827' : '#F9FAFB';
-  const tabBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)';
-  const activeTabBg = isDark ? '#1C1C1E' : '#FFFFFF';
-  const tabText = isDark ? '#9CA3AF' : '#6B7280';
-  const activeTabText = isDark ? '#F9FAFB' : '#111827';
+  const screenBg = colors.surface.base;
+  const tabBg = colors.surface.input;
+  const activeTabBg = colors.surface.panel;
+  const tabText = colors.text.secondary;
+  const activeTabText = colors.text.primary;
 
   const selectTab = useCallback((next: AutomationTab) => {
     setTab(next);
@@ -56,7 +56,7 @@ export function AutomationScreen() {
 
       {!configured ? (
         <View style={styles.center}>
-          <Text style={{ opacity: 0.6 }}>{m.sessions.gatewayNotConfigured}</Text>
+          <Text style={{ color: colors.text.tertiary }}>{m.sessions.gatewayNotConfigured}</Text>
         </View>
       ) : (
         <>
@@ -138,20 +138,20 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
   tabBar: {
     flexDirection: 'row',
-    marginHorizontal: 16,
-    marginBottom: 8,
-    borderRadius: 12,
-    padding: 4,
-    gap: 4,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    borderRadius: radii.lg,
+    padding: spacing.xs,
+    gap: spacing.xs,
   },
   tabButton: {
     flex: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
+    borderRadius: radii.md,
+    paddingVertical: spacing.sm + spacing.xxs,
     alignItems: 'center',
   },
   tabLabel: {
-    fontSize: 14,
+    ...typography.ui,
     fontWeight: '500',
   },
   tabLabelActive: {

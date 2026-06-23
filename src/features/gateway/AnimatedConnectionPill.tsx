@@ -22,6 +22,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { colors } from '../../theme';
 import type { ConnectionSeverity } from './connection-state';
 
 const SEVERITY_ORDER: ConnectionSeverity[] = ['ok', 'warn', 'error', 'pending', 'idle'];
@@ -31,15 +32,15 @@ function severityIndex(s: ConnectionSeverity): number {
 }
 
 const PALETTE_LIGHT = {
-  bg: ['rgba(52,199,89,0.12)', 'rgba(245,158,11,0.14)', 'rgba(255,59,48,0.12)', 'rgba(59,130,246,0.12)', 'rgba(142,142,147,0.14)'],
-  border: ['rgba(52,199,89,0.30)', 'rgba(245,158,11,0.32)', 'rgba(255,59,48,0.30)', 'rgba(59,130,246,0.30)', 'rgba(142,142,147,0.30)'],
-  fg: ['#0F7B2C', '#92400E', '#991B1B', '#1E3A8A', '#3C3C43'],
+  bg: [colors.light.surface.input, colors.light.surface.input, colors.light.surface.input, colors.light.accent.selectionBg, colors.light.surface.input],
+  border: [colors.light.semantic.success, colors.light.semantic.warning, colors.light.semantic.errorBold, colors.light.accent.primary, colors.light.border.strong],
+  fg: [colors.light.semantic.success, colors.light.semantic.warning, colors.light.semantic.errorBold, colors.light.accent.primary, colors.light.text.secondary],
 };
 
 const PALETTE_DARK = {
-  bg: ['rgba(52,199,89,0.16)', 'rgba(245,158,11,0.18)', 'rgba(255,59,48,0.16)', 'rgba(59,130,246,0.16)', 'rgba(142,142,147,0.18)'],
-  border: ['rgba(52,199,89,0.32)', 'rgba(245,158,11,0.34)', 'rgba(255,59,48,0.32)', 'rgba(59,130,246,0.32)', 'rgba(142,142,147,0.32)'],
-  fg: ['#7BE995', '#FCD34D', '#FF6961', '#93C5FD', '#C7C7CC'],
+  bg: [colors.dark.surface.input, colors.dark.surface.input, colors.dark.surface.input, colors.dark.accent.selectionBg, colors.dark.surface.input],
+  border: [colors.dark.semantic.success, colors.dark.semantic.warning, colors.dark.semantic.errorBold, colors.dark.accent.primary, colors.dark.border.strong],
+  fg: [colors.dark.semantic.success, colors.dark.semantic.warning, colors.dark.semantic.errorBold, colors.dark.accent.primary, colors.dark.text.secondary],
 };
 
 const TIMING = { duration: 280, easing: Easing.out(Easing.cubic) };

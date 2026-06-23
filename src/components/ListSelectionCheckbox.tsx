@@ -77,13 +77,13 @@ export function ListSelectionCheckbox({ selected, size = 36 }: ListSelectionChec
           width: size,
           height: size,
           borderRadius: size / 2,
-          borderColor: selected ? colors.accent.primary : 'rgba(120,120,128,0.36)',
+          borderColor: selected ? colors.accent.primary : colors.border.strong,
           backgroundColor: selected ? colors.accent.primary : 'transparent',
         },
       ]}
     >
       <Animated.View style={checkStyle}>
-        {selected ? <Icon source="check" size={14} color="#FFFFFF" /> : null}
+        {selected ? <Icon source="check" size={14} color={colors.text.inverse} /> : null}
       </Animated.View>
     </Animated.View>
   );

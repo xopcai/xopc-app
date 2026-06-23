@@ -1,15 +1,17 @@
 /**
  * Drawer pill — bg/border morph + foreground opacity dip masks the icon/
  * text colour swap so the whole pill feels like one unified animation.
- * Long-press opens the manual-route override sheet.
+ * The trailing tune icon and long-press open the manual-route override sheet.
  */
 import { memo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
+import { LIST_DELAY_LONG_PRESS } from '../../constants/list-interaction';
 import { useMessages } from '../../i18n/messages';
 import { useResolvedIsDark } from '../../lib/stack-screen-theme';
 import { useGatewayStore } from '../../stores/gateway-store';
+import { typography, useTheme } from '../../theme';
 
 import { AnimatedConnectionPill } from './AnimatedConnectionPill';
 import {
@@ -26,6 +28,7 @@ export const DrawerGatewayConnection = memo(function DrawerGatewayConnection({
   onPress?: () => void;
 }) {
   const isDark = useResolvedIsDark();
+  const { colors } = useTheme();
   const m = useMessages();
   const display = useActiveGatewayDisplay();
   const state = useConnectionState();
@@ -76,7 +79,7 @@ export const DrawerGatewayConnection = memo(function DrawerGatewayConnection({
         style={styles.wrap}
         onPress={onPress}
         onLongPress={() => setOverrideMenuVisible(true)}
-        delayLongPress={400}
+        delayLongPress={LIST_DELAY_LONG_PRESS}
         disabled={!onPress}
         accessibilityRole={onPress ? 'button' : undefined}
         accessibilityHint={m.gateway.routeOverride.title}
@@ -92,12 +95,12 @@ export const DrawerGatewayConnection = memo(function DrawerGatewayConnection({
               <Text style={[styles.pillText, { color }]} numberOfLines={1}>
                 {copy.short}
               </Text>
-              {overridePinned ? <Icon source="pin" size={12} color={color} /> : null}
+              <Icon source={overridePinned ? 'pin' : 'tune-variant'} size={12} color={color} />
             </>
           )}
         </AnimatedConnectionPill>
         {subtitle ? (
-          <Text style={[styles.subtitle, { color: isDark ? '#8E8E93' : '#6D6D70' }]} numberOfLines={1}>
+          <Text style={[styles.subtitle, { color: colors.text.tertiary }]} numberOfLines={1}>
             {subtitle}
           </Text>
         ) : null}
@@ -140,12 +143,10 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   pillText: {
-    fontSize: 12,
-    lineHeight: 16,
+    ...typography.caption,
     fontWeight: '500',
   },
   subtitle: {
-    fontSize: 11,
-    lineHeight: 14,
+    ...typography.micro,
   },
 });

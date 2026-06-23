@@ -16,9 +16,9 @@ interface NoteDetailHeaderProps {
 }
 
 export function NoteDetailHeader({ onBack, backLabel, rightActions = [] }: NoteDetailHeaderProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const backgroundColor = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.05)';
+  const backgroundColor = colors.surface.input;
 
   return (
     <View style={[styles.wrap, { paddingTop: insets.top + 8 }]}>

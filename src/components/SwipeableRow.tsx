@@ -20,7 +20,7 @@ import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
-import { useTheme } from '../theme';
+import { colors as tokenColors, useTheme } from '../theme';
 import {
   registerSwipeOpen,
   unregisterSwipeOpen,
@@ -39,9 +39,9 @@ export type SwipeAction = {
 };
 
 export const ACTION_COLOR_MAP: Record<SwipeActionColor, string> = {
-  green: '#2CCB7F',
-  blue: '#3A6BFF',
-  red: '#FF5D5D',
+  green: tokenColors.light.semantic.success,
+  blue: tokenColors.light.accent.primary,
+  red: tokenColors.light.semantic.error,
 };
 
 // ── Props ────────────────────────────────────────────────────
@@ -81,6 +81,7 @@ type RightActionsProps = {
   dockBackgroundColor: string;
   dockBorderColor: string;
   dockShadowColor: string;
+  actionIconColor: string;
 };
 
 function clampProgress(value: number): number {
@@ -97,6 +98,7 @@ function RightActions({
   dockBackgroundColor,
   dockBorderColor,
   dockShadowColor,
+  actionIconColor,
 }: RightActionsProps) {
   const width = actionPanelWidth(actions.length);
   const dockAnimatedStyle = useAnimatedStyle(() => {
@@ -130,6 +132,7 @@ function RightActions({
             index={index}
             progress={progress}
             color={actionColors[action.color]}
+            iconColor={actionIconColor}
             close={close}
             onActionPress={onActionPress}
           />
@@ -144,6 +147,7 @@ type DockActionButtonProps = {
   index: number;
   progress: SharedValue<number>;
   color: string;
+  iconColor: string;
   close: () => void;
   onActionPress: (action: SwipeAction) => void;
 };
@@ -153,6 +157,7 @@ function DockActionButton({
   index,
   progress,
   color,
+  iconColor,
   close,
   onActionPress,
 }: DockActionButtonProps) {
@@ -182,7 +187,7 @@ function DockActionButton({
         accessibilityRole="button"
         accessibilityLabel={action.label}
       >
-        <Icon source={action.icon} size={21} color="#FFFFFF" />
+        <Icon source={action.icon} size={21} color={iconColor} />
       </Pressable>
     </Animated.View>
   );
@@ -207,6 +212,7 @@ export const SwipeableRow = memo(function SwipeableRow({
   const dockBackgroundColor = isDark ? colors.surface.input : colors.surface.panel;
   const dockBorderColor = colors.border.default;
   const dockShadowColor = colors.text.primary;
+  const actionIconColor = colors.accent.onPrimary;
 
   const handleClose = useCallback(() => {
     swipeableRef.current?.close();
@@ -231,6 +237,7 @@ export const SwipeableRow = memo(function SwipeableRow({
         dockBackgroundColor={dockBackgroundColor}
         dockBorderColor={dockBorderColor}
         dockShadowColor={dockShadowColor}
+        actionIconColor={actionIconColor}
       />
     ),
     [
@@ -239,6 +246,7 @@ export const SwipeableRow = memo(function SwipeableRow({
       dockBackgroundColor,
       dockBorderColor,
       dockShadowColor,
+      actionIconColor,
       handleClose,
       onActionPress,
     ],

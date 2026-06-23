@@ -22,7 +22,7 @@ import { extractMarkdownCodeBlocks } from './extract-markdown-code';
 import { MessageActionsBar, type MessageAction } from './MessageActionsBar';
 import type { ImageContent, Message, MessageContent, ProgressState, ThinkingContent, ToolUseContent } from './messages.types';
 import { useMessages } from '../../i18n/messages';
-import { typography, useTheme } from '../../theme';
+import { colors as tokenColors, typography, useTheme } from '../../theme';
 import { extractUserMessageText } from './composer-send-helpers';
 import { chatColors, chatLayout } from './styles';
 
@@ -71,12 +71,12 @@ function isGarbledText(text: string): boolean {
 const GARBLED_PLACEHOLDER = '⚠️ Content encoding error — text cannot be displayed correctly.';
 
 const garbledStyles = StyleSheet.create({
-  notice: {
-    ...typography.label,
-    fontStyle: 'italic',
-    color: '#9CA3AF',
-    paddingVertical: 4,
-  },
+	  notice: {
+	    ...typography.label,
+	    fontStyle: 'italic',
+	    color: tokenColors.light.text.secondary,
+	    paddingVertical: 4,
+	  },
 });
 
 /** Extract all text blocks into a single string for user display. */
@@ -441,12 +441,12 @@ export const MessageBubble = memo(function MessageBubble({
               style={[
                 styles.artifactCard,
                 {
-                  backgroundColor: isDark ? chatColors.assistantBgDark : chatColors.assistantBg,
-                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB',
+	                  backgroundColor: isDark ? chatColors.assistantBgDark : chatColors.assistantBg,
+	                  borderColor: colors.border.default,
                 },
               ]}
             >
-              <Text style={[styles.artifactTitle, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>
+	              <Text style={[styles.artifactTitle, { color: colors.text.secondary }]}>
                 {m.chat.messageArtifactsHeading}
               </Text>
               <View style={styles.artifactBody}>

@@ -1,8 +1,9 @@
 import { memo, useCallback, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Button, Text } from 'react-native-paper';
 
 import type { ChecklistMutationOp, WebchatChecklistItemWire, WebchatPersistentGoalWire } from '../../query/goals';
+import { useTheme } from '../../theme';
 import { groupedChecklistItems, itemMarker, type GoalMessages } from './goal-utils';
 
 type Props = {
@@ -18,11 +19,11 @@ type ChecklistItemWithIndex = WebchatChecklistItemWire & { index1Based: number }
 export const GoalChecklistBoard = memo(function GoalChecklistBoard({ goal, canEdit, mutationBusy, t, onMutate }: Props) {
   const [open, setOpen] = useState(false);
   const [newCriterion, setNewCriterion] = useState('');
-  const isDark = useColorScheme() === 'dark';
+  const { colors } = useTheme();
   const items = goal.checklist ?? [];
   const groups = groupedChecklistItems(items);
-  const inputBg = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.04)';
-  const border = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)';
+  const inputBg = colors.surface.input;
+  const border = colors.border.default;
 
   const submitAdd = useCallback(() => {
     const text = newCriterion.trim();
@@ -46,7 +47,9 @@ export const GoalChecklistBoard = memo(function GoalChecklistBoard({ goal, canEd
                 <View style={styles.itemTextBox}>
                   <Text variant="bodySmall" style={styles.itemText}>{item.text}</Text>
                   <View style={styles.metaRow}>
-                    <Text style={styles.metaPill}>{item.addedBy === 'user' ? t.userAdded : t.judgeGenerated}</Text>
+                    <Text style={[styles.metaPill, { backgroundColor: colors.accent.selectionBg, color: colors.accent.primary }]}>
+                      {item.addedBy === 'user' ? t.userAdded : t.judgeGenerated}
+                    </Text>
                     {item.evidence ? <Text style={styles.evidence}>{t.evidenceLabel}: {item.evidence}</Text> : null}
                   </View>
                 </View>
@@ -59,7 +62,7 @@ export const GoalChecklistBoard = memo(function GoalChecklistBoard({ goal, canEd
                   <Button compact mode="text" disabled={mutationBusy} onPress={() => void onMutate({ op: 'mark', index: item.index1Based, status: 'impossible' })}>
                     {t.markBlocked}
                   </Button>
-                  <Button compact mode="text" textColor="#EF4444" disabled={mutationBusy} onPress={() => void onMutate({ op: 'remove', index: item.index1Based })}>
+                  <Button compact mode="text" textColor={colors.semantic.error} disabled={mutationBusy} onPress={() => void onMutate({ op: 'remove', index: item.index1Based })}>
                     {t.removeItem}
                   </Button>
                 </View>
@@ -80,7 +83,7 @@ export const GoalChecklistBoard = memo(function GoalChecklistBoard({ goal, canEd
             {items.length > 0 ? t.checklistProgress.replace('{{done}}', String(groups.completed.length + groups.impossible.length)).replace('{{total}}', String(items.length)) : t.checklistEmpty}
           </Text>
         </View>
-        <Text style={styles.toggle}>{open ? t.collapse : t.expand}</Text>
+        <Text style={[styles.toggle, { color: colors.accent.primary }]}>{open ? t.collapse : t.expand}</Text>
       </Pressable>
 
       {open ? (
@@ -101,9 +104,9 @@ export const GoalChecklistBoard = memo(function GoalChecklistBoard({ goal, canEd
                 value={newCriterion}
                 onChangeText={setNewCriterion}
                 placeholder={t.addCriterionPlaceholder}
-                placeholderTextColor={isDark ? '#8E8E93' : '#8E8E93'}
+                placeholderTextColor={colors.text.tertiary}
                 editable={!mutationBusy}
-                style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: isDark ? '#F5F5F7' : '#1C1C1E' }]}
+                style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: colors.text.primary }]}
                 returnKeyType="done"
                 onSubmitEditing={submitAdd}
               />
@@ -136,7 +139,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   toggle: {
-    color: '#007AFF',
     fontSize: 12,
     fontWeight: '800',
   },
@@ -199,8 +201,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 7,
     paddingVertical: 2,
-    backgroundColor: 'rgba(0,122,255,0.10)',
-    color: '#007AFF',
     fontSize: 10,
     fontWeight: '800',
     overflow: 'hidden',

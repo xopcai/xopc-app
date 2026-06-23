@@ -134,7 +134,7 @@ describe('fetchSessionsList', () => {
       updatedAt: '2026-01-01T00:00:00Z',
     });
 
-    expect(title).toBe('新对话');
+    expect(title).toBe('New chat');
   });
 
   it('returns the full pagination payload', async () => {

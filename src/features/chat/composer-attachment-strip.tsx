@@ -1,8 +1,9 @@
 import { memo, useMemo, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
 import { useGatewayStore } from '../../stores/gateway-store';
+import { useTheme } from '../../theme';
 import { AudioMessageBlock } from './AudioMessageBlock';
 import type { ComposerAttachment } from './composer.types';
 import { FilePreviewModal, type PreviewableFile } from './FilePreviewModal';
@@ -65,13 +66,13 @@ export const ComposerAttachmentStrip = memo(function ComposerAttachmentStrip({
   removeLabel: string;
   readOnly?: boolean;
 }) {
-  const scheme = useColorScheme();
+  const { colors } = useTheme();
   const token = useGatewayStore((s) => s.token);
   const [preview, setPreview] = useState<PreviewableFile | null>(null);
   const [audioPreview, setAudioPreview] = useState<AudioContent | null>(null);
-  const border = scheme === 'dark' ? '#3A3A3C' : '#E5E5EA';
-  const chipBg = scheme === 'dark' ? 'rgba(255,255,255,0.08)' : '#FFFFFF';
-  const muted = scheme === 'dark' ? '#8E8E93' : '#6D6D70';
+  const border = colors.border.default;
+  const chipBg = colors.surface.input;
+  const muted = colors.text.secondary;
   const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
 
   const items = useMemo(() => attachments.filter(Boolean), [attachments]);
@@ -129,8 +130,8 @@ export const ComposerAttachmentStrip = memo(function ComposerAttachmentStrip({
                   accessibilityRole="button"
                   accessibilityLabel={removeLabel}
                 >
-                  <View style={styles.removeBadge}>
-                    <Icon source="close" size={14} color="#FFFFFF" />
+                  <View style={[styles.removeBadge, { backgroundColor: colors.text.primary }]}>
+                    <Icon source="close" size={14} color={colors.text.inverse} />
                   </View>
                 </Pressable>
               ) : null}
@@ -145,7 +146,10 @@ export const ComposerAttachmentStrip = memo(function ComposerAttachmentStrip({
         transparent
         onRequestClose={() => setAudioPreview(null)}
       >
-        <Pressable style={styles.audioBackdrop} onPress={() => setAudioPreview(null)}>
+        <Pressable
+          style={[styles.audioBackdrop, { backgroundColor: colors.overlay.scrim }]}
+          onPress={() => setAudioPreview(null)}
+        >
           <Pressable style={[styles.audioSheet, { backgroundColor: chipBg, borderColor: border }]} onPress={() => {}}>
             {audioPreview ? <AudioMessageBlock audio={audioPreview} /> : null}
           </Pressable>
@@ -205,7 +209,6 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: 'rgba(0,0,0,0.72)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -214,7 +217,6 @@ const styles = StyleSheet.create({
   },
   audioBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,

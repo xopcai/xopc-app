@@ -1,8 +1,9 @@
 import { memo, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, useColorScheme, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { ActivityIndicator, Button, Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
+import { useTheme } from '../../theme';
 import { MarkdownView } from './MarkdownView';
 
 export type ClarifyPromptState = {
@@ -27,7 +28,7 @@ export const ClarifyPrompt = memo(function ClarifyPrompt({
   onSubmit,
   onSkip,
 }: ClarifyPromptProps) {
-  const isDark = useColorScheme() === 'dark';
+  const { colors } = useTheme();
   const labels = useMessages().chat;
   const [draft, setDraft] = useState('');
 
@@ -44,11 +45,11 @@ export const ClarifyPrompt = memo(function ClarifyPrompt({
 
   const trimmedDraft = draft.trim();
   const canSubmitDraft = trimmedDraft.length > 0 && !submitting;
-  const borderColor = isDark ? 'rgba(255,255,255,0.12)' : '#E5E7EB';
-  const cardBg = isDark ? '#111827' : '#FFFFFF';
-  const mutedColor = isDark ? '#9CA3AF' : '#6B7280';
-  const textColor = isDark ? '#F9FAFB' : '#111827';
-  const inputBg = isDark ? 'rgba(255,255,255,0.06)' : '#F9FAFB';
+  const borderColor = colors.border.default;
+  const cardBg = colors.surface.panel;
+  const mutedColor = colors.text.secondary;
+  const textColor = colors.text.primary;
+  const inputBg = colors.surface.input;
 
   const submitDraft = () => {
     if (!canSubmitDraft) return;
@@ -62,7 +63,7 @@ export const ClarifyPrompt = memo(function ClarifyPrompt({
           {submitting ? (
             <ActivityIndicator size={16} />
           ) : (
-            <Icon source="help-circle-outline" size={18} color="#2563EB" />
+            <Icon source="help-circle-outline" size={18} color={colors.accent.primary} />
           )}
         </View>
         <View style={styles.headerTextCol}>
@@ -96,7 +97,7 @@ export const ClarifyPrompt = memo(function ClarifyPrompt({
                 {
                   borderColor,
                   backgroundColor: pressed
-                    ? isDark ? 'rgba(37,99,235,0.22)' : '#EFF6FF'
+                    ? colors.accent.selectionBg
                     : inputBg,
                   opacity: submitting ? 0.6 : 1,
                 },
@@ -115,7 +116,7 @@ export const ClarifyPrompt = memo(function ClarifyPrompt({
                 {
                   borderColor,
                   backgroundColor: pressed
-                    ? isDark ? 'rgba(255,255,255,0.08)' : '#F3F4F6'
+                    ? colors.surface.hover
                     : 'transparent',
                   opacity: submitting ? 0.6 : 1,
                 },
@@ -136,7 +137,7 @@ export const ClarifyPrompt = memo(function ClarifyPrompt({
           onChangeText={setDraft}
           editable={!submitting}
           placeholder={labels.clarifyPlaceholder}
-          placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
+          placeholderTextColor={colors.text.tertiary}
           style={[
             styles.input,
             {
@@ -160,7 +161,7 @@ export const ClarifyPrompt = memo(function ClarifyPrompt({
       </View>
 
       {submitError ? (
-        <Text variant="bodySmall" style={styles.errorText}>
+        <Text variant="bodySmall" style={[styles.errorText, { color: colors.semantic.errorBold }]}>
           {submitError}
         </Text>
       ) : null}
@@ -248,7 +249,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   errorText: {
-    color: '#EF4444',
     marginTop: 8,
   },
   footerRow: {

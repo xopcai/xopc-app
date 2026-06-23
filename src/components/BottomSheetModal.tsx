@@ -43,7 +43,7 @@ export function BottomSheetModal({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const content = (
-    <Pressable style={styles.overlay} onPress={onDismiss}>
+    <Pressable style={[styles.overlay, { backgroundColor: colors.overlay.scrim }]} onPress={onDismiss}>
       <Pressable
         testID={testID}
         style={[
@@ -107,7 +107,6 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.35)',
   },
   sheet: {
     borderTopLeftRadius: radii.xl,

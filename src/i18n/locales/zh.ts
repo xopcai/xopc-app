@@ -47,6 +47,7 @@ export const zh: MessageBundle = {
   sessions: {
     searchPlaceholder: '搜索会话…',
     empty: '暂无会话',
+    untitled: '新对话',
     emptyHint: '开始一段新对话，与你的 AI 助手聊天。',
     noResults: '无结果',
     noResultsHint: '没有匹配 "{{query}}" 的会话',
@@ -297,6 +298,7 @@ export const zh: MessageBundle = {
     messageArtifactsHeading: '本消息输出',
     fileReferenceExternalBadge: '工作区外',
     fileReferenceExternalDescription: '这个文件不在当前会话工作区内。',
+    previewFile: '预览 {{name}}',
     fileReferenceOffWorkspaceBaseDescription: '此文件不在当前会话工作区内，无法在手机上用工作区预览打开。',
     fileReferenceBrowserOffWorkspaceDescription: '此文件不在当前会话工作区内。请复制路径后在 gateway 所在电脑上打开。',
     fileReferenceLocationKind: {
@@ -313,6 +315,18 @@ export const zh: MessageBundle = {
     fileReferenceInvalidDescription: '这个文件路径无效，无法作为交付物打开。',
     fileReferenceCopyPath: '复制路径',
     fileReferenceCopied: '路径已复制',
+    filePreviewClose: '关闭预览',
+    filePreviewLoading: '正在加载预览…',
+    filePreviewLoadFailed: '预览加载失败：{{message}}',
+    filePreviewUnsupportedWithText: '移动端暂不支持该文件类型的内嵌预览，以下为可提取文本。',
+    filePreviewUnsupported: '移动端暂不支持该文件类型的内嵌预览。',
+    htmlPreviewUnavailable: '无法加载 HTML 预览。',
+    htmlPreviewWebViewFailed: 'WebView 加载失败',
+    htmlPreviewRendering: '正在渲染页面…',
+    htmlPreviewRenderFailed: 'HTML 渲染失败：{{message}}',
+    overlayDismissLabel: '下拉关闭 AI 对话',
+    overlayOpenedAnnouncement: 'AI 对话已打开',
+    overlayClosedAnnouncement: '已返回工作空间',
     shareFile: '分享',
     shareFilePreview: '分享此文件',
     send: '发送',
@@ -359,6 +373,7 @@ export const zh: MessageBundle = {
     holdToSpeak: '按住说话',
     voiceReleaseCenterHint: '松开 发送语音',
     voiceReleaseTextHint: '转文字',
+    voiceTextGlyph: '字',
     voiceReleaseCancelHint: '松开 取消',
     voicePermissionDenied: '需要麦克风权限才能使用语音输入。',
     voiceWebUnsupported: '按住说话请在 iOS/Android 客户端中使用。',
@@ -524,6 +539,21 @@ export const zh: MessageBundle = {
   workspaceHome: {
     automationSection: '自动化',
     automationHint: '创建和管理定时 Agent 任务。',
+  },
+
+  workspaceSearch: {
+    title: '搜索',
+    emptyNoteTitle: '无内容笔记',
+    noteMeta: '笔记',
+    sessionMessages: '{{count}} 条消息',
+    gatewayDisconnectedTitle: '未连接网关',
+    gatewayDisconnectedHint: '连接后即可搜索笔记和会话。',
+    idleTitle: '搜索工作空间',
+    idleHint: '输入关键词，检索笔记和会话内容。',
+    searching: '正在搜索…',
+    noResultsTitle: '没有结果',
+    noResultsHint: '换个关键词试试。',
+    placeholder: '搜索笔记和会话…',
   },
 
   // ── Agents 页面 ────────────────────────────────────────
@@ -703,6 +733,8 @@ export const zh: MessageBundle = {
       hours: '{{n}} 小时前',
       days: '{{n}} 天前',
     },
+    aiOrganizeTitle: 'AI 整理建议',
+    aiOrganizeComingSoon: 'AI 整理功能即将上线',
   },
 
   notesPage: {
@@ -938,7 +970,9 @@ export const zh: MessageBundle = {
     ok: '好',
     cancel: '取消',
     back: '返回',
+    close: '关闭',
     retry: '重试',
+    search: '搜索',
     loading: '加载中…',
     error: '错误',
   },

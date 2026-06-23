@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
+import { t, useMessages } from '../../i18n/messages';
 import { useGatewayStore } from '../../stores/gateway-store';
+import { useTheme } from '../../theme';
 import { AudioMessageBlock } from './AudioMessageBlock';
 import { FilePreviewModal, type PreviewableFile } from './FilePreviewModal';
 import { buildGatewayRawFilePath } from './image-source-utils';
@@ -93,7 +95,8 @@ export function AttachmentRenderer({
   sessionKey?: string | null;
   compact?: boolean;
 }) {
-  const isDark = useColorScheme() === 'dark';
+  const { colors } = useTheme();
+  const m = useMessages();
   const apiUrl = useGatewayStore((s) => s.apiUrl);
   const token = useGatewayStore((s) => s.token);
   const [active, setActive] = useState<PreviewableFile | null>(null);
@@ -105,10 +108,10 @@ export function AttachmentRenderer({
   );
   if (!items.length) return null;
 
-  const border = isDark ? 'rgba(255,255,255,0.12)' : '#E5E7EB';
-  const chipBg = isDark ? 'rgba(255,255,255,0.06)' : '#F9FAFB';
-  const textColor = isDark ? '#E5E7EB' : '#374151';
-  const muted = isDark ? '#9CA3AF' : '#6B7280';
+  const border = colors.border.default;
+  const chipBg = colors.surface.input;
+  const textColor = colors.text.primary;
+  const muted = colors.text.secondary;
 
   return (
     <>
@@ -136,7 +139,7 @@ export function AttachmentRenderer({
                 style={({ pressed }) => [styles.imageTile, { borderColor: border }, pressed && styles.pressed]}
                 onPress={() => setActive(preview)}
                 accessibilityRole="button"
-                accessibilityLabel={`预览 ${name}`}
+                accessibilityLabel={t(m.chat.previewFile, { name })}
               >
                 <Image source={source} style={styles.image} resizeMode="cover" />
               </Pressable>
@@ -148,7 +151,7 @@ export function AttachmentRenderer({
               style={({ pressed }) => [styles.chip, { borderColor: border, backgroundColor: chipBg }, pressed && styles.pressed]}
               onPress={() => setActive(preview)}
               accessibilityRole="button"
-              accessibilityLabel={`预览 ${name}`}
+              accessibilityLabel={t(m.chat.previewFile, { name })}
             >
               <Icon source="file-outline" size={16} color={muted} />
               <Text style={[styles.chipText, { color: textColor }]} numberOfLines={1}>{name}</Text>

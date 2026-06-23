@@ -1,8 +1,9 @@
 import { memo } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { IconButton, Text } from 'react-native-paper';
 
 import type { WebchatPersistentGoalWire } from '../../query/goals';
+import { useTheme } from '../../theme';
 import {
   computeGoalWallElapsedMs,
   formatGoalElapsedMs,
@@ -27,9 +28,13 @@ export const GoalMissionHeader = memo(function GoalMissionHeader({
   t,
   onToggleCollapsed,
 }: Props) {
-  const isDark = useColorScheme() === 'dark';
-  const accent = goal.status === 'paused' ? '#F59E0B' : goal.status === 'done' ? '#10B981' : '#007AFF';
-  const badgeBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const { colors } = useTheme();
+  const accent = goal.status === 'paused'
+    ? colors.semantic.warning
+    : goal.status === 'done'
+      ? colors.semantic.success
+      : colors.accent.primary;
+  const badgeBg = colors.surface.input;
   const elapsed = formatGoalElapsedMs(computeGoalWallElapsedMs(goal));
 
   return (

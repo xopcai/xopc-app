@@ -15,6 +15,7 @@ import { markdownNeedsPlainFallback } from './markdown-render-safety';
 import { typography, useTheme, type ColorScheme } from '../../theme';
 
 function createMarkdownStyle(themeColors: ColorScheme, isDark: boolean) {
+  const codeBackground = isDark ? themeColors.surface.active : themeColors.surface.input;
   return {
     paragraph: {
       ...typography.body,
@@ -47,11 +48,11 @@ function createMarkdownStyle(themeColors: ColorScheme, isDark: boolean) {
       fontWeight: '600' as const,
     },
     code: {
-      color: isDark ? '#F9A8D4' : '#DB2777',
-      backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : themeColors.surface.input,
+      color: themeColors.accent.primary,
+      backgroundColor: codeBackground,
     },
     codeBlock: {
-      backgroundColor: isDark ? '#1E1E1E' : themeColors.surface.input,
+      backgroundColor: codeBackground,
       color: themeColors.text.primary,
       ...typography.label,
       padding: 12,
@@ -77,8 +78,8 @@ function createMarkdownStyle(themeColors: ColorScheme, isDark: boolean) {
       borderColor: themeColors.border.default,
       borderRadius: 6,
       headerBackgroundColor: themeColors.surface.input,
-      rowEvenBackgroundColor: isDark ? '#111827' : undefined,
-      rowOddBackgroundColor: isDark ? '#1A1A2E' : undefined,
+      rowEvenBackgroundColor: isDark ? themeColors.surface.panel : undefined,
+      rowOddBackgroundColor: isDark ? themeColors.surface.input : undefined,
       cellPaddingHorizontal: 8,
       cellPaddingVertical: 8,
     },
@@ -92,8 +93,8 @@ function createMarkdownStyle(themeColors: ColorScheme, isDark: boolean) {
 type MarkdownStyle = ReturnType<typeof createMarkdownStyle>;
 
 function createJsMarkdownStyles(themeColors: ColorScheme, isDark: boolean) {
-  const codeColor = isDark ? '#F9A8D4' : '#DB2777';
-  const codeBackground = isDark ? 'rgba(255,255,255,0.10)' : themeColors.surface.input;
+  const codeColor = themeColors.accent.primary;
+  const codeBackground = isDark ? themeColors.surface.active : themeColors.surface.input;
 
   return StyleSheet.create({
     body: {
@@ -142,7 +143,7 @@ function createJsMarkdownStyles(themeColors: ColorScheme, isDark: boolean) {
     fence: {
       ...typography.label,
       color: themeColors.text.primary,
-      backgroundColor: isDark ? '#1E1E1E' : themeColors.surface.input,
+      backgroundColor: codeBackground,
       borderWidth: 0,
       padding: 12,
       borderRadius: 8,
@@ -151,7 +152,7 @@ function createJsMarkdownStyles(themeColors: ColorScheme, isDark: boolean) {
     code_block: {
       ...typography.label,
       color: themeColors.text.primary,
-      backgroundColor: isDark ? '#1E1E1E' : themeColors.surface.input,
+      backgroundColor: codeBackground,
       borderWidth: 0,
       padding: 12,
       borderRadius: 8,

@@ -304,6 +304,7 @@ export function QuickCaptureComposer({
         meterSamples={meterSamples}
         centerHint={cm.voiceReleaseCenterHint}
         textHint={cm.voiceReleaseTextHint}
+        textGlyph={cm.voiceTextGlyph}
         cancelHint={cm.voiceReleaseCancelHint}
         transcribingLabel={cm.voiceTranscribing}
         isDark={isDark}

@@ -13,7 +13,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
-import { useResolvedIsDark } from '../../lib/stack-screen-theme';
+import { useTheme } from '../../theme';
 
 import {
   copyForConnectionState,
@@ -33,7 +33,7 @@ export const GlobalConnectionStatusBar = memo(function GlobalConnectionStatusBar
   onReconnect,
 }: GlobalConnectionStatusBarProps) {
   const m = useMessages();
-  const isDark = useResolvedIsDark();
+  const { colors } = useTheme();
   const state = useConnectionState();
   const severity = severityForConnectionState(state);
   const [helpVisible, setHelpVisible] = useState(false);
@@ -74,23 +74,23 @@ export const GlobalConnectionStatusBar = memo(function GlobalConnectionStatusBar
   const palette =
     severity === 'error'
       ? {
-          bg: isDark ? 'rgba(255,59,48,0.14)' : '#FEF2F2',
-          border: isDark ? 'rgba(255,59,48,0.28)' : '#FECACA',
-          fg: isDark ? '#FF6961' : '#991B1B',
-          icon: isDark ? '#FF6961' : '#DC2626',
+          bg: colors.surface.input,
+          border: colors.semantic.errorBold,
+          fg: colors.semantic.errorBold,
+          icon: colors.semantic.errorBold,
         }
       : severity === 'warn'
         ? {
-            bg: isDark ? 'rgba(245,158,11,0.14)' : '#FFFBEB',
-            border: isDark ? 'rgba(245,158,11,0.28)' : '#FDE68A',
-            fg: isDark ? '#FCD34D' : '#92400E',
-            icon: isDark ? '#FCD34D' : '#D97706',
+            bg: colors.surface.input,
+            border: colors.semantic.warning,
+            fg: colors.semantic.warning,
+            icon: colors.semantic.warning,
           }
         : {
-            bg: isDark ? 'rgba(59,130,246,0.14)' : '#EFF6FF',
-            border: isDark ? 'rgba(59,130,246,0.28)' : '#BFDBFE',
-            fg: isDark ? '#93C5FD' : '#1E3A8A',
-            icon: isDark ? '#93C5FD' : '#2563EB',
+            bg: colors.accent.selectionBg,
+            border: colors.accent.primary,
+            fg: colors.accent.primary,
+            icon: colors.accent.primary,
           };
 
   const iconSource =

@@ -1,8 +1,9 @@
 import { memo } from 'react';
-import { StyleSheet, useColorScheme, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
 import type { WebchatPersistentGoalWire } from '../../query/goals';
+import { useTheme } from '../../theme';
 import { goalChecklistProgress, goalTurnProgress, type GoalMessages } from './goal-utils';
 
 type Props = {
@@ -11,8 +12,7 @@ type Props = {
 };
 
 function MeterRow({ label, value, percent, accent }: { label: string; value: string; percent: number; accent: string }) {
-  const isDark = useColorScheme() === 'dark';
-  const track = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)';
+  const { colors } = useTheme();
 
   return (
     <View style={styles.row}>
@@ -20,7 +20,7 @@ function MeterRow({ label, value, percent, accent }: { label: string; value: str
         <Text variant="labelSmall" style={styles.label}>{label}</Text>
         <Text variant="labelSmall" style={styles.value}>{value}</Text>
       </View>
-      <View style={[styles.track, { backgroundColor: track }]}> 
+      <View style={[styles.track, { backgroundColor: colors.surface.input }]}> 
         <View style={[styles.fill, { width: `${Math.max(0, Math.min(100, percent))}%`, backgroundColor: accent }]} />
       </View>
     </View>
@@ -28,11 +28,15 @@ function MeterRow({ label, value, percent, accent }: { label: string; value: str
 }
 
 export const GoalProgressMeter = memo(function GoalProgressMeter({ goal, t }: Props) {
-  const isDark = useColorScheme() === 'dark';
+  const { colors } = useTheme();
   const turn = goalTurnProgress(goal);
   const checklist = goalChecklistProgress(goal);
-  const accent = goal.status === 'paused' ? '#F59E0B' : goal.status === 'done' ? '#10B981' : '#007AFF';
-  const mutedAccent = isDark ? 'rgba(0,122,255,0.55)' : 'rgba(0,122,255,0.45)';
+  const accent = goal.status === 'paused'
+    ? colors.semantic.warning
+    : goal.status === 'done'
+      ? colors.semantic.success
+      : colors.accent.primary;
+  const mutedAccent = colors.accent.primaryHover;
 
   return (
     <View style={styles.wrap}>

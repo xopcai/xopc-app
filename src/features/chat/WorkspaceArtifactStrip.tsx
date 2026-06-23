@@ -1,12 +1,13 @@
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
 import type { ShareAutoRequest } from '../../api/share';
-import { useMessages } from '../../i18n/messages';
+import { t, useMessages } from '../../i18n/messages';
 import { useGatewayStore } from '../../stores/gateway-store';
+import { useTheme } from '../../theme';
 import { ShareSheet } from '../share/ShareSheet';
 import { prefetchShare } from '../share/share-prefetch';
 import { mapManageRouteToAppPath } from './file-reference-routes';
@@ -78,6 +79,7 @@ function OffWorkspaceArtifactCard({
   chipBg,
   textColor,
   muted,
+  warning,
 }: {
   path: ExtractedFilePath;
   refInfo: WorkspaceFileReference;
@@ -85,6 +87,7 @@ function OffWorkspaceArtifactCard({
   chipBg: string;
   textColor: string;
   muted: string;
+  warning: string;
 }) {
   const router = useRouter();
   const m = useMessages();
@@ -92,7 +95,7 @@ function OffWorkspaceArtifactCard({
   const isMissingOrInvalid = refInfo.scope === 'missing' || refInfo.scope === 'invalid';
   const offWorkspace = isOffWorkspaceScope(refInfo.scope) && refInfo.exists;
   const icon = isMissingOrInvalid ? 'alert-circle-outline' : 'file-outline';
-  const iconColor = isMissingOrInvalid ? '#F59E0B' : muted;
+  const iconColor = isMissingOrInvalid ? warning : muted;
   const appRoute = mapManageRouteToAppPath(refInfo.manageRoute);
   const showSettingsHint =
     refInfo.manageRoute && !appRoute && (refInfo.locationKind === 'xopc-skills' || refInfo.locationKind === 'xopc-sessions');
@@ -106,8 +109,8 @@ function OffWorkspaceArtifactCard({
       style={[
         styles.externalCard,
         {
-          borderColor: isMissingOrInvalid ? 'rgba(245,158,11,0.35)' : border,
-          backgroundColor: isMissingOrInvalid ? 'rgba(245,158,11,0.08)' : chipBg,
+          borderColor: isMissingOrInvalid ? warning : border,
+          backgroundColor: chipBg,
         },
       ]}
     >
@@ -171,7 +174,7 @@ export function WorkspaceArtifactStrip({
   paths: ExtractedFilePath[];
   sessionKey?: string | null;
 }) {
-  const isDark = useColorScheme() === 'dark';
+  const { colors } = useTheme();
   const apiUrl = useGatewayStore((s) => s.apiUrl);
   const token = useGatewayStore((s) => s.token);
   const m = useMessages();
@@ -226,10 +229,10 @@ export function WorkspaceArtifactStrip({
 
   if (!paths.length || resolved === null || visible.length === 0) return null;
 
-  const border = isDark ? 'rgba(255,255,255,0.12)' : '#E5E7EB';
-  const chipBg = isDark ? 'rgba(255,255,255,0.06)' : '#F9FAFB';
-  const textColor = isDark ? '#E5E7EB' : '#374151';
-  const muted = isDark ? '#9CA3AF' : '#6B7280';
+  const border = colors.border.default;
+  const chipBg = colors.surface.input;
+  const textColor = colors.text.primary;
+  const muted = colors.text.secondary;
   const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
   return (
@@ -241,7 +244,7 @@ export function WorkspaceArtifactStrip({
               style={({ pressed }) => [styles.thumbFill, pressed && styles.pressed]}
               onPress={() => setActive(toPreviewable(p))}
               accessibilityRole="button"
-              accessibilityLabel={`预览 ${p.fileName}`}
+              accessibilityLabel={t(m.chat.previewFile, { name: p.fileName })}
             >
               <Image
                 source={{ uri: apiUrl(rawPath(p.rel, sessionKey)), headers }}
@@ -250,13 +253,17 @@ export function WorkspaceArtifactStrip({
               />
             </Pressable>
             <Pressable
-              style={({ pressed }) => [styles.thumbShareBadge, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.thumbShareBadge,
+                { backgroundColor: colors.accent.primary },
+                pressed && styles.pressed,
+              ]}
               onPress={() => setShareTarget(buildShareRequest(p.rel, sessionKey))}
               accessibilityRole="button"
               accessibilityLabel={m.chat.shareFile}
               hitSlop={6}
             >
-              <Icon source="share-variant" size={14} color="#FFFFFF" />
+              <Icon source="share-variant" size={14} color={colors.accent.onPrimary} />
             </Pressable>
           </View>
         ))}
@@ -269,7 +276,7 @@ export function WorkspaceArtifactStrip({
               style={({ pressed }) => [styles.chipBody, pressed && styles.pressed]}
               onPress={() => setActive(toPreviewable(p))}
               accessibilityRole="button"
-              accessibilityLabel={`预览 ${p.fileName}`}
+              accessibilityLabel={t(m.chat.previewFile, { name: p.fileName })}
             >
               <Icon source="file-outline" size={16} color={muted} />
               <Text style={[styles.chipText, { color: textColor }]} numberOfLines={1}>{p.fileName}</Text>
@@ -295,6 +302,7 @@ export function WorkspaceArtifactStrip({
             chipBg={chipBg}
             textColor={textColor}
             muted={muted}
+            warning={colors.semantic.warning}
           />
         ))}
       </View>
@@ -342,7 +350,6 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: 'rgba(0,0,0,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
   },

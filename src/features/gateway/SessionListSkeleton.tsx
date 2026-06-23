@@ -6,6 +6,8 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { colors } from '../../theme';
+
 export type SessionListSkeletonProps = {
   rows?: number;
   isDark?: boolean;
@@ -15,8 +17,9 @@ export const SessionListSkeleton = memo(function SessionListSkeleton({
   rows = 5,
   isDark = false,
 }: SessionListSkeletonProps) {
-  const lineColor = isDark ? '#2C2C2E' : '#E5E5EA';
-  const subColor = isDark ? '#1F1F21' : '#F0F0F4';
+  const themeColors = isDark ? colors.dark : colors.light;
+  const lineColor = themeColors.surface.input;
+  const subColor = themeColors.border.subtle;
   return (
     <View style={styles.wrap}>
       {Array.from({ length: rows }).map((_, i) => (

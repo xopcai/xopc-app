@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 
-import { chatColors } from './styles';
+import { getColors } from '../../theme';
 
 type ChatStreamNoticeProps = {
   isDark: boolean;
@@ -23,19 +23,20 @@ export const ChatStreamNotice = memo(function ChatStreamNotice({
   resumeActionLabel,
   onResume,
 }: ChatStreamNoticeProps) {
+  const colors = getColors(isDark);
   if (reconnecting) {
     return (
       <View
         style={[
           styles.bar,
           {
-            backgroundColor: isDark ? 'rgba(37, 99, 235, 0.14)' : '#EFF6FF',
-            borderBottomColor: isDark ? 'rgba(59, 130, 246, 0.22)' : '#DBEAFE',
+            backgroundColor: colors.accent.selectionBg,
+            borderBottomColor: colors.border.default,
           },
         ]}
       >
-        <ActivityIndicator size={14} color={chatColors.accent} />
-        <Text style={[styles.message, { color: isDark ? '#BFDBFE' : '#1D4ED8' }]} numberOfLines={2}>
+        <ActivityIndicator size={14} color={colors.accent.primary} />
+        <Text style={[styles.message, { color: colors.accent.primary }]} numberOfLines={2}>
           {reconnectingLabel}
         </Text>
       </View>
@@ -48,13 +49,13 @@ export const ChatStreamNotice = memo(function ChatStreamNotice({
         style={[
           styles.bar,
           {
-            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#FFFFFF',
-            borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#E5E7EB',
+            backgroundColor: colors.surface.panel,
+            borderBottomColor: colors.border.default,
           },
         ]}
       >
-        <Icon source="sync" size={16} color={isDark ? '#9CA3AF' : '#6B7280'} />
-        <Text style={[styles.message, { color: isDark ? '#D1D5DB' : '#4B5563' }]} numberOfLines={2}>
+        <Icon source="sync" size={16} color={colors.text.secondary} />
+        <Text style={[styles.message, { color: colors.text.secondary }]} numberOfLines={2}>
           {resumeLabel}
         </Text>
         <Pressable
@@ -63,12 +64,12 @@ export const ChatStreamNotice = memo(function ChatStreamNotice({
           style={({ pressed }) => [
             styles.action,
             {
-              backgroundColor: isDark ? 'rgba(37, 99, 235, 0.22)' : '#DBEAFE',
+              backgroundColor: colors.accent.selectionBg,
               opacity: pressed ? 0.82 : 1,
             },
           ]}
         >
-          <Text style={[styles.actionLabel, { color: chatColors.accent }]}>{resumeActionLabel}</Text>
+          <Text style={[styles.actionLabel, { color: colors.accent.primary }]}>{resumeActionLabel}</Text>
         </Pressable>
       </View>
     );

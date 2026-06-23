@@ -10,7 +10,7 @@ import { Button, Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMessages } from '../../i18n/messages';
-import { useResolvedIsDark } from '../../lib/stack-screen-theme';
+import { useTheme } from '../../theme';
 
 import { runProbeRound } from './probe-coordinator';
 
@@ -26,18 +26,19 @@ export const OfflineDeviceHelpSheet = memo(function OfflineDeviceHelpSheet({
   onRequestClose,
 }: OfflineDeviceHelpSheetProps) {
   const insets = useSafeAreaInsets();
-  const isDark = useResolvedIsDark();
+  const { colors: themeColors } = useTheme();
   const m = useMessages();
   const c = m.gateway.offlineDeviceHelp;
 
   const colors = {
-    bg: isDark ? '#1C1C1E' : '#FFFFFF',
-    overlay: 'rgba(0,0,0,0.5)',
-    text: isDark ? '#F5F5F7' : '#1C1C1E',
-    muted: isDark ? '#8E8E93' : '#6D6D70',
-    border: isDark ? '#2C2C2E' : '#E5E5EA',
-    accent: '#0A84FF',
-    icon: isDark ? '#FCD34D' : '#D97706',
+    bg: themeColors.surface.panel,
+    overlay: themeColors.overlay.scrim,
+    text: themeColors.text.primary,
+    muted: themeColors.text.secondary,
+    border: themeColors.border.default,
+    accent: themeColors.accent.primary,
+    icon: themeColors.semantic.warning,
+    handle: themeColors.border.strong,
   };
 
   const handleRetry = useCallback(async () => {
@@ -64,7 +65,7 @@ export const OfflineDeviceHelpSheet = memo(function OfflineDeviceHelpSheet({
           { backgroundColor: colors.bg, paddingBottom: insets.bottom + 16 },
         ]}
       >
-        <View style={styles.handle} />
+        <View style={[styles.handle, { backgroundColor: colors.handle }]} />
 
         <View style={styles.header}>
           <Icon source="desktop-classic" size={32} color={colors.icon} />
@@ -148,7 +149,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(142,142,147,0.4)',
     marginBottom: 16,
   },
   header: {

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { memo, useCallback, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
 import {
@@ -13,6 +13,7 @@ import {
 import { queryKeys } from '../../query/keys';
 import { useMessages } from '../../i18n/messages';
 import { usePreferencesStore } from '../../stores/preferences-store';
+import { useTheme } from '../../theme';
 import { GoalActionsBar } from './GoalActionsBar';
 import { GoalChecklistBoard } from './GoalChecklistBoard';
 import { GoalJudgementSummary } from './GoalJudgementSummary';
@@ -34,9 +35,9 @@ export const GoalMissionCard = memo(function GoalMissionCard({ sessionKey, agent
   );
   const queryClient = useQueryClient();
   const m = useMessages();
+  const { colors } = useTheme();
   const t = m.chat.goal;
   const language = usePreferencesStore((s) => s.language);
-  const isDark = useColorScheme() === 'dark';
   const [collapsed, setCollapsed] = useState(false);
   const [mutationBusy, setMutationBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,8 +88,8 @@ export const GoalMissionCard = memo(function GoalMissionCard({ sessionKey, agent
 
   const phase = goalUiPhase(goal, agentBusy);
   const canEditChecklist = goal.status === 'active' || goal.status === 'paused';
-  const bg = isDark ? '#1C1C1E' : '#FFFFFF';
-  const border = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
+  const bg = colors.surface.panel;
+  const border = colors.border.default;
 
   return (
     <View style={styles.outer}>
@@ -131,7 +132,7 @@ export const GoalMissionCard = memo(function GoalMissionCard({ sessionKey, agent
         ) : null}
 
         {error || goalQuery.error ? (
-          <Text variant="bodySmall" style={styles.error}>
+          <Text variant="bodySmall" style={[styles.error, { color: colors.semantic.errorBold }]}>
             {error || (goalQuery.error instanceof Error ? goalQuery.error.message : t.loadFailed)}
           </Text>
         ) : null}
@@ -162,6 +163,5 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   error: {
-    color: '#EF4444',
   },
 });

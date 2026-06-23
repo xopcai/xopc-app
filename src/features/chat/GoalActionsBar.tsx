@@ -3,6 +3,7 @@ import { Alert, StyleSheet, View } from 'react-native';
 import { Button } from 'react-native-paper';
 
 import type { ChecklistMutationOp, GoalWebchatAction, WebchatPersistentGoalWire } from '../../query/goals';
+import { useTheme } from '../../theme';
 import type { GoalMessages } from './goal-utils';
 
 type Props = {
@@ -22,6 +23,7 @@ export const GoalActionsBar = memo(function GoalActionsBar({
   onAction,
   onChecklist,
 }: Props) {
+  const { colors } = useTheme();
   const confirm = useCallback((title: string, message: string, run: () => void) => {
     Alert.alert(title, message, [
       { text: t.cancel, style: 'cancel' },
@@ -66,7 +68,7 @@ export const GoalActionsBar = memo(function GoalActionsBar({
       <Button
         compact
         mode="text"
-        textColor="#EF4444"
+        textColor={colors.semantic.errorBold}
         disabled={mutationBusy}
         onPress={() => confirm(t.clear, t.clearConfirm, () => void onAction('clear'))}
       >

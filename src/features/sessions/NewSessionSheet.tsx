@@ -3,11 +3,13 @@
  * Allows selecting an agent before creating the session.
  */
 import { memo, useCallback } from 'react';
-import { ScrollView, StyleSheet, useColorScheme } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { Button, Dialog, Portal, RadioButton, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
 import type { ChatAgentOption } from '../../query/agents';
+import { radii, spacing } from '../../theme';
+import { useTheme } from '../../theme/useTheme';
 
 type NewSessionSheetProps = {
   visible: boolean;
@@ -30,7 +32,7 @@ export const NewSessionSheet = memo(function NewSessionSheet({
   onCreate,
   loading = false,
 }: NewSessionSheetProps) {
-  const isDark = useColorScheme() === 'dark';
+  const { colors } = useTheme();
   const m = useMessages();
 
   const handleCreate = useCallback(() => {
@@ -66,9 +68,7 @@ export const NewSessionSheet = memo(function NewSessionSheet({
                         {
                           backgroundColor:
                             selectedAgentId === agent.id
-                              ? isDark
-                                ? 'rgba(96,165,250,0.1)'
-                                : 'rgba(37,99,235,0.06)'
+                              ? colors.accent.selectionBg
                               : 'transparent',
                         },
                       ]}
@@ -78,7 +78,7 @@ export const NewSessionSheet = memo(function NewSessionSheet({
               </ScrollView>
             </>
           ) : (
-            <Text variant="bodyMedium" style={{ opacity: 0.7 }}>
+            <Text variant="bodyMedium" style={{ color: colors.text.secondary }}>
               {m.newSession.creatingHint.replace('{{agentName}}', agents[0]?.name ? ` with ${agents[0].name}` : '')}
             </Text>
           )}
@@ -107,14 +107,14 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   label: {
-    marginBottom: 8,
+    marginBottom: spacing.sm,
     opacity: 0.7,
   },
   agentList: {
     maxHeight: 260,
   },
   agentItem: {
-    borderRadius: 8,
-    marginBottom: 2,
+    borderRadius: radii.sm,
+    marginBottom: spacing.xxs,
   },
 });

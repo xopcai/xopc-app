@@ -6,15 +6,15 @@ import { ActivityIndicator, Button, Chip, Icon, Text } from 'react-native-paper'
 
 import { useMessages } from '../../i18n/messages';
 import { openChat } from '../../lib/navigation';
-import { useResolvedIsDark } from '../../lib/stack-screen-theme';
 import { cronRunSessionKey, fetchCronRunsHistory, RUNS_HISTORY_LIMIT, type CronRunRow } from '../../query/cron';
 import { queryKeys } from '../../query/keys';
 import { useGatewayConfigured } from '../../query/sessions';
+import { useTheme } from '../../theme';
 
 export function CronRunsList() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const isDark = useResolvedIsDark();
+  const { colors } = useTheme();
   const configured = useGatewayConfigured();
   const m = useMessages();
   const pm = m.cronRunsPage;
@@ -41,24 +41,24 @@ export function CronRunsList() {
     [pm.statusCancelled, pm.statusFailed, pm.statusRunning, pm.statusSuccess],
   );
 
-  const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
-  const textPrimary = isDark ? '#E5E7EB' : '#1F2937';
-  const textSecondary = isDark ? '#9CA3AF' : '#6B7280';
+  const cardBg = colors.surface.panel;
+  const textPrimary = colors.text.primary;
+  const textSecondary = colors.text.secondary;
 
   const statusColor = useCallback(
     (s: CronRunRow['status']) => {
       switch (s) {
         case 'success':
-          return isDark ? '#86EFAC' : '#16A34A';
+          return colors.semantic.success;
         case 'failed':
-          return isDark ? '#FCA5A5' : '#DC2626';
+          return colors.semantic.error;
         case 'running':
-          return isDark ? '#93C5FD' : '#2563EB';
+          return colors.accent.primary;
         default:
           return textSecondary;
       }
     },
-    [isDark, textSecondary],
+    [colors.accent.primary, colors.semantic.error, colors.semantic.success, textSecondary],
   );
 
   const onRefresh = useCallback(() => {
@@ -92,7 +92,7 @@ export function CronRunsList() {
                 {typeof item.duration === 'number' ? ` · ${item.duration}ms` : ''}
               </Text>
             </View>
-            <View style={[styles.statusPill, { backgroundColor: `${color}18` }]}>
+            <View style={[styles.statusPill, { backgroundColor: colors.accent.selectionBg }]}>
               <Text style={{ color, fontSize: 11, fontWeight: '700' }}>{statusLabel[item.status]}</Text>
             </View>
             {sessionKey ? <Icon source="chevron-right" size={20} color={textSecondary} /> : null}
@@ -105,7 +105,7 @@ export function CronRunsList() {
           ) : null}
 
           {item.error ? (
-            <Text style={[styles.error, { color: isDark ? '#FCA5A5' : '#DC2626' }]} numberOfLines={3}>
+            <Text style={[styles.error, { color: colors.semantic.error }]} numberOfLines={3}>
               {item.error}
             </Text>
           ) : null}
@@ -129,7 +129,7 @@ export function CronRunsList() {
         </Pressable>
       );
     },
-    [cardBg, isDark, openRunChat, statusColor, statusLabel, textPrimary, textSecondary],
+    [cardBg, colors.accent.selectionBg, colors.semantic.error, openRunChat, statusColor, statusLabel, textPrimary, textSecondary],
   );
 
   const listHeader = (

@@ -6,10 +6,11 @@
  * - **inline** (`inline={true}`): compact row inside an AssistantStepsBlock timeline.
  */
 import { memo, useState } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 
 import { chatColors } from './styles';
+import { useTheme } from '../../theme';
 
 export type ThinkingBlockLabels = {
   thoughts: string;
@@ -29,7 +30,10 @@ export const ThinkingBlock = memo(function ThinkingBlock({
   labels?: ThinkingBlockLabels;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const isDark = useColorScheme() === 'dark';
+  const { colors, isDark } = useTheme();
+  const muted = colors.text.secondary;
+  const subtle = colors.text.tertiary;
+  const bodyColor = colors.text.primary;
   const trimmed = (text || '').trim();
   const hasContent = trimmed.length > 0;
 
@@ -53,26 +57,26 @@ export const ThinkingBlock = memo(function ThinkingBlock({
       >
         <View style={inlineStyles.iconCol}>
           {streaming ? (
-            <ActivityIndicator size={12} color={isDark ? '#9CA3AF' : '#6B7280'} />
+            <ActivityIndicator size={12} color={muted} />
           ) : (
             <Icon
               source="check-circle-outline"
               size={14}
-              color={isDark ? '#22C55E' : '#16A34A'}
+              color={colors.semantic.success}
             />
           )}
         </View>
         <View style={inlineStyles.content}>
           <Text
             variant="labelSmall"
-            style={[inlineStyles.label, { color: isDark ? '#9CA3AF' : '#6B7280' }]}
+            style={[inlineStyles.label, { color: muted }]}
           >
             {label}
           </Text>
           {showFullText ? (
             <Text
               variant="bodySmall"
-              style={[inlineStyles.body, { color: isDark ? '#9CA3AF' : '#6B7280' }]}
+              style={[inlineStyles.body, { color: muted }]}
               selectable
             >
               {trimmed}
@@ -81,14 +85,14 @@ export const ThinkingBlock = memo(function ThinkingBlock({
             <Text
               variant="bodySmall"
               numberOfLines={4}
-              style={[inlineStyles.body, { color: isDark ? '#9CA3AF' : '#6B7280' }]}
+              style={[inlineStyles.body, { color: muted }]}
             >
               {trimmed}
             </Text>
           ) : streaming ? (
             <Text
               variant="bodySmall"
-              style={[inlineStyles.body, { color: isDark ? '#6B7280' : '#9CA3AF' }]}
+              style={[inlineStyles.body, { color: subtle }]}
             >
               …
             </Text>
@@ -120,23 +124,23 @@ export const ThinkingBlock = memo(function ThinkingBlock({
         <Icon
           source={streaming ? 'loading' : 'lightbulb-outline'}
           size={14}
-          color={isDark ? '#9CA3AF' : '#6B7280'}
+          color={muted}
         />
-        <Text variant="labelSmall" style={[styles.label, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>
+        <Text variant="labelSmall" style={[styles.label, { color: muted }]}>
           {label}
         </Text>
         {hasContent ? (
           <Icon
             source={expanded ? 'chevron-up' : 'chevron-down'}
             size={14}
-            color={isDark ? '#9CA3AF' : '#6B7280'}
+            color={muted}
           />
         ) : null}
         {preview && !expanded ? (
           <Text
             variant="bodySmall"
             numberOfLines={1}
-            style={[styles.preview, { color: isDark ? '#6B7280' : '#9CA3AF' }]}
+            style={[styles.preview, { color: subtle }]}
           >
             {preview}
           </Text>
@@ -146,7 +150,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
         <View style={styles.body}>
           <Text
             variant="bodySmall"
-            style={{ color: isDark ? '#D1D5DB' : '#4B5563', lineHeight: 18 }}
+            style={{ color: bodyColor, lineHeight: 18 }}
             selectable
           >
             {trimmed}

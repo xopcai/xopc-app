@@ -3,7 +3,7 @@ import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { floatingBottomPadding, useTheme } from '../theme';
+import { floatingBottomPadding, radii, spacing, typography, useTheme } from '../theme';
 
 export type OverflowMenuItem = {
   key: string;
@@ -23,7 +23,7 @@ export function ListOverflowMenu({ items, accessibilityLabel }: ListOverflowMenu
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [visible, setVisible] = useState(false);
-  const triggerBg = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.05)';
+  const triggerBg = colors.surface.input;
 
   const close = useCallback(() => setVisible(false), []);
 
@@ -47,7 +47,7 @@ export function ListOverflowMenu({ items, accessibilityLabel }: ListOverflowMenu
 
       <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
         <Pressable
-          style={styles.backdrop}
+          style={[styles.backdrop, { backgroundColor: colors.overlay.scrim }]}
           onPress={close}
           accessibilityRole="button"
           accessibilityLabel={accessibilityLabel}
@@ -61,7 +61,7 @@ export function ListOverflowMenu({ items, accessibilityLabel }: ListOverflowMenu
             },
           ]}
         >
-          <View style={styles.handle} />
+          <View style={[styles.handle, { backgroundColor: colors.border.strong }]} />
           <View style={styles.actionsRow}>
             {items.map((item) => {
               const iconColor = item.destructive
@@ -111,33 +111,32 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
   },
   panel: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 10,
-    paddingHorizontal: 20,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.xl,
   },
   handle: {
     alignSelf: 'center',
     width: 36,
     height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(142,142,147,0.4)',
-    marginBottom: 16,
+    borderRadius: spacing.xxs,
+    marginBottom: spacing.lg,
+    opacity: 0.7,
   },
   actionsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'flex-start',
-    gap: 20,
-    paddingBottom: 8,
+    gap: spacing.xl,
+    paddingBottom: spacing.sm,
   },
   action: {
     alignItems: 'center',
     width: 72,
-    gap: 8,
+    gap: spacing.sm,
   },
   actionPressed: {
     opacity: 0.75,
@@ -148,14 +147,13 @@ const styles = StyleSheet.create({
   iconTile: {
     width: 56,
     height: 56,
-    borderRadius: 16,
+    borderRadius: radii.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   label: {
-    fontSize: 12,
+    ...typography.caption,
     fontWeight: '500',
     textAlign: 'center',
-    lineHeight: 16,
   },
 });

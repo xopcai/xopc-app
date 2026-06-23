@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
-import { useResolvedIsDark } from '../../lib/stack-screen-theme';
+import { useTheme } from '../../theme';
 
 import {
   buildCronSchedule,
@@ -20,14 +20,14 @@ const INTERVAL_OPTIONS: IntervalPreset[] = [15, 30, 60];
 const MINUTE_OPTIONS = [0, 15, 30, 45] as const;
 
 export function CronSchedulePicker({ value, onChange }: CronSchedulePickerProps) {
-  const isDark = useResolvedIsDark();
+  const { colors } = useTheme();
   const m = useMessages();
   const pm = m.cronForm;
 
-  const chipBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)';
-  const chipActiveBg = isDark ? '#2563EB' : '#2563EB';
-  const textPrimary = isDark ? '#F9FAFB' : '#111827';
-  const textSecondary = isDark ? '#9CA3AF' : '#6B7280';
+  const chipBg = colors.surface.input;
+  const chipActiveBg = colors.accent.primary;
+  const textPrimary = colors.text.primary;
+  const textSecondary = colors.text.secondary;
   const preview = buildCronSchedule(value);
 
   const setMode = (mode: ScheduleMode) => onChange({ ...value, mode });
@@ -43,6 +43,7 @@ export function CronSchedulePicker({ value, onChange }: CronSchedulePickerProps)
           onPress={() => setMode('interval')}
           chipBg={chipBg}
           activeBg={chipActiveBg}
+          activeText={colors.text.inverse}
           textSecondary={textSecondary}
         />
         <ModeChip
@@ -51,6 +52,7 @@ export function CronSchedulePicker({ value, onChange }: CronSchedulePickerProps)
           onPress={() => setMode('daily')}
           chipBg={chipBg}
           activeBg={chipActiveBg}
+          activeText={colors.text.inverse}
           textSecondary={textSecondary}
         />
         <ModeChip
@@ -59,6 +61,7 @@ export function CronSchedulePicker({ value, onChange }: CronSchedulePickerProps)
           onPress={() => setMode('weekdays')}
           chipBg={chipBg}
           activeBg={chipActiveBg}
+          activeText={colors.text.inverse}
           textSecondary={textSecondary}
         />
       </View>
@@ -73,6 +76,7 @@ export function CronSchedulePicker({ value, onChange }: CronSchedulePickerProps)
               onPress={() => onChange({ ...value, intervalMinutes: minutes })}
               chipBg={chipBg}
               activeBg={chipActiveBg}
+              activeText={colors.text.inverse}
               textSecondary={textSecondary}
             />
           ))}
@@ -104,6 +108,7 @@ export function CronSchedulePicker({ value, onChange }: CronSchedulePickerProps)
                   onPress={() => onChange({ ...value, minute })}
                   chipBg={chipBg}
                   activeBg={chipActiveBg}
+                  activeText={colors.text.inverse}
                   textSecondary={textSecondary}
                 />
               ))}
@@ -131,6 +136,7 @@ function ModeChip({
   onPress,
   chipBg,
   activeBg,
+  activeText,
   textSecondary,
 }: {
   label: string;
@@ -138,6 +144,7 @@ function ModeChip({
   onPress: () => void;
   chipBg: string;
   activeBg: string;
+  activeText: string;
   textSecondary: string;
 }) {
   return (
@@ -145,7 +152,7 @@ function ModeChip({
       onPress={onPress}
       style={[styles.chip, { backgroundColor: active ? activeBg : chipBg }]}
     >
-      <Text style={[styles.chipText, { color: active ? '#FFFFFF' : textSecondary }, active && styles.chipTextActive]}>
+      <Text style={[styles.chipText, { color: active ? activeText : textSecondary }, active && styles.chipTextActive]}>
         {label}
       </Text>
     </Pressable>

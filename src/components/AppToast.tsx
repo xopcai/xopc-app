@@ -42,12 +42,12 @@ export function AppToast({
   const toastTheme = useMemo(
     () => ({
       colors: {
-        inverseSurface: isDark ? colors.surface.panel : '#FFFFFF',
+        inverseSurface: colors.surface.panel,
         inverseOnSurface: colors.text.primary,
         inversePrimary: colors.accent.primary,
       },
     }),
-    [colors, isDark],
+    [colors],
   );
 
   const wrapperStyle = useMemo(
@@ -62,7 +62,7 @@ export function AppToast({
       marginHorizontal: spacing.lg,
       borderRadius: radii.xxl,
       borderWidth: StyleSheet.hairlineWidth,
-      borderColor: isDark ? 'rgba(255,255,255,0.10)' : colors.border.default,
+      borderColor: colors.border.default,
       shadowColor: '#000',
       shadowOpacity: isDark ? 0.18 : 0.06,
       shadowRadius: 8,

@@ -623,13 +623,13 @@ export function NotesScreen({ embedded = false, onRequestHome }: NotesScreenProp
                   style={[
                     styles.toolBtn,
                     { backgroundColor: colors.surface.input },
-                    recording && styles.recordingBtn,
-                  ]}
+	                    recording && { backgroundColor: colors.semantic.errorBold },
+	                  ]}
                   onPressIn={() => void handleVoiceStart()}
                   onPressOut={() => void handleVoiceEnd()}
                   hitSlop={8}
                 >
-                  <Icon source="microphone" size={20} color={recording ? '#FFFFFF' : colors.text.tertiary} />
+	                  <Icon source="microphone" size={20} color={recording ? colors.accent.onPrimary : colors.text.tertiary} />
                 </Pressable>
               )}
             </View>
@@ -756,7 +756,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   recordingBtn: {
-    backgroundColor: '#EF4444',
     borderRadius: 18,
   },
 });

@@ -45,6 +45,7 @@ export const en = {
   sessions: {
     searchPlaceholder: 'Search sessions…',
     empty: 'No sessions yet',
+    untitled: 'New chat',
     emptyHint: 'Start a new conversation to begin chatting with your AI assistant.',
     noResults: 'No results',
     noResultsHint: 'No sessions match "{{query}}"',
@@ -297,6 +298,7 @@ export const en = {
     messageArtifactsHeading: 'Message output',
     fileReferenceExternalBadge: 'Off workspace',
     fileReferenceExternalDescription: 'This file is outside the current session workspace.',
+    previewFile: 'Preview {{name}}',
     fileReferenceOffWorkspaceBaseDescription:
       'This file is outside the current session workspace and cannot be opened in the workspace preview on mobile.',
     fileReferenceBrowserOffWorkspaceDescription:
@@ -315,6 +317,18 @@ export const en = {
     fileReferenceInvalidDescription: 'This file path is invalid and cannot be opened as an artifact.',
     fileReferenceCopyPath: 'Copy path',
     fileReferenceCopied: 'Path copied',
+    filePreviewClose: 'Close preview',
+    filePreviewLoading: 'Loading preview…',
+    filePreviewLoadFailed: 'Could not load preview: {{message}}',
+    filePreviewUnsupportedWithText: 'Inline preview is not supported for this file type on mobile. Extracted text is shown below.',
+    filePreviewUnsupported: 'Inline preview is not supported for this file type on mobile.',
+    htmlPreviewUnavailable: 'Could not load HTML preview.',
+    htmlPreviewWebViewFailed: 'WebView failed to load',
+    htmlPreviewRendering: 'Rendering page…',
+    htmlPreviewRenderFailed: 'HTML render failed: {{message}}',
+    overlayDismissLabel: 'Pull down to close AI chat',
+    overlayOpenedAnnouncement: 'AI chat opened',
+    overlayClosedAnnouncement: 'Returned to workspace',
     shareFile: 'Share',
     shareFilePreview: 'Share this file',
     send: 'Send',
@@ -361,6 +375,7 @@ export const en = {
     holdToSpeak: 'Hold to speak',
     voiceReleaseCenterHint: 'Release to send voice',
     voiceReleaseTextHint: 'To text',
+    voiceTextGlyph: 'Txt',
     voiceReleaseCancelHint: 'Release to cancel',
     voicePermissionDenied: 'Microphone permission is required for voice input.',
     voiceWebUnsupported: 'Voice hold-to-speak is available in the iOS/Android app build.',
@@ -526,6 +541,21 @@ export const en = {
   workspaceHome: {
     automationSection: 'Automation',
     automationHint: 'Create and manage scheduled agent tasks.',
+  },
+
+  workspaceSearch: {
+    title: 'Search',
+    emptyNoteTitle: 'Untitled note',
+    noteMeta: 'Note',
+    sessionMessages: '{{count}} messages',
+    gatewayDisconnectedTitle: 'Gateway not connected',
+    gatewayDisconnectedHint: 'Connect a gateway to search notes and chats.',
+    idleTitle: 'Search workspace',
+    idleHint: 'Enter keywords to search notes and chat history.',
+    searching: 'Searching…',
+    noResultsTitle: 'No results',
+    noResultsHint: 'Try another keyword.',
+    placeholder: 'Search notes and chats…',
   },
 
   // ── Agents page ──────────────────────────────────────────
@@ -703,6 +733,8 @@ export const en = {
       hours: '{{n}}h ago',
       days: '{{n}}d ago',
     },
+    aiOrganizeTitle: 'AI organize suggestions',
+    aiOrganizeComingSoon: 'AI organize is coming soon',
   },
 
   notesPage: {
@@ -938,7 +970,9 @@ export const en = {
     ok: 'OK',
     cancel: 'Cancel',
     back: 'Back',
+    close: 'Close',
     retry: 'Retry',
+    search: 'Search',
     loading: 'Loading…',
     error: 'Error',
   },

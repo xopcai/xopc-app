@@ -1,11 +1,12 @@
 import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import type { AudioPlayer } from 'expo-audio';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
 import { useGatewayStore } from '../../stores/gateway-store';
+import { useTheme } from '../../theme';
 import type { AudioContent } from './messages.types';
 import { audioNameFromPath, buildGatewayAudioUrl } from './audio-url';
 
@@ -27,7 +28,7 @@ export const AudioMessageBlock = memo(function AudioMessageBlock({
   /** User bubbles pass `end` so the bar hugs the right edge like web chat. */
   align?: 'start' | 'end';
 }) {
-  const isDark = useColorScheme() === 'dark';
+  const { colors } = useTheme();
   const m = useMessages();
   const token = useGatewayStore((s) => s.token);
   const playerRef = useRef<AudioPlayer | null>(null);
@@ -121,11 +122,11 @@ export const AudioMessageBlock = memo(function AudioMessageBlock({
   }, [ensurePlayer, loading, m.chat.audioPlaybackFailed]);
 
   const progress = durationMillis > 0 ? Math.min(1, Math.max(0, positionMillis / durationMillis)) : 0;
-  const border = isDark ? 'rgba(255,255,255,0.12)' : '#E5E7EB';
-  const bg = isDark ? 'rgba(255,255,255,0.06)' : '#F9FAFB';
-  const text = isDark ? '#E5E7EB' : '#374151';
-  const muted = isDark ? '#9CA3AF' : '#6B7280';
-  const accent = '#007AFF';
+  const border = colors.border.default;
+  const bg = colors.surface.input;
+  const text = colors.text.primary;
+  const muted = colors.text.secondary;
+  const accent = colors.accent.primary;
 
   return (
     <View
@@ -141,14 +142,14 @@ export const AudioMessageBlock = memo(function AudioMessageBlock({
         accessibilityRole="button"
         accessibilityLabel={playing ? m.chat.audioPause : m.chat.audioPlay}
       >
-        <Icon source={loading ? 'loading' : playing ? 'pause' : 'play'} size={18} color="#FFFFFF" />
+        <Icon source={loading ? 'loading' : playing ? 'pause' : 'play'} size={18} color={colors.accent.onPrimary} />
       </Pressable>
       <View style={styles.body}>
         <Text style={[styles.title, { color: text }]} numberOfLines={1}>{title}</Text>
-        <View style={[styles.progressTrack, { backgroundColor: isDark ? '#3A3A3C' : '#E5E7EB' }]}>
+        <View style={[styles.progressTrack, { backgroundColor: colors.border.default }]}>
           <View style={[styles.progressFill, { width: `${progress * 100}%`, backgroundColor: accent }]} />
         </View>
-        <Text style={[styles.meta, { color: error ? '#EF4444' : muted }]} numberOfLines={1}>
+        <Text style={[styles.meta, { color: error ? colors.semantic.errorBold : muted }]} numberOfLines={1}>
           {error ?? `${formatDuration(positionMillis)} / ${formatDuration(durationMillis)}`}
         </Text>
       </View>

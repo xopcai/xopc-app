@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { memo } from 'react';
-import { StyleSheet, useColorScheme, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
 import { fetchWebchatGoalRuns } from '../../query/goals';
 import { queryKeys } from '../../query/keys';
+import { useTheme } from '../../theme';
 import { runVerdictLabel, type GoalMessages } from './goal-utils';
 
 type Props = {
@@ -13,7 +14,7 @@ type Props = {
 };
 
 export const GoalLatestRun = memo(function GoalLatestRun({ sessionKey, t }: Props) {
-  const isDark = useColorScheme() === 'dark';
+  const { colors } = useTheme();
   const q = useQuery({
     queryKey: queryKeys.webchatGoalRuns(sessionKey, 1),
     queryFn: () => fetchWebchatGoalRuns(sessionKey, { limit: 1 }),
@@ -23,7 +24,7 @@ export const GoalLatestRun = memo(function GoalLatestRun({ sessionKey, t }: Prop
   const run = q.data?.runs?.[0];
   if (!run) return null;
 
-  const panelBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+  const panelBg = colors.surface.input;
   const verdict = runVerdictLabel(run.verdict, t);
   const checklist = run.checklistProgress;
 
@@ -31,7 +32,9 @@ export const GoalLatestRun = memo(function GoalLatestRun({ sessionKey, t }: Prop
     <View style={[styles.wrap, { backgroundColor: panelBg }]}> 
       <View style={styles.head}>
         <Text variant="labelMedium" style={styles.title}>{t.latestRunTitle}</Text>
-        <Text style={styles.verdict}>{verdict}</Text>
+        <Text style={[styles.verdict, { backgroundColor: colors.surface.input, color: colors.semantic.success }]}>
+          {verdict}
+        </Text>
       </View>
       {run.reason ? (
         <Text variant="bodySmall" style={styles.reason} numberOfLines={3}>
@@ -39,9 +42,17 @@ export const GoalLatestRun = memo(function GoalLatestRun({ sessionKey, t }: Prop
         </Text>
       ) : null}
       <View style={styles.metaRow}>
-        <Text style={styles.meta}>{run.willContinue ? t.nextStepContinue : t.nextStepStop}</Text>
-        <Text style={styles.meta}>{`${run.turnsUsed}/${run.maxTurns}`}</Text>
-        {checklist ? <Text style={styles.meta}>{`${checklist.done}/${checklist.total}`}</Text> : null}
+        <Text style={[styles.meta, { backgroundColor: colors.accent.selectionBg, color: colors.accent.primary }]}>
+          {run.willContinue ? t.nextStepContinue : t.nextStepStop}
+        </Text>
+        <Text style={[styles.meta, { backgroundColor: colors.accent.selectionBg, color: colors.accent.primary }]}>
+          {`${run.turnsUsed}/${run.maxTurns}`}
+        </Text>
+        {checklist ? (
+          <Text style={[styles.meta, { backgroundColor: colors.accent.selectionBg, color: colors.accent.primary }]}>
+            {`${checklist.done}/${checklist.total}`}
+          </Text>
+        ) : null}
       </View>
       {run.assistantPreview ? (
         <Text variant="bodySmall" style={styles.preview} numberOfLines={2}>
@@ -72,8 +83,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    backgroundColor: 'rgba(16,185,129,0.12)',
-    color: '#10B981',
     fontSize: 11,
     fontWeight: '900',
   },
@@ -91,8 +100,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 7,
     paddingVertical: 2,
-    backgroundColor: 'rgba(0,122,255,0.10)',
-    color: '#007AFF',
     fontSize: 10,
     fontWeight: '800',
   },

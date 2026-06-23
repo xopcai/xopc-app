@@ -24,7 +24,6 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  useColorScheme,
   View,
 } from 'react-native';
 import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
@@ -32,6 +31,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { useMessages } from '../../i18n/messages';
+import { radii, spacing, typography } from '../../theme';
+import { useTheme } from '../../theme/useTheme';
 
 export type SharePreviewModalProps = {
   visible: boolean;
@@ -42,15 +43,10 @@ export type SharePreviewModalProps = {
 
 export function SharePreviewModal({ visible, url, title, onClose }: SharePreviewModalProps) {
   const insets = useSafeAreaInsets();
-  const scheme = useColorScheme();
+  const { colors } = useTheme();
   const m = useMessages();
   const [loading, setLoading] = useState(true);
   const [errored, setErrored] = useState(false);
-
-  const surface = scheme === 'dark' ? '#0F172A' : '#FFFFFF';
-  const textColor = scheme === 'dark' ? '#F9FAFB' : '#111827';
-  const muted = scheme === 'dark' ? '#9CA3AF' : '#6B7280';
-  const border = scheme === 'dark' ? 'rgba(255,255,255,0.12)' : '#E5E7EB';
 
   const headerTitle = title?.trim() || m.share.previewTitle;
   // Stable key per (url, visible) so opening a different share resets state.
@@ -58,16 +54,16 @@ export function SharePreviewModal({ visible, url, title, onClose }: SharePreview
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
-      <View style={[styles.root, { backgroundColor: surface, paddingTop: insets.top }]}>
-        <View style={[styles.header, { borderBottomColor: border }]}>
-          <Text variant="titleMedium" style={[styles.title, { color: textColor }]} numberOfLines={1}>
+      <View style={[styles.root, { backgroundColor: colors.surface.base, paddingTop: insets.top }]}>
+        <View style={[styles.header, { borderBottomColor: colors.border.default }]}>
+          <Text variant="titleMedium" style={[styles.title, { color: colors.text.primary }]} numberOfLines={1}>
             {headerTitle}
           </Text>
           {url ? (
             <IconButton
               icon="open-in-new"
               size={20}
-              iconColor={textColor}
+              iconColor={colors.text.primary}
               onPress={() => void Linking.openURL(url)}
               accessibilityLabel={m.share.previewOpenExternal}
             />
@@ -75,7 +71,7 @@ export function SharePreviewModal({ visible, url, title, onClose }: SharePreview
           <IconButton
             icon="close"
             size={22}
-            iconColor={textColor}
+            iconColor={colors.text.primary}
             onPress={onClose}
             accessibilityLabel={m.share.close}
           />
@@ -104,21 +100,29 @@ export function SharePreviewModal({ visible, url, title, onClose }: SharePreview
               allowsBackForwardNavigationGestures={Platform.OS === 'ios'}
             />
             {loading ? (
-              <View style={styles.loaderOverlay} pointerEvents="none">
+              <View style={[styles.loaderOverlay, { backgroundColor: colors.surface.panel }]} pointerEvents="none">
                 <ActivityIndicator />
-                <Text style={{ color: muted, marginTop: 8 }}>{m.share.previewLoading}</Text>
+                <Text style={[styles.loaderText, { color: colors.text.secondary }]}>
+                  {m.share.previewLoading}
+                </Text>
               </View>
             ) : null}
             {errored ? (
-              <View style={styles.errorOverlay}>
-                <Text style={[styles.errorText, { color: '#EF4444' }]}>{m.share.previewError}</Text>
+              <View style={[styles.errorOverlay, { backgroundColor: colors.surface.panel }]}>
+                <Text style={[styles.errorText, { color: colors.semantic.errorBold }]}>
+                  {m.share.previewError}
+                </Text>
                 <Pressable
                   onPress={() => void Linking.openURL(url)}
-                  style={({ pressed }) => [styles.errorButton, { borderColor: border }, pressed && styles.pressed]}
+                  style={({ pressed }) => [
+                    styles.errorButton,
+                    { borderColor: colors.border.default, backgroundColor: colors.surface.input },
+                    pressed && styles.pressed,
+                  ]}
                   accessibilityRole="button"
                   accessibilityLabel={m.share.previewOpenExternal}
                 >
-                  <Text style={{ color: textColor, fontWeight: '600' }}>
+                  <Text style={[styles.errorButtonText, { color: colors.text.primary }]}>
                     {m.share.previewOpenExternal}
                   </Text>
                 </Pressable>
@@ -144,10 +148,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingLeft: 16,
+    paddingLeft: spacing.lg,
   },
   title: {
     flex: 1,
+    ...typography.ui,
   },
   body: {
     flex: 1,
@@ -160,24 +165,31 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.04)',
+  },
+  loaderText: {
+    ...typography.label,
+    marginTop: spacing.sm,
   },
   errorOverlay: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
-    gap: 16,
-    backgroundColor: 'rgba(0,0,0,0.04)',
+    padding: spacing.xl,
+    gap: spacing.lg,
   },
   errorText: {
+    ...typography.ui,
     textAlign: 'center',
   },
   errorButton: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  errorButtonText: {
+    ...typography.ui,
+    fontWeight: '600',
   },
   pressed: {
     opacity: 0.75,

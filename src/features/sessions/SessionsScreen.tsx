@@ -345,7 +345,7 @@ export function SessionsScreen() {
 
       <RenameDialog
         visible={Boolean(renameTarget)}
-        currentName={renameTarget ? sessionDisplayName(renameTarget) : ''}
+        currentName={renameTarget ? sessionDisplayName(renameTarget, m.sessions.untitled) : ''}
         loading={renameMutation.isPending}
         onDismiss={() => setRenameTarget(null)}
         onRename={(name) => {

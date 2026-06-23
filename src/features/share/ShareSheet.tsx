@@ -21,7 +21,6 @@ import {
   Pressable,
   Share,
   StyleSheet,
-  useColorScheme,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -31,7 +30,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheetModal } from '../../components/BottomSheetModal';
 import { t, useMessages } from '../../i18n/messages';
-import { getColors } from '../../theme';
+import { radii, spacing, typography, type ColorScheme } from '../../theme';
+import { useTheme } from '../../theme/useTheme';
 import { useCreateShare, useThumbnailReadiness, thumbnailUrlWithCacheBust } from '../../query/shares';
 import type {
   ShareAutoPayload,
@@ -47,7 +47,7 @@ export type ShareSheetProps = {
 };
 
 export const ShareSheet = memo(function ShareSheet({ visible, request, onClose }: ShareSheetProps) {
-  const scheme = useColorScheme();
+  const { colors } = useTheme();
   const m = useMessages();
 
   const { mutate, data, error, isPending, reset } = useCreateShare();
@@ -105,7 +105,7 @@ export const ShareSheet = memo(function ShareSheet({ visible, request, onClose }
     }
   }, [data?.share.shareUrl, data?.share.title]);
 
-  const palette = useColors(scheme === 'dark');
+  const palette = useColors(colors);
 
   return (
     <>
@@ -123,7 +123,7 @@ export const ShareSheet = memo(function ShareSheet({ visible, request, onClose }
           </View>
         ) : error ? (
           <View style={styles.center}>
-            <Text style={[styles.error]}>
+            <Text style={[styles.error, { color: palette.error }]}>
               {t(m.share.createFailed, { message: error.message })}
             </Text>
           </View>
@@ -147,6 +147,7 @@ export const ShareSheet = memo(function ShareSheet({ visible, request, onClose }
         url={data?.share.shareUrl ?? ''}
         title={data?.share.title ?? ''}
         onClose={() => setQrOpen(false)}
+        palette={palette}
         m={m}
       />
       <SharePreviewModal
@@ -199,9 +200,11 @@ function ShareSheetBody({
           <Image source={{ uri: thumbnailUri }} style={styles.thumbnail} resizeMode="cover" />
         ) : null}
         {thumbStatus === 'pending' ? (
-          <View style={styles.thumbnailPendingOverlay}>
-            <ActivityIndicator size="small" color="#fff" />
-            <Text style={styles.thumbnailPendingText}>{m.share.thumbnailPending}</Text>
+          <View style={[styles.thumbnailPendingOverlay, { backgroundColor: palette.scrim }]}>
+            <ActivityIndicator size="small" color={palette.inverse} />
+            <Text style={[styles.thumbnailPendingText, { color: palette.inverse }]}>
+              {m.share.thumbnailPending}
+            </Text>
           </View>
         ) : null}
       </View>
@@ -222,8 +225,8 @@ function ShareSheetBody({
       />
 
       {notPublic ? (
-        <View style={[styles.gateBanner, { borderColor: 'rgba(239,68,68,0.35)', backgroundColor: 'rgba(239,68,68,0.08)' }]}>
-          <Icon source="alert-circle-outline" size={16} color="#EF4444" />
+        <View style={[styles.gateBanner, { borderColor: palette.error, backgroundColor: palette.tile }]}>
+          <Icon source="alert-circle-outline" size={16} color={palette.error} />
           <Text style={[styles.gateBannerText, { color: palette.text }]} numberOfLines={3}>
             {m.share.reachabilityBlocker}
           </Text>
@@ -299,12 +302,14 @@ function QrShareView({
   url,
   title,
   onClose,
+  palette,
   m,
 }: {
   visible: boolean;
   url: string;
   title: string;
   onClose: () => void;
+  palette: Palette;
   m: ReturnType<typeof useMessages>;
 }) {
   const { width, height } = useWindowDimensions();
@@ -316,34 +321,45 @@ function QrShareView({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable
-        style={styles.qrBackdrop}
+        style={[styles.qrBackdrop, { backgroundColor: palette.qrBackdrop }]}
         onPress={onClose}
         accessibilityRole="button"
         accessibilityLabel={m.share.close}
       >
         <View
-          style={[styles.qrCard, { marginTop: insets.top + 24, marginBottom: insets.bottom + 24 }]}
+          style={[
+            styles.qrCard,
+            {
+              backgroundColor: palette.qrCard,
+              marginTop: insets.top + spacing.xl,
+              marginBottom: insets.bottom + spacing.xl,
+            },
+          ]}
           // Stop the inner card from forwarding the press to the backdrop.
           onStartShouldSetResponder={() => true}
         >
-          <Text style={styles.qrTitle}>{m.share.qrTitle}</Text>
-          <Text style={styles.qrSubtitle}>{m.share.qrSubtitle}</Text>
-          <View style={styles.qrFrame}>
+          <Text style={[styles.qrTitle, { color: palette.qrText }]}>{m.share.qrTitle}</Text>
+          <Text style={[styles.qrSubtitle, { color: palette.qrMuted }]}>{m.share.qrSubtitle}</Text>
+          <View style={[styles.qrFrame, { backgroundColor: palette.qrCard }]}>
             {url ? <QRCode value={url} size={qrSize} backgroundColor="#FFFFFF" color="#0F172A" /> : null}
           </View>
-          <Text style={styles.qrName} numberOfLines={2}>
+          <Text style={[styles.qrName, { color: palette.qrText }]} numberOfLines={2}>
             {title}
           </Text>
-          <Text style={styles.qrUrl} numberOfLines={1} selectable>
+          <Text style={[styles.qrUrl, { color: palette.qrMuted }]} numberOfLines={1} selectable>
             {url}
           </Text>
           <Pressable
             onPress={onClose}
-            style={({ pressed }) => [styles.qrClose, pressed && styles.pressed]}
+            style={({ pressed }) => [
+              styles.qrClose,
+              { backgroundColor: palette.tile },
+              pressed && styles.pressed,
+            ]}
             accessibilityRole="button"
             accessibilityLabel={m.share.close}
           >
-            <Text style={styles.qrCloseText}>{m.share.close}</Text>
+            <Text style={[styles.qrCloseText, { color: palette.qrText }]}>{m.share.close}</Text>
           </Pressable>
         </View>
       </Pressable>
@@ -365,7 +381,7 @@ function ActionButton({
   primary?: boolean;
 }) {
   const bg = primary ? palette.primary : palette.tile;
-  const fg = primary ? '#FFFFFF' : palette.text;
+  const fg = primary ? palette.primaryText : palette.text;
   return (
     <Pressable
       style={({ pressed }) => [styles.actionButton, { backgroundColor: bg }, pressed && styles.pressed]}
@@ -393,9 +409,9 @@ function ReachabilityChip({
   m: ReturnType<typeof useMessages>;
 }) {
   const map: Record<ShareReachability, { color: string; dot: string; label: string }> = {
-    public: { color: palette.muted, dot: '#22C55E', label: m.share.reachabilityPublic },
-    lan: { color: palette.muted, dot: '#F59E0B', label: m.share.reachabilityLan },
-    'local-only': { color: '#EF4444', dot: '#EF4444', label: m.share.reachabilityLocal },
+    public: { color: palette.muted, dot: palette.success, label: m.share.reachabilityPublic },
+    lan: { color: palette.muted, dot: palette.warning, label: m.share.reachabilityLan },
+    'local-only': { color: palette.error, dot: palette.error, label: m.share.reachabilityLocal },
   };
   const v = map[reachability];
   return (
@@ -425,23 +441,24 @@ function routingLine(
   }
 }
 
-function useColors(isDark: boolean) {
-  const colors = getColors(isDark);
-  return isDark
-    ? {
-        surface: colors.surface.panel,
-        tile: colors.surface.input,
-        text: colors.text.primary,
-        muted: colors.text.secondary,
-        primary: colors.accent.primary,
-      }
-    : {
-        surface: colors.surface.panel,
-        tile: colors.surface.input,
-        text: colors.text.primary,
-        muted: colors.text.secondary,
-        primary: colors.accent.primary,
-      };
+function useColors(colors: ColorScheme) {
+  return {
+    surface: colors.surface.panel,
+    tile: colors.surface.input,
+    text: colors.text.primary,
+    muted: colors.text.secondary,
+    inverse: colors.text.inverse,
+    primaryText: colors.accent.onPrimary,
+    primary: colors.accent.primary,
+    success: colors.semantic.success,
+    warning: colors.semantic.warning,
+    error: colors.semantic.errorBold,
+    scrim: colors.overlay.scrim,
+    qrBackdrop: colors.overlay.scrim,
+    qrCard: colors.surface.base,
+    qrText: colors.text.primary,
+    qrMuted: colors.text.secondary,
+  };
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────────
@@ -454,20 +471,19 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   muted: {
-    fontSize: 14,
+    ...typography.ui,
   },
   error: {
-    color: '#EF4444',
     textAlign: 'center',
-    fontSize: 14,
+    ...typography.ui,
   },
   body: {
-    gap: 12,
+    gap: spacing.md,
   },
   thumbnailFrame: {
     width: '100%',
     aspectRatio: 1200 / 630,
-    borderRadius: 12,
+    borderRadius: radii.lg,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -477,26 +493,24 @@ const styles = StyleSheet.create({
   },
   thumbnailPendingOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: spacing.sm,
   },
   thumbnailPendingText: {
-    color: '#fff',
-    fontSize: 12,
+    ...typography.caption,
   },
   titleLine: {
-    fontSize: 16,
+    ...typography.heading,
     fontWeight: '600',
   },
   urlLine: {
-    fontSize: 12,
+    ...typography.caption,
   },
   chipRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.sm,
   },
   chipDot: {
     width: 8,
@@ -504,62 +518,61 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   chipText: {
-    fontSize: 12,
+    ...typography.caption,
     flex: 1,
   },
   routingHint: {
-    fontSize: 12,
+    ...typography.caption,
   },
   gateBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
   },
   gateBannerText: {
     flex: 1,
-    fontSize: 12,
-    lineHeight: 16,
+    ...typography.caption,
   },
   gateBannerAction: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   gateBannerActionText: {
-    fontSize: 12,
+    ...typography.caption,
     fontWeight: '600',
   },
   actionsRow: {
     flexDirection: 'row',
-    gap: 8,
-    paddingTop: 8,
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
   },
   actionButton: {
     flex: 1,
     minWidth: 0,
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    borderRadius: 12,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radii.lg,
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: spacing.xs,
   },
   actionLabel: {
-    fontSize: 12,
+    ...typography.caption,
     fontWeight: '600',
     textAlign: 'center',
   },
   manageLink: {
     alignItems: 'center',
-    paddingTop: 4,
-    paddingBottom: 4,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xs,
   },
   manageLinkText: {
-    fontSize: 13,
+    ...typography.label,
     fontWeight: '600',
   },
   pressed: {
@@ -567,56 +580,47 @@ const styles = StyleSheet.create({
   },
   qrBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: spacing.xl,
   },
   qrCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 24,
+    borderRadius: radii.xl,
+    padding: spacing.xl,
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
     maxWidth: 420,
     width: '100%',
   },
   qrTitle: {
-    fontSize: 18,
+    ...typography.heading,
     fontWeight: '700',
-    color: '#0F172A',
   },
   qrSubtitle: {
-    fontSize: 13,
-    color: '#475569',
+    ...typography.label,
     textAlign: 'center',
   },
   qrFrame: {
-    padding: 12,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    padding: spacing.md,
+    borderRadius: radii.lg,
   },
   qrName: {
-    fontSize: 14,
+    ...typography.ui,
     fontWeight: '600',
-    color: '#0F172A',
     textAlign: 'center',
   },
   qrUrl: {
-    fontSize: 11,
-    color: '#64748B',
+    ...typography.micro,
     textAlign: 'center',
   },
   qrClose: {
-    marginTop: 8,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: '#F1F5F9',
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
   },
   qrCloseText: {
-    fontSize: 14,
+    ...typography.ui,
     fontWeight: '600',
-    color: '#0F172A',
   },
 });

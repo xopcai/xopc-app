@@ -57,7 +57,7 @@ export const NoteTagTabs = memo(function NoteTagTabs({
       >
         {renderTab('all', pm.tagTabAll)}
         {tags.map((tag) => {
-          const palette = getTagColors(tag, tags);
+          const palette = getTagColors(tag, tags, colors);
           return renderTab(tag, tag, selectedPalette(activeTag, tag, palette));
         })}
         <Pressable

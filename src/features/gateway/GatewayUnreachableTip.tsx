@@ -1,6 +1,8 @@
 import { memo } from 'react';
-import { Pressable, StyleSheet, useColorScheme } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
+
+import { useTheme } from '../../theme';
 
 type GatewayUnreachableTipProps = {
   message: string;
@@ -11,25 +13,25 @@ export const GatewayUnreachableTip = memo(function GatewayUnreachableTip({
   message,
   onPress,
 }: GatewayUnreachableTipProps) {
-  const isDark = useColorScheme() === 'dark';
+  const { colors } = useTheme();
 
   return (
     <Pressable
       style={[
         styles.wrap,
         {
-          backgroundColor: isDark ? 'rgba(255, 69, 58, 0.12)' : '#FEF2F2',
-          borderColor: isDark ? 'rgba(255, 69, 58, 0.28)' : '#FECACA',
+          backgroundColor: colors.surface.input,
+          borderColor: colors.semantic.errorBold,
         },
       ]}
       onPress={onPress}
       accessibilityRole="button"
     >
-      <Icon source="wifi-off" size={16} color={isDark ? '#FF6961' : '#DC2626'} />
-      <Text style={[styles.message, { color: isDark ? '#FF6961' : '#991B1B' }]} numberOfLines={3}>
+      <Icon source="wifi-off" size={16} color={colors.semantic.errorBold} />
+      <Text style={[styles.message, { color: colors.semantic.errorBold }]} numberOfLines={3}>
         {message}
       </Text>
-      <Icon source="chevron-right" size={18} color={isDark ? '#FF6961' : '#DC2626'} />
+      <Icon source="chevron-right" size={18} color={colors.semantic.errorBold} />
     </Pressable>
   );
 });

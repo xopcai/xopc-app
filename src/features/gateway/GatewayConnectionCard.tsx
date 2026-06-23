@@ -49,7 +49,11 @@ function ConnectionRow({
       ? `${baseStatusLabel} · ${Math.max(0, Math.round(reachability.latencyMs))} ms`
       : baseStatusLabel;
   const statusColor = reachability
-    ? reachabilityStatusColor(status, colors.textMuted)
+    ? reachabilityStatusColor(status, {
+        success: colors.success,
+        error: colors.error,
+        muted: colors.textMuted,
+      })
     : colors.textMuted;
   const reasonText = reachability
     ? formatReachabilityReason(reachability, {
@@ -153,7 +157,7 @@ export function GatewayConnectionCard({ onSyncNotice }: GatewayConnectionCardPro
         ) : null}
         {activeRouteUnreachable && !checking ? (
           <>
-            <Text variant="bodySmall" style={{ color: '#FF3B30', marginTop: 4 }}>
+            <Text variant="bodySmall" style={{ color: colors.error, marginTop: 4 }}>
               {g.gatewayUnreachable}
             </Text>
             {activeRouteReason ? (

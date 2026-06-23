@@ -43,8 +43,9 @@ import { FloatingHeader } from '../../components/FloatingHeader';
 
 import { t, useMessages } from '../../i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
-import { useResolvedIsDark } from '../../lib/stack-screen-theme';
 import { useGatewayStore } from '../../stores/gateway-store';
+import { radii, spacing, typography, type ColorScheme } from '../../theme';
+import { useTheme } from '../../theme/useTheme';
 import { queryKeys } from '../../query/keys';
 import {
   useExtendShare,
@@ -67,7 +68,7 @@ type ExtendPreset = keyof typeof EXTEND_OPTIONS_MS;
 export function MySharesScreen() {
   const router = useRouter();
   useDismissOnHardwareBack(router);
-  const isDark = useResolvedIsDark();
+  const { colors } = useTheme();
   const m = useMessages();
   const pm = m.sharingPage;
   const qc = useQueryClient();
@@ -81,11 +82,7 @@ export function MySharesScreen() {
   const extend = useExtendShare();
   const revoke = useRevokeShare();
 
-  const bg = isDark ? '#0F172A' : '#F9FAFB';
-  const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
-  const cardBorder = isDark ? '#38383A' : '#E5E7EB';
-  const textColor = isDark ? '#F9FAFB' : '#1F2937';
-  const muted = isDark ? '#9CA3AF' : '#6B7280';
+  const palette = useShareListColors(colors);
 
   const onRefresh = () => {
     void qc.invalidateQueries({ queryKey: queryKeys.shares });
@@ -95,11 +92,7 @@ export function MySharesScreen() {
     <ShareRow
       item={item}
       token={token}
-      isDark={isDark}
-      cardBg={cardBg}
-      cardBorder={cardBorder}
-      textColor={textColor}
-      muted={muted}
+      palette={palette}
       menuOpen={menuFor === item.id}
       onMenuOpen={() => setMenuFor(item.id)}
       onMenuClose={() => setMenuFor(null)}
@@ -112,13 +105,13 @@ export function MySharesScreen() {
 
   const empty = (
     <View style={styles.empty}>
-      <Text style={[styles.emptyTitle, { color: textColor }]}>{pm.empty}</Text>
-      <Text style={[styles.emptyHint, { color: muted }]}>{pm.emptyHint}</Text>
+      <Text style={[styles.emptyTitle, { color: palette.text }]}>{pm.empty}</Text>
+      <Text style={[styles.emptyHint, { color: palette.muted }]}>{pm.emptyHint}</Text>
     </View>
   );
 
   return (
-    <View style={[styles.screen, { backgroundColor: bg }]}>
+    <View style={[styles.screen, { backgroundColor: palette.bg }]}>
       <FloatingHeader title={pm.title} onBack={() => dismissOrHome(router)} />
 
       {list.isLoading ? (
@@ -132,7 +125,7 @@ export function MySharesScreen() {
           renderItem={renderItem}
           contentContainerStyle={styles.list}
           ListHeaderComponent={
-            <Text style={[styles.subtitle, { color: muted }]}>{pm.subtitle}</Text>
+            <Text style={[styles.subtitle, { color: palette.muted }]}>{pm.subtitle}</Text>
           }
           ListEmptyComponent={empty}
           refreshControl={
@@ -192,11 +185,7 @@ export function MySharesScreen() {
 function ShareRow({
   item,
   token,
-  isDark,
-  cardBg,
-  cardBorder,
-  textColor,
-  muted,
+  palette,
   menuOpen,
   onMenuOpen,
   onMenuClose,
@@ -207,11 +196,7 @@ function ShareRow({
 }: {
   item: ShareListItem;
   token: string;
-  isDark: boolean;
-  cardBg: string;
-  cardBorder: string;
-  textColor: string;
-  muted: string;
+  palette: ShareListColors;
   menuOpen: boolean;
   onMenuOpen: () => void;
   onMenuClose: () => void;
@@ -243,23 +228,23 @@ function ShareRow({
   };
 
   return (
-    <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+    <View style={[styles.card, { backgroundColor: palette.cardBg, borderColor: palette.border }]}>
       <Pressable style={styles.cardLeft} onPress={onPreview} accessibilityRole="button" accessibilityLabel={pm.actionPreview}>
-        <View style={[styles.thumb, { backgroundColor: isDark ? '#27272A' : '#F3F4F6' }]}>
+        <View style={[styles.thumb, { backgroundColor: palette.thumbBg }]}>
           <Image source={{ uri: thumbnailUri, headers: thumbHeaders }} style={styles.thumbImage} resizeMode="cover" />
         </View>
       </Pressable>
 
       <View style={styles.cardMain}>
-        <Text style={[styles.fileName, { color: textColor }]} numberOfLines={1}>
+        <Text style={[styles.fileName, { color: palette.text }]} numberOfLines={1}>
           {item.fileName}
         </Text>
-        <Text style={[styles.urlLine, { color: muted }]} numberOfLines={1}>
+        <Text style={[styles.urlLine, { color: palette.muted }]} numberOfLines={1}>
           {item.shareUrl}
         </Text>
         <View style={styles.metaRow}>
           <StatusChip status={status} m={m} />
-          <Text style={[styles.metaText, { color: muted }]} numberOfLines={1}>
+          <Text style={[styles.metaText, { color: palette.muted }]} numberOfLines={1}>
             {expiryLabel}
             {downloads > 0 ? ` · ${t(pm.downloadsLabel, { count: downloads })}` : ''}
           </Text>
@@ -270,7 +255,7 @@ function ShareRow({
         visible={menuOpen}
         onDismiss={onMenuClose}
         anchor={
-          <IconButton icon="dots-vertical" size={20} onPress={onMenuOpen} accessibilityLabel="more" />
+          <IconButton icon="dots-vertical" size={20} onPress={onMenuOpen} accessibilityLabel={m.listInteraction.moreMenu} />
         }
       >
         <Menu.Item leadingIcon="eye-outline" onPress={() => { onMenuClose(); onPreview(); }} title={pm.actionPreview} />
@@ -294,11 +279,12 @@ function ShareRow({
 }
 
 function StatusChip({ status, m }: { status: ShareStatus; m: ReturnType<typeof useMessages> }) {
+  const { colors } = useTheme();
   const pm = m.sharingPage;
   const palette: Record<ShareStatus, { bg: string; fg: string; label: string }> = {
-    active: { bg: 'rgba(34,197,94,0.12)', fg: '#16A34A', label: pm.statusActive },
-    expired: { bg: 'rgba(245,158,11,0.12)', fg: '#D97706', label: pm.statusExpired },
-    revoked: { bg: 'rgba(239,68,68,0.12)', fg: '#DC2626', label: pm.statusRevoked },
+    active: { bg: colors.surface.input, fg: colors.semantic.success, label: pm.statusActive },
+    expired: { bg: colors.surface.input, fg: colors.semantic.warning, label: pm.statusExpired },
+    revoked: { bg: colors.surface.input, fg: colors.semantic.errorBold, label: pm.statusRevoked },
   };
   const v = palette[status];
   return (
@@ -324,6 +310,7 @@ function ExtendDialog({
   m: ReturnType<typeof useMessages>;
 }) {
   const pm = m.sharingPage;
+  const { colors } = useTheme();
   return (
     <Portal>
       <Dialog visible={visible} onDismiss={onDismiss}>
@@ -331,7 +318,7 @@ function ExtendDialog({
         <Dialog.Content>
           <Paragraph>{pm.extendDialogBody}</Paragraph>
           {target ? (
-            <Text style={{ marginTop: 8, opacity: 0.7 }} numberOfLines={1}>
+            <Text style={{ marginTop: spacing.sm, color: colors.text.secondary }} numberOfLines={1}>
               {target.fileName}
             </Text>
           ) : null}
@@ -365,6 +352,7 @@ function RevokeDialog({
   m: ReturnType<typeof useMessages>;
 }) {
   const pm = m.sharingPage;
+  const { colors } = useTheme();
   return (
     <Portal>
       <Dialog visible={visible} onDismiss={onDismiss}>
@@ -372,14 +360,14 @@ function RevokeDialog({
         <Dialog.Content>
           <Paragraph>{pm.revokeDialogBody}</Paragraph>
           {target ? (
-            <Text style={{ marginTop: 8, opacity: 0.7 }} numberOfLines={1}>
+            <Text style={{ marginTop: spacing.sm, color: colors.text.secondary }} numberOfLines={1}>
               {target.fileName}
             </Text>
           ) : null}
         </Dialog.Content>
         <Dialog.Actions>
           <Button onPress={onDismiss} disabled={loading}>{m.common.cancel}</Button>
-          <Button onPress={onConfirm} loading={loading} disabled={loading} textColor="#EF4444">
+          <Button onPress={onConfirm} loading={loading} disabled={loading} textColor={colors.semantic.errorBold}>
             {pm.actionRevoke}
           </Button>
         </Dialog.Actions>
@@ -398,40 +386,53 @@ function formatExpiryLabel(item: ShareListItem, pm: ReturnType<typeof useMessage
   return tpl.replace('{{when}}', formatted);
 }
 
+type ShareListColors = ReturnType<typeof useShareListColors>;
+
+function useShareListColors(colors: ColorScheme) {
+  return {
+    bg: colors.surface.base,
+    cardBg: colors.surface.panel,
+    thumbBg: colors.surface.input,
+    border: colors.border.default,
+    text: colors.text.primary,
+    muted: colors.text.secondary,
+  };
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  list: { padding: 16, paddingBottom: 40, gap: 0 },
-  separator: { height: 10 },
-  subtitle: { fontSize: 13, marginBottom: 12 },
+  list: { padding: spacing.lg, paddingBottom: 40, gap: 0 },
+  separator: { height: spacing.md },
+  subtitle: { ...typography.label, marginBottom: spacing.md },
   card: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: radii.lg,
+    padding: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
   },
   cardLeft: {},
-  cardMain: { flex: 1, gap: 4, minWidth: 0 },
+  cardMain: { flex: 1, gap: spacing.xs, minWidth: 0 },
   thumb: {
     width: 56,
     height: 56,
-    borderRadius: 10,
+    borderRadius: radii.md,
     overflow: 'hidden',
   },
   thumbImage: { width: '100%', height: '100%' },
-  fileName: { fontSize: 14, fontWeight: '600' },
-  urlLine: { fontSize: 11 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  metaText: { fontSize: 11, flexShrink: 1 },
+  fileName: { ...typography.ui, fontWeight: '600' },
+  urlLine: typography.micro,
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  metaText: { ...typography.micro, flexShrink: 1 },
   chip: {
-    borderRadius: 999,
-    paddingHorizontal: 8,
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 3,
   },
-  chipText: { fontSize: 10, fontWeight: '700' },
-  empty: { alignItems: 'center', paddingVertical: 48, gap: 8 },
-  emptyTitle: { fontSize: 16, fontWeight: '600' },
-  emptyHint: { fontSize: 13, textAlign: 'center', paddingHorizontal: 32 },
+  chipText: { ...typography.micro, fontWeight: '700' },
+  empty: { alignItems: 'center', paddingVertical: spacing.xxxl, gap: spacing.sm },
+  emptyTitle: { ...typography.heading, fontWeight: '600' },
+  emptyHint: { ...typography.label, textAlign: 'center', paddingHorizontal: spacing.xxl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });

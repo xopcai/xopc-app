@@ -66,7 +66,7 @@ const ZONE_CANCEL_DX = -72;
 const ZONE_TEXT_DX = 72;
 const MIN_VOICE_MS = 380;
 
-/** 中央默认发语音；左滑 X 取消；右滑「字」转文字。 */
+/** Center sends voice; swiping left cancels; swiping right converts to text. */
 function voiceZoneFromGesture(dx: number): VoiceRecordingZone {
   if (dx < ZONE_CANCEL_DX) return 'cancel';
   if (dx > ZONE_TEXT_DX) return 'text';
@@ -810,6 +810,7 @@ export const ChatComposer = memo(function ChatComposer({
         meterSamples={meterSamples}
         centerHint={cm.voiceReleaseCenterHint}
         textHint={cm.voiceReleaseTextHint}
+        textGlyph={cm.voiceTextGlyph}
         cancelHint={cm.voiceReleaseCancelHint}
         transcribingLabel={cm.voiceTranscribing}
         isDark={isDark}
@@ -1016,7 +1017,6 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1C1C1E',
   },
   streamingActions: {
     flexDirection: 'row',

@@ -7,7 +7,7 @@
  * - Can be manually toggled by tapping the header
  */
 import { memo, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 
 import {
@@ -23,6 +23,7 @@ import { ThinkingBlock } from './ThinkingBlock';
 import { ToolUseBlock } from './ToolUseBlock';
 import { useMessages } from '../../i18n/messages';
 import { usePreferencesStore } from '../../stores/preferences-store';
+import { useTheme } from '../../theme';
 
 /** Check if any step block is still active (streaming thinking or running tool). */
 export function isAnyBlockActive(blocks: Array<ThinkingContent | ToolUseContent>): boolean {
@@ -85,7 +86,7 @@ export const AssistantStepsBlock = memo(function AssistantStepsBlock({
 }) {
   const m = useMessages();
   const language = usePreferencesStore((s) => s.language);
-  const isDark = useColorScheme() === 'dark';
+  const { colors, isDark } = useTheme();
 
   const visibleBlocks = useMemo(() => filterVisibleSteps(blocks), [blocks]);
   const stepCount = visibleBlocks.length;
@@ -210,14 +211,14 @@ export const AssistantStepsBlock = memo(function AssistantStepsBlock({
           <Icon
             source="check-circle-outline"
             size={14}
-            color={isDark ? '#22C55E' : '#16A34A'}
+            color={colors.semantic.success}
           />
         )}
 
         <View style={styles.headerCenter}>
           <Text
             variant="labelSmall"
-            style={[styles.headerLabel, { color: isDark ? '#D1D5DB' : '#374151' }]}
+            style={[styles.headerLabel, { color: colors.text.primary }]}
             numberOfLines={2}
           >
             {headerMain}
@@ -240,7 +241,7 @@ export const AssistantStepsBlock = memo(function AssistantStepsBlock({
         <Icon
           source={expanded ? 'chevron-up' : 'chevron-down'}
           size={16}
-          color={isDark ? '#6B7280' : '#9CA3AF'}
+          color={colors.text.tertiary}
         />
       </Pressable>
 

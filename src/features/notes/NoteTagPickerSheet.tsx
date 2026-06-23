@@ -183,8 +183,8 @@ export const NoteTagPickerSheet = memo(function NoteTagPickerSheet(props: NoteTa
           ]}
           onPress={() => handleSelectSingle(null)}
         >
-          <View style={[styles.chip, { backgroundColor: '#FDE68A' }]}>
-            <Text style={[styles.chipText, { color: '#92400E' }]}>{pm.defaultTag}</Text>
+          <View style={[styles.chip, { backgroundColor: getTagColors(null, tags, colors).bg }]}>
+            <Text style={[styles.chipText, { color: getTagColors(null, tags, colors).fg }]}>{pm.defaultTag}</Text>
           </View>
           <Text style={[styles.rowLabel, { color: colors.text.secondary }]}>{pm.tagUntaggedHint}</Text>
           {!selectedTag ? <Icon source="check" size={18} color={colors.accent.primary} /> : null}
@@ -192,7 +192,7 @@ export const NoteTagPickerSheet = memo(function NoteTagPickerSheet(props: NoteTa
       ) : null}
 
       {tags.map((tag) => {
-        const palette = getTagColors(tag, tags);
+        const palette = getTagColors(tag, tags, colors);
         const isActive = isMulti ? draftTags.includes(tag) : selectedTag === tag;
         return (
           <Pressable

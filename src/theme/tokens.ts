@@ -41,6 +41,8 @@ export type BorderColors = {
 export type AccentColors = {
   primary: string;
   primaryHover: string;
+  /** Text/icon color displayed on primary accent backgrounds */
+  onPrimary: string;
   /** Selection highlight background */
   selectionBg: string;
   /** Soft accent tint for cards / highlights (e.g. Today Brief) */
@@ -123,6 +125,7 @@ const darkBorder: BorderColors = {
 const lightAccent: AccentColors = {
   primary: '#3A6BFF',
   primaryHover: '#2F55D6',
+  onPrimary: '#FFFFFF',
   selectionBg: 'rgba(58,107,255,0.10)',
   soft: '#EEF2FF',
 };
@@ -130,6 +133,7 @@ const lightAccent: AccentColors = {
 const darkAccent: AccentColors = {
   primary: '#3A6BFF',
   primaryHover: '#6F91FF',
+  onPrimary: '#FFFFFF',
   selectionBg: 'rgba(58,107,255,0.18)',
   soft: '#151A2B',
 };

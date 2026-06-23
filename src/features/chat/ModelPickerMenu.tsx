@@ -7,13 +7,13 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  useColorScheme,
   View,
 } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
 import type { ChatModelOption } from '../../query/models';
+import { radii, spacing, typography, useTheme } from '../../theme';
 
 export const ModelPickerMenu = memo(function ModelPickerMenu({
   visible,
@@ -30,7 +30,7 @@ export const ModelPickerMenu = memo(function ModelPickerMenu({
   onSelect: (modelId: string) => void;
   onDismiss: () => void;
 }) {
-  const isDark = useColorScheme() === 'dark';
+  const { colors } = useTheme();
   const m = useMessages();
 
   const handleSelect = useCallback(
@@ -41,20 +41,20 @@ export const ModelPickerMenu = memo(function ModelPickerMenu({
     [onDismiss, onSelect],
   );
 
-  const panelBg = isDark ? '#2C2C2E' : '#FFFFFF';
-  const titleColor = isDark ? '#F5F5F7' : '#1C1C1E';
-  const descColor = isDark ? '#8E8E93' : '#6D6D70';
+  const panelBg = colors.surface.panel;
+  const titleColor = colors.text.primary;
+  const descColor = colors.text.secondary;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
-      <Pressable style={styles.overlay} onPress={onDismiss}>
+      <Pressable style={[styles.overlay, { backgroundColor: colors.overlay.scrim }]} onPress={onDismiss}>
         <Pressable
           style={[
             styles.panel,
             {
               top: topOffset,
               backgroundColor: panelBg,
-              shadowColor: isDark ? '#000000' : '#1C1C1E',
+              shadowColor: colors.text.primary,
             },
           ]}
           onPress={(e) => e.stopPropagation()}
@@ -88,7 +88,7 @@ export const ModelPickerMenu = memo(function ModelPickerMenu({
                         </Text>
                       ) : null}
                     </View>
-                    {isActive ? <Icon source="check" size={20} color="#007AFF" /> : null}
+                    {isActive ? <Icon source="check" size={20} color={colors.accent.primary} /> : null}
                   </Pressable>
                 );
               })
@@ -103,14 +103,13 @@ export const ModelPickerMenu = memo(function ModelPickerMenu({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
   },
   panel: {
     position: 'absolute',
-    left: 20,
-    right: 20,
-    borderRadius: 18,
-    paddingVertical: 8,
+    left: spacing.xl,
+    right: spacing.xl,
+    borderRadius: radii.xl,
+    paddingVertical: spacing.sm,
     maxHeight: 360,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.22,
@@ -121,17 +120,17 @@ const styles = StyleSheet.create({
     maxHeight: 344,
   },
   emptyText: {
-    fontSize: 14,
+    ...typography.ui,
     textAlign: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 16,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    gap: 12,
+    paddingVertical: spacing.lg - spacing.xxs,
+    paddingHorizontal: spacing.xl,
+    gap: spacing.md,
   },
   rowPressed: {
     opacity: 0.75,
@@ -139,14 +138,13 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     minWidth: 0,
-    gap: 4,
+    gap: spacing.xs,
   },
   rowTitle: {
-    fontSize: 17,
+    ...typography.heading,
     fontWeight: '600',
   },
   rowDesc: {
-    fontSize: 13,
-    lineHeight: 18,
+    ...typography.label,
   },
 });

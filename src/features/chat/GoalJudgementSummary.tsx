@@ -1,8 +1,9 @@
 import { memo, useState } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
 import type { WebchatPersistentGoalWire } from '../../query/goals';
+import { useTheme } from '../../theme';
 import { verdictLabel, type GoalMessages } from './goal-utils';
 
 type Props = {
@@ -12,14 +13,14 @@ type Props = {
 
 export const GoalJudgementSummary = memo(function GoalJudgementSummary({ goal, t }: Props) {
   const [open, setOpen] = useState(false);
-  const isDark = useColorScheme() === 'dark';
+  const { colors } = useTheme();
   const hasJudgement = Boolean(goal.lastVerdict || goal.lastReason || goal.pausedReason);
   if (!hasJudgement) return null;
 
   const verdict = goal.lastVerdict ? verdictLabel(goal.lastVerdict, t) : '';
   const primaryReason = goal.pausedReason || goal.lastReason;
-  const panelBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
-  const detailBg = isDark ? 'rgba(0,0,0,0.22)' : 'rgba(255,255,255,0.72)';
+  const panelBg = colors.surface.input;
+  const detailBg = colors.surface.panel;
 
   return (
     <View style={[styles.wrap, { backgroundColor: panelBg }]}> 
@@ -27,7 +28,11 @@ export const GoalJudgementSummary = memo(function GoalJudgementSummary({ goal, t
         <View style={styles.titleBox}>
           <View style={styles.titleRow}>
             <Text variant="labelMedium" style={styles.title}>{t.lastJudgementTitle}</Text>
-            {verdict ? <Text style={styles.verdict}>{verdict}</Text> : null}
+            {verdict ? (
+              <Text style={[styles.verdict, { backgroundColor: colors.accent.selectionBg, color: colors.accent.primary }]}>
+                {verdict}
+              </Text>
+            ) : null}
           </View>
           {primaryReason ? (
             <Text variant="bodySmall" style={styles.reason} numberOfLines={open ? 8 : 2}>
@@ -35,7 +40,7 @@ export const GoalJudgementSummary = memo(function GoalJudgementSummary({ goal, t
             </Text>
           ) : null}
         </View>
-        <Text style={styles.toggle}>{open ? t.hideDetails : t.showDetails}</Text>
+        <Text style={[styles.toggle, { color: colors.accent.primary }]}>{open ? t.hideDetails : t.showDetails}</Text>
       </Pressable>
 
       {open ? (
@@ -101,8 +106,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 7,
     paddingVertical: 2,
-    backgroundColor: 'rgba(0,122,255,0.12)',
-    color: '#007AFF',
     fontSize: 11,
     fontWeight: '800',
   },
@@ -111,7 +114,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   toggle: {
-    color: '#007AFF',
     fontSize: 12,
     fontWeight: '700',
     paddingTop: 1,

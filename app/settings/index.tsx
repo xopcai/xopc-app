@@ -63,7 +63,7 @@ export default function SettingsIndexScreen() {
         <SettingsSection title={s.sectionConnection}>
           <SettingsRow
             icon="web"
-            iconColor="#5856D6"
+            iconColor={colors.accent}
             label={s.gateway}
             value={gatewayValue}
             isLast
@@ -76,7 +76,7 @@ export default function SettingsIndexScreen() {
             <SettingsSection title={s.sectionAi}>
               <SettingsRow
                 icon="robot-outline"
-                iconColor="#007AFF"
+                iconColor={colors.accent}
                 label={m.agentsPage.title}
                 isLast
                 onPress={() => router.push('/ai/agents')}
@@ -86,7 +86,7 @@ export default function SettingsIndexScreen() {
             <SettingsSection title={s.sectionAutomation}>
               <SettingsRow
                 icon="clock-outline"
-                iconColor="#FF9500"
+                iconColor={colors.warning}
                 label={m.automationPage.title}
                 isLast
                 onPress={() => router.push('/automation')}
@@ -96,7 +96,7 @@ export default function SettingsIndexScreen() {
             <SettingsSection title={s.sectionSharing}>
               <SettingsRow
                 icon="share-variant"
-                iconColor="#2563EB"
+                iconColor={colors.accent}
                 label={m.sharingPage.title}
                 isLast
                 onPress={() => router.push('/sharing')}
@@ -110,7 +110,7 @@ export default function SettingsIndexScreen() {
         <SettingsSection title={s.sectionAbout}>
           <SettingsRow
             icon="information-outline"
-            iconColor="#8E8E93"
+            iconColor={colors.textMuted}
             label={s.about}
             isLast
             onPress={() => router.push('/settings/about')}

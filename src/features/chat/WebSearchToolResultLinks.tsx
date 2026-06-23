@@ -1,8 +1,8 @@
 import { memo, useState } from 'react';
-import { Linking, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
-import { chatColors } from './styles';
+import { useTheme } from '../../theme';
 import type { WebSearchResultLink } from './web-search-tool-result-links';
 
 const DEFAULT_VISIBLE_LINKS = 3;
@@ -22,7 +22,7 @@ export const WebSearchToolResultLinks = memo(function WebSearchToolResultLinks({
     showLess: string;
   };
 }) {
-  const isDark = useColorScheme() === 'dark';
+  const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false);
 
   if (links.length === 0) return null;
@@ -35,11 +35,11 @@ export const WebSearchToolResultLinks = memo(function WebSearchToolResultLinks({
       style={[
         styles.container,
         {
-          borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB',
+          borderColor: colors.border.default,
         },
       ]}
     >
-      <Text variant="labelSmall" style={[styles.summary, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>
+      <Text variant="labelSmall" style={[styles.summary, { color: colors.text.secondary }]}>
         {formatSummary(labels.summary, links.length)}
       </Text>
 
@@ -54,18 +54,18 @@ export const WebSearchToolResultLinks = memo(function WebSearchToolResultLinks({
             accessibilityRole="link"
             accessibilityLabel={title}
           >
-            <Icon source="open-in-new" size={12} color={isDark ? '#9CA3AF' : '#6B7280'} />
+            <Icon source="open-in-new" size={12} color={colors.text.secondary} />
             <Text
               variant="bodySmall"
               numberOfLines={1}
-              style={[styles.host, { color: isDark ? '#9CA3AF' : '#6B7280' }]}
+              style={[styles.host, { color: colors.text.secondary }]}
             >
               {host}
             </Text>
             <Text
               variant="bodySmall"
               numberOfLines={1}
-              style={[styles.title, { color: chatColors.accent }]}
+              style={[styles.title, { color: colors.accent.primary }]}
             >
               {title}
             </Text>
@@ -81,13 +81,13 @@ export const WebSearchToolResultLinks = memo(function WebSearchToolResultLinks({
           accessibilityState={{ expanded }}
           accessibilityLabel={expanded ? labels.showLess : labels.showMore}
         >
-          <Text variant="labelSmall" style={styles.toggleText}>
+          <Text variant="labelSmall" style={[styles.toggleText, { color: colors.text.tertiary }]}>
             {expanded ? labels.showLess : labels.showMore}
           </Text>
           <Icon
             source={expanded ? 'chevron-up' : 'chevron-down'}
             size={14}
-            color={chatColors.timestamp}
+            color={colors.text.tertiary}
           />
         </Pressable>
       ) : null}
@@ -133,6 +133,5 @@ const styles = StyleSheet.create({
   },
   toggleText: {
     fontSize: 11,
-    color: chatColors.timestamp,
   },
 });

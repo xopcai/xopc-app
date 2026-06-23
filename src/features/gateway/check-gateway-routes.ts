@@ -46,16 +46,19 @@ export function reachabilityStatusLabel(
   }
 }
 
-export function reachabilityStatusColor(status: RouteReachabilityStatus, muted: string): string {
+export function reachabilityStatusColor(
+  status: RouteReachabilityStatus,
+  palette: { success: string; error: string; muted: string },
+): string {
   switch (status) {
     case 'reachable':
-      return '#34C759';
+      return palette.success;
     case 'unreachable':
-      return '#FF3B30';
+      return palette.error;
     case 'checking':
-      return muted;
+      return palette.muted;
     case 'not_configured':
-      return muted;
+      return palette.muted;
   }
 }
 
@@ -85,4 +88,3 @@ export function formatReachabilityReason(
       return labels.networkError;
   }
 }
-

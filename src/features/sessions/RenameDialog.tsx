@@ -90,7 +90,7 @@ export const RenameDialog = memo(function RenameDialog({
               <Text
                 style={[
                   styles.actionLabel,
-                  { color: canSubmit ? '#FFFFFF' : colors.text.tertiary },
+                  { color: canSubmit ? colors.accent.onPrimary : colors.text.tertiary },
                 ]}
               >
                 {m.renameDialog.confirm}
