@@ -15,6 +15,7 @@ export type Language = 'en' | 'zh';
 export type ThemePreference = 'light' | 'dark' | 'system';
 
 export type PreferencesState = {
+  hydrated: boolean;
   language: Language;
   themePreference: ThemePreference;
   /** The resolved effective theme (after applying "system" preference). */
@@ -23,9 +24,12 @@ export type PreferencesState = {
   defaultAgentId: string | null;
   /** App override for chat LLM model ref; null = follow gateway default model. */
   selectedModelRef: string | null;
+  /** Foreground clipboard intake prompt. */
+  clipboardIntakeEnabled: boolean;
 
   setLanguage: (lang: Language) => void;
   setThemePreference: (pref: ThemePreference) => void;
+  setClipboardIntakeEnabled: (enabled: boolean) => void;
   setDefaultAgentId: (agentId: string | null) => void;
   setSelectedModelRef: (modelRef: string | null) => void;
   /** Call once at app startup to hydrate from MMKV. */
@@ -58,11 +62,13 @@ function isValidThemePref(v: unknown): v is ThemePreference {
 // ── Store ────────────────────────────────────────────────
 
 export const usePreferencesStore = create<PreferencesState>((set, _get) => ({
+  hydrated: false,
   language: 'en',
   themePreference: 'system',
   resolvedTheme: resolveTheme('system'),
   defaultAgentId: null,
   selectedModelRef: null,
+  clipboardIntakeEnabled: true,
 
   setLanguage: (language) => {
     storage.set(KEYS.language, language);
@@ -74,6 +80,11 @@ export const usePreferencesStore = create<PreferencesState>((set, _get) => ({
     const resolvedTheme = resolveTheme(themePreference);
     storage.set(KEYS.themePreference, themePreference);
     set({ themePreference, resolvedTheme });
+  },
+
+  setClipboardIntakeEnabled: (clipboardIntakeEnabled) => {
+    storage.set(KEYS.clipboardIntakeEnabled, clipboardIntakeEnabled);
+    set({ clipboardIntakeEnabled });
   },
 
   setDefaultAgentId: (defaultAgentId) => {
@@ -93,17 +104,21 @@ export const usePreferencesStore = create<PreferencesState>((set, _get) => ({
   hydrate: () => {
     const langRaw = storage.getString(KEYS.language);
     const themeRaw = storage.getString(KEYS.themePreference);
+    const clipboardRaw = storage.getString(KEYS.clipboardIntakeEnabled);
     const agentRaw = storage.getString(KEYS.defaultAgentId);
     const modelRaw = storage.getString(KEYS.selectedModelRef);
     const language = isValidLanguage(langRaw) ? langRaw : 'en';
     const themePreference = isValidThemePref(themeRaw) ? themeRaw : 'system';
+    const clipboardIntakeEnabled = clipboardRaw === undefined ? true : clipboardRaw !== 'false';
     const defaultAgentId = agentRaw?.trim().toLowerCase() || null;
     const selectedModelRef = modelRaw?.trim() || null;
     syncAppearance(themePreference);
     set({
+      hydrated: true,
       language,
       themePreference,
       resolvedTheme: resolveTheme(themePreference),
+      clipboardIntakeEnabled,
       defaultAgentId,
       selectedModelRef,
     });

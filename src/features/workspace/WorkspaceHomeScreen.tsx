@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
+  Animated,
+  Easing,
+  PanResponder,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -22,8 +25,6 @@ import { useMessages, t } from '../../i18n/messages';
 import { queryKeys } from '../../query/keys';
 import {
   fetchHome,
-  type HomeCronJob,
-  type HomeCronRun,
   type HomeData,
   type HomeGateway,
   type HomeWorkflowRun,
@@ -32,7 +33,7 @@ import { captureNote, fetchNotes, type NoteIndexEntry } from '../../query/notes'
 import { invalidateHomeFeed, invalidateSessionLists } from '../../query/workspace-sync';
 import { resolveNoteListTitle } from '../notes/note-title';
 import { readLocalNote } from '../notes/notes-local';
-import { createSession, type SessionListItem, useGatewayConfigured } from '../../query/sessions';
+import { createSession, useGatewayConfigured } from '../../query/sessions';
 import { fetchChatAgents, type ChatAgentOption, useEffectiveDefaultAgentId } from '../../query/agents';
 import { useGatewayStore } from '../../stores/gateway-store';
 import {
@@ -53,8 +54,9 @@ import {
   prepareVoiceCapturePayload,
 } from '../notes/capture-note-media';
 import { parseCaptureIntent } from '../notes/capture-parser';
-import { queueMediaCapture, queueNote } from '../notes/notes-sync';
+import { flushPendingNotes, queueMediaCapture, queueNote } from '../notes/notes-sync';
 import { QuickCaptureComposer } from '../notes/QuickCaptureComposer';
+import { useVoiceCaptureInteraction } from '../notes/use-voice-capture-interaction';
 import { WorkspaceSearchOverlay } from '../search/WorkspaceSearchOverlay';
 import { AgentAvatar } from '../ai/AgentAvatar';
 import { readAgentUsage, touchAgentUsage } from '../ai/agent-usage-cache';
@@ -99,11 +101,6 @@ function workflowProgress(run: HomeWorkflowRun, hm: ReturnType<typeof useMessage
   return t(hm.workflowProgress, { done: run.metrics.doneAgentCount, total });
 }
 
-function cronTitle(job: HomeCronJob | HomeCronRun, fallback: string): string {
-  const name = 'jobId' in job ? job.jobName : job.name;
-  return name?.trim() || fallback;
-}
-
 function fallbackHomeData(agentId: string): Pick<HomeData, 'activeAgent' | 'gateway' | 'workflowRuns' | 'nextCronJobs' | 'recentCronRuns'> {
   return {
     activeAgent: { id: agentId },
@@ -129,12 +126,13 @@ export function WorkspaceHomeScreen() {
   const configured = useGatewayConfigured();
   const activeGatewayId = useGatewayStore((s) => s.activeGatewayId);
   const defaultAgentId = useEffectiveDefaultAgentId();
-  const { openAskAi, prefetchAskAiSession } = useWorkspaceNavigation();
+  const { prefetchAskAiSession } = useWorkspaceNavigation();
   const [searchOpen, setSearchOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [captureText, setCaptureText] = useState('');
   const [toastMessage, setToastMessage] = useState('');
   const [agentUsage, setAgentUsage] = useState(() => readAgentUsage(activeGatewayId));
+  const backgroundCaptureFlushRef = useRef({ gatewayId: '', running: false });
 
   useHomeChatPrefetch(configured);
 
@@ -204,17 +202,52 @@ export function WorkspaceHomeScreen() {
     router.push(`/chat/${sessionKey}`);
   }, [router]);
 
+  const refetchHome = homeQuery.refetch;
+  const refetchRecentNotesFallback = recentNotesFallbackQuery.refetch;
+
+  const refreshHomeContent = useCallback(async () => {
+    const result = await refetchHome();
+    const opened = result.data?.recentlyOpened ?? [];
+    if (opened.length === 0) {
+      await refetchRecentNotesFallback();
+    }
+    prefetchAskAiSession();
+  }, [prefetchAskAiSession, refetchHome, refetchRecentNotesFallback]);
+
   const handleRefresh = useCallback(() => {
-    void homeQuery.refetch().then((result) => {
-      const opened = result.data?.recentlyOpened ?? [];
-      if (opened.length === 0) {
-        void recentNotesFallbackQuery.refetch();
+    void (async () => {
+      try {
+        await flushPendingNotes();
+      } catch {
+        /* Keep manual refresh quiet; capture retry remains pending. */
       }
-      prefetchAskAiSession();
-    });
-  }, [homeQuery, recentNotesFallbackQuery, prefetchAskAiSession]);
+      await refreshHomeContent();
+    })();
+  }, [refreshHomeContent]);
+
+  useEffect(() => {
+    if (!configured) return;
+    const gatewayKey = activeGatewayId || 'configured';
+    const state = backgroundCaptureFlushRef.current;
+    if (state.running || state.gatewayId === gatewayKey) return;
+    state.gatewayId = gatewayKey;
+    state.running = true;
+    void flushPendingNotes()
+      .then((flushed) => {
+        if (flushed <= 0) return;
+        void queryClient.invalidateQueries({ queryKey: queryKeys.notesAll });
+        void refreshHomeContent();
+      })
+      .catch(() => {
+        /* Silent by design; the user already saw the local-save toast. */
+      })
+      .finally(() => {
+        backgroundCaptureFlushRef.current.running = false;
+      });
+  }, [activeGatewayId, configured, queryClient, refreshHomeContent]);
 
   const invalidateCaptureTargets = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.notesAll });
     void queryClient.invalidateQueries({ queryKey: queryKeys.notes('inbox') });
     invalidateHomeFeed(queryClient);
   }, [queryClient]);
@@ -300,6 +333,17 @@ export function WorkspaceHomeScreen() {
     captureMutation.mutate({ type: 'voice', ...payload });
   }, [captureMutation]);
 
+  const centerCaptureVoice = useVoiceCaptureInteraction({
+    value: captureText,
+    onChangeText: setCaptureText,
+    onVoiceCapture: handleVoiceCapture,
+    onTap: openCapture,
+    onTextReady: () => setCaptureOpen(true),
+    disabled: captureMutation.isPending,
+    submitting: captureMutation.isPending,
+    longPressDelayMs: 280,
+  });
+
   const continueItems = useMemo<ContinueItem[]>(() => {
     const activeWorkflows = (home?.workflowRuns.active ?? []).slice(0, 2).map((run) => ({
       id: `workflow:${run.id}`,
@@ -328,7 +372,7 @@ export function WorkspaceHomeScreen() {
       icon: iconForNoteKind(note.kind),
       onPress: () => handleNotePress(note),
     }));
-    return [...activeWorkflows, ...sessions, ...notes].slice(0, 5);
+    return [...activeWorkflows, ...sessions, ...notes].slice(0, 4);
   }, [handleNotePress, handleSessionPress, hm, home?.recentSessions, home?.workflowRuns.active, homeNotes, m.sessions.untitled, router]);
 
   if (!configured) {
@@ -337,6 +381,8 @@ export function WorkspaceHomeScreen() {
         <FloatingHeader
           showLogo
           title="xopc"
+          searchPlaceholder={hm.searchPlaceholder}
+          onSearchPress={() => setSearchOpen(true)}
           rightIcon="cog-outline"
           onRightPress={() => router.push('/settings')}
         />
@@ -345,16 +391,13 @@ export function WorkspaceHomeScreen() {
           <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>{hm.connectGatewayTitle}</Text>
           <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>{hm.connectGatewayHint}</Text>
         </View>
-        <BottomCommandBar
-          searchLabel={hm.commandSearch}
-          askLabel={hm.askAi}
-          captureLabel={hm.commandCapture}
-          onSearch={() => setSearchOpen(true)}
-          onAskAi={openAskAi}
-          onAskAiPressIn={prefetchAskAiSession}
-          onCapture={openCapture}
-          captureActive={captureOpen || captureMutation.isPending}
+        <CenterCaptureButton
+          active={captureOpen || centerCaptureVoice.active || captureMutation.isPending}
+          accessibilityLabel={hm.commandCapture}
+          disabled={captureMutation.isPending}
+          panHandlers={centerCaptureVoice.panHandlers}
         />
+        {centerCaptureVoice.feedback}
         <HomeCaptureSheet
           visible={captureOpen}
           title={hm.captureTitle}
@@ -383,14 +426,10 @@ export function WorkspaceHomeScreen() {
 
   const refreshing = homeQuery.isFetching && !homeQuery.isLoading;
   const pendingTasks = home?.pendingTasks ?? [];
-  const recentSessions = home?.recentSessions ?? [];
   const inboxCount = home?.inboxCount ?? 0;
   const pendingTaskCount = home?.pendingTaskCount ?? 0;
   const gateway = home?.gateway ?? homeDefaults.gateway;
-  const activeWorkflow = home?.workflowRuns.active[0];
   const attentionWorkflow = home?.workflowRuns.attention[0];
-  const nextCronJob = home?.nextCronJobs[0];
-  const recentCronRun = home?.recentCronRuns[0];
   const showEmptyContinue = !homeQuery.isLoading && !homeNotesLoading && continueItems.length === 0;
   const nextTask = pendingTasks[0];
 
@@ -399,6 +438,8 @@ export function WorkspaceHomeScreen() {
       <FloatingHeader
         showLogo
         title="xopc"
+        searchPlaceholder={hm.searchPlaceholder}
+        onSearchPress={() => setSearchOpen(true)}
         rightIcon="cog-outline"
         onRightPress={() => router.push('/settings')}
       />
@@ -436,18 +477,6 @@ export function WorkspaceHomeScreen() {
                 else router.push('/automation');
               }}
             />
-            <ActivitySection
-              activeWorkflow={activeWorkflow}
-              attentionWorkflow={attentionWorkflow}
-              nextCronJob={nextCronJob}
-              recentCronRun={recentCronRun}
-              recentSession={recentSessions[0]}
-              captureActive={captureOpen || captureMutation.isPending}
-              onAskAi={openAskAi}
-              onAskAiPressIn={prefetchAskAiSession}
-              onCapture={openCapture}
-              onAutomation={() => router.push('/automation')}
-            />
             <AgentStrip
               agents={homeAgents}
               loading={agentsQuery.isLoading}
@@ -472,16 +501,13 @@ export function WorkspaceHomeScreen() {
         )}
       </ScrollView>
 
-      <BottomCommandBar
-        searchLabel={hm.commandSearch}
-        askLabel={hm.askAi}
-        captureLabel={hm.commandCapture}
-        onSearch={() => setSearchOpen(true)}
-        onAskAi={openAskAi}
-        onAskAiPressIn={prefetchAskAiSession}
-        onCapture={openCapture}
-        captureActive={captureOpen || captureMutation.isPending}
+      <CenterCaptureButton
+        active={captureOpen || centerCaptureVoice.active || captureMutation.isPending}
+        accessibilityLabel={hm.commandCapture}
+        disabled={captureMutation.isPending}
+        panHandlers={centerCaptureVoice.panHandlers}
       />
+      {centerCaptureVoice.feedback}
       <HomeCaptureSheet
         visible={captureOpen}
         title={hm.captureTitle}
@@ -540,7 +566,7 @@ function AgentStrip({
 }) {
   const { colors } = useTheme();
   const { homePage: hm } = useMessages();
-  const visibleAgents = agents.slice(0, 12);
+  const visibleAgents = agents.slice(0, 6);
 
   if (loading) {
     return (
@@ -663,129 +689,55 @@ function AttentionSection({
   const { colors } = useTheme();
   const { homePage: hm } = useMessages();
   const nextTaskTitle = nextTask ? resolveNoteListTitle(nextTask, hm.untitled, readLocalNote(nextTask.id)) : null;
+  const metrics = [
+    inboxCount > 0
+      ? { key: 'inbox', icon: 'tray-full', label: hm.inboxMetric, value: inboxCount, onPress: onInboxPress }
+      : null,
+    pendingTaskCount > 0
+      ? { key: 'tasks', icon: 'checkbox-marked-circle-outline', label: hm.tasksMetric, value: pendingTaskCount, onPress: onTasksPress }
+      : null,
+    workflowAttentionCount > 0
+      ? { key: 'workflows', icon: 'alert-circle-outline', label: hm.workflowMetric, value: workflowAttentionCount, onPress: () => attentionWorkflow ? onWorkflowPress(attentionWorkflow) : undefined }
+      : null,
+  ].filter((metric): metric is NonNullable<typeof metric> => metric != null);
+  const hasNextItem = Boolean(attentionWorkflow || nextTask);
+
+  if (metrics.length === 0 && !hasNextItem) return null;
 
   return (
     <Section title={hm.sectionAttention}>
-      <View style={styles.metricsGrid}>
-        <MetricTile
-          icon="tray-full"
-          label={hm.inboxMetric}
-          value={inboxCount}
-          onPress={onInboxPress}
-        />
-        <MetricTile
-          icon="checkbox-marked-circle-outline"
-          label={hm.tasksMetric}
-          value={pendingTaskCount}
-          onPress={onTasksPress}
-        />
-        <MetricTile
-          icon="alert-circle-outline"
-          label={hm.workflowMetric}
-          value={workflowAttentionCount}
-          onPress={() => attentionWorkflow ? onWorkflowPress(attentionWorkflow) : undefined}
-        />
-      </View>
-      <Pressable
-        style={[styles.panelRow, { backgroundColor: colors.surface.panel, borderColor: colors.border.default }]}
-        onPress={attentionWorkflow ? () => onWorkflowPress(attentionWorkflow) : nextTask ? () => onTaskPress(nextTask) : onTasksPress}
-      >
-        <View style={[styles.iconBubble, { backgroundColor: colors.accent.selectionBg }]}>
-          <Icon source={attentionWorkflow ? 'source-branch-sync' : 'flag-outline'} size={18} color={colors.accent.primary} />
+      {metrics.length > 0 ? (
+        <View style={styles.metricsGrid}>
+          {metrics.map((metric) => (
+            <MetricTile
+              key={metric.key}
+              icon={metric.icon}
+              label={metric.label}
+              value={metric.value}
+              onPress={metric.onPress}
+            />
+          ))}
         </View>
-        <View style={styles.rowCopy}>
-          <Text numberOfLines={1} style={[styles.rowTitle, { color: colors.text.primary }]}>
-            {attentionWorkflow?.title ?? nextTaskTitle ?? hm.noNextTask}
-          </Text>
-          <Text numberOfLines={1} style={[styles.rowSubtitle, { color: colors.text.tertiary }]}>
-            {attentionWorkflow ? hm.workflowNeedsAttention : nextTask ? hm.nextTaskHint : hm.noNextTaskHint}
-          </Text>
-        </View>
-        <Icon source="chevron-right" size={18} color={colors.text.tertiary} />
-      </Pressable>
-    </Section>
-  );
-}
-
-function ActivitySection({
-  activeWorkflow,
-  attentionWorkflow,
-  nextCronJob,
-  recentCronRun,
-  recentSession,
-  captureActive,
-  onAskAi,
-  onAskAiPressIn,
-  onCapture,
-  onAutomation,
-}: {
-  activeWorkflow?: HomeWorkflowRun;
-  attentionWorkflow?: HomeWorkflowRun;
-  nextCronJob?: HomeCronJob;
-  recentCronRun?: HomeCronRun;
-  recentSession?: SessionListItem;
-  captureActive: boolean;
-  onAskAi: () => void;
-  onAskAiPressIn?: () => void;
-  onCapture: () => void;
-  onAutomation: () => void;
-}) {
-  const { colors } = useTheme();
-  const m = useMessages();
-  const hm = m.homePage;
-  const activityTitle =
-    activeWorkflow?.title ??
-    attentionWorkflow?.title ??
-    (nextCronJob ? cronTitle(nextCronJob, hm.automation) : undefined) ??
-    (recentCronRun ? cronTitle(recentCronRun, hm.automation) : undefined) ??
-    (recentSession ? sessionDisplayName(recentSession, m.sessions.untitled) : hm.noAgentActivity);
-  const activitySubtitle =
-    activeWorkflow
-      ? workflowProgress(activeWorkflow, hm)
-      : attentionWorkflow
-        ? hm.workflowNeedsAttention
-        : nextCronJob
-          ? `${hm.nextCronRun} · ${timeLabel(nextCronJob.nextRunAt, hm)}`
-          : recentCronRun
-            ? `${hm.recentCronRun} · ${timeLabel(recentCronRun.startedAt, hm)}`
-            : recentSession
-              ? hm.recentAgentActivity
-              : hm.noAgentActivityHint;
-
-  return (
-    <Section title={hm.sectionActivity}>
-      <View style={[styles.panel, { backgroundColor: colors.surface.panel, borderColor: colors.border.default }]}>
-        <View style={styles.activityIntro}>
+      ) : null}
+      {hasNextItem ? (
+        <Pressable
+          style={[styles.panelRow, { backgroundColor: colors.surface.panel, borderColor: colors.border.default }]}
+          onPress={attentionWorkflow ? () => onWorkflowPress(attentionWorkflow) : nextTask ? () => onTaskPress(nextTask) : onTasksPress}
+        >
           <View style={[styles.iconBubble, { backgroundColor: colors.accent.selectionBg }]}>
-            <Icon source="creation-outline" size={18} color={colors.accent.primary} />
+            <Icon source={attentionWorkflow ? 'source-branch-sync' : 'flag-outline'} size={18} color={colors.accent.primary} />
           </View>
           <View style={styles.rowCopy}>
-            <Text numberOfLines={1} style={[styles.rowTitle, { color: colors.text.primary }]}>{activityTitle}</Text>
+            <Text numberOfLines={1} style={[styles.rowTitle, { color: colors.text.primary }]}>
+              {attentionWorkflow?.title ?? nextTaskTitle}
+            </Text>
             <Text numberOfLines={1} style={[styles.rowSubtitle, { color: colors.text.tertiary }]}>
-              {activitySubtitle}
+              {attentionWorkflow ? hm.workflowNeedsAttention : hm.nextTaskHint}
             </Text>
           </View>
-        </View>
-        <View style={styles.actionGrid}>
-          <ActionButton
-            icon="creation-outline"
-            label={hm.askAi}
-            onPress={onAskAi}
-            onPressIn={onAskAiPressIn}
-          />
-          <ActionButton
-            icon={captureActive ? 'progress-pencil' : 'tray-plus'}
-            label={hm.commandCapture}
-            onPress={onCapture}
-            disabled={captureActive}
-          />
-          <ActionButton
-            icon="clock-outline"
-            label={hm.automation}
-            onPress={onAutomation}
-          />
-        </View>
-      </View>
+          <Icon source="chevron-right" size={18} color={colors.text.tertiary} />
+        </Pressable>
+      ) : null}
     </Section>
   );
 }
@@ -868,33 +820,6 @@ function MetricTile({
   );
 }
 
-function ActionButton({
-  icon,
-  label,
-  onPress,
-  onPressIn,
-  disabled,
-}: {
-  icon: string;
-  label: string;
-  onPress: () => void;
-  onPressIn?: () => void;
-  disabled?: boolean;
-}) {
-  const { colors } = useTheme();
-  return (
-    <Pressable
-      style={[styles.actionButton, { backgroundColor: colors.surface.base, borderColor: colors.border.subtle }, disabled && styles.disabled]}
-      onPress={onPress}
-      onPressIn={onPressIn}
-      disabled={disabled}
-    >
-      <Icon source={icon} size={18} color={colors.accent.primary} />
-      <Text numberOfLines={1} style={[styles.actionLabel, { color: colors.text.primary }]}>{label}</Text>
-    </Pressable>
-  );
-}
-
 function LibraryButton({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
   const { colors } = useTheme();
   return (
@@ -908,64 +833,87 @@ function LibraryButton({ icon, label, onPress }: { icon: string; label: string; 
   );
 }
 
-function BottomCommandBar({
-  searchLabel,
-  askLabel,
-  captureLabel,
-  onSearch,
-  onAskAi,
-  onAskAiPressIn,
-  onCapture,
-  captureActive,
+function CenterCaptureButton({
+  active,
+  accessibilityLabel,
+  disabled,
+  panHandlers,
 }: {
-  searchLabel: string;
-  askLabel: string;
-  captureLabel: string;
-  onSearch: () => void;
-  onAskAi: () => void;
-  onAskAiPressIn?: () => void;
-  onCapture: () => void;
-  captureActive: boolean;
+  active: boolean;
+  accessibilityLabel: string;
+  disabled: boolean;
+  panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
 }) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const shadowOpacity = isDark ? 0.18 : 0.06;
-  const itemStyle = [
-    styles.commandItem,
-    {
-      backgroundColor: colors.surface.panel,
-      borderColor: colors.border.default,
-      shadowOpacity,
-    },
-  ];
+  const scale = useRef(new Animated.Value(active ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(scale, {
+      toValue: active ? 1 : 0,
+      duration: 180,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [active, scale]);
+
+  const buttonScale = scale.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.08],
+  });
+  const ringScale = scale.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.9, 1.55],
+  });
+  const ringOpacity = scale.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 0.18],
+  });
 
   return (
     <View
       pointerEvents="box-none"
       style={[
-        styles.commandBar,
+        styles.centerCaptureWrap,
         { paddingBottom: floatingBottomPadding(insets.bottom) + FLOATING_BOTTOM_OFFSET },
       ]}
     >
-      <Pressable style={itemStyle} onPress={onSearch} accessibilityLabel={searchLabel}>
-        <Icon source="magnify" size={21} color={colors.text.secondary} />
-      </Pressable>
-      <Pressable
-        style={[itemStyle, styles.askCommand]}
-        onPress={onAskAi}
-        onPressIn={onAskAiPressIn}
-        accessibilityLabel={askLabel}
-      >
-        <Icon source="creation-outline" size={18} color={colors.accent.primary} />
-        <Text numberOfLines={1} style={[styles.askCommandText, { color: colors.text.primary }]}>{askLabel}</Text>
-      </Pressable>
-      <Pressable style={itemStyle} onPress={onCapture} disabled={captureActive} accessibilityLabel={captureLabel}>
-        {captureActive ? (
-          <ActivityIndicator size={18} color={colors.accent.primary} />
-        ) : (
-          <Icon source="tray-plus" size={21} color={colors.text.secondary} />
-        )}
-      </Pressable>
+      <View style={styles.centerCaptureCluster}>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.centerCaptureRing,
+            {
+              backgroundColor: colors.accent.primary,
+              opacity: ringOpacity,
+              transform: [{ scale: ringScale }],
+            },
+          ]}
+        />
+        <Animated.View
+          {...panHandlers}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel}
+          accessibilityState={{ disabled }}
+          style={[
+            styles.centerCaptureButton,
+            {
+              backgroundColor: active ? colors.accent.primary : colors.surface.panel,
+              borderColor: active ? colors.accent.primary : colors.border.default,
+              shadowOpacity,
+              transform: [{ scale: buttonScale }],
+            },
+            disabled && styles.disabled,
+          ]}
+        >
+          {disabled ? (
+            <ActivityIndicator size={22} color={colors.accent.primary} />
+          ) : (
+            <Icon source="tray-plus" size={26} color={active ? colors.accent.onPrimary : colors.text.secondary} />
+          )}
+        </Animated.View>
+      </View>
     </View>
   );
 }
@@ -1151,30 +1099,6 @@ const styles = StyleSheet.create({
   },
   metricValue: { fontSize: 24, lineHeight: 30, fontWeight: '600' },
   metricLabel: { ...typography.caption, fontWeight: '500' },
-  activityIntro: {
-    minHeight: 64,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-  },
-  actionGrid: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    padding: spacing.md,
-  },
-  actionButton: {
-    flex: 1,
-    minHeight: 64,
-    borderRadius: radii.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.xs,
-  },
-  actionLabel: { ...typography.caption, fontWeight: '600' },
   disabled: { opacity: 0.6 },
   libraryGrid: {
     flexDirection: 'row',
@@ -1192,36 +1116,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   libraryLabel: { ...typography.label, fontWeight: '600' },
-  commandBar: {
+  centerCaptureWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: 14,
+    justifyContent: 'center',
   },
-  commandItem: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  centerCaptureCluster: {
+    width: 60,
+    height: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  centerCaptureRing: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+  },
+  centerCaptureButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowRadius: 4,
+    shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    elevation: 3,
   },
-  askCommand: {
-    flex: 1,
-    width: undefined,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  askCommandText: { ...typography.ui, fontWeight: '600' },
   captureScrim: {
     position: 'absolute',
     top: 0,

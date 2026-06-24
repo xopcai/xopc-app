@@ -43,6 +43,7 @@ type SettingsRowProps = {
   iconColor?: string;
   label: string;
   value?: string;
+  rightAccessory?: React.ReactNode;
   showChevron?: boolean;
   isLast?: boolean;
   onPress?: () => void;
@@ -53,6 +54,7 @@ export function SettingsRow({
   iconColor,
   label,
   value,
+  rightAccessory,
   showChevron = true,
   onPress,
 }: SettingsRowProps) {
@@ -71,7 +73,7 @@ export function SettingsRow({
           {value}
         </Text>
       ) : null}
-      {showChevron ? <Icon source="chevron-right" size={20} color={colors.textMuted} /> : null}
+      {rightAccessory ?? (showChevron ? <Icon source="chevron-right" size={20} color={colors.textMuted} /> : null)}
     </View>
   );
 

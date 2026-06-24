@@ -44,7 +44,9 @@
     },
     "plugins": [
       "./plugins/with-android-maven-mirrors",
+      "./plugins/with-android-share-intake",
       "./plugins/with-ios-cocoapods-mirror",
+      "./plugins/with-ios-share-intake",
       [
         "expo-build-properties",
         {

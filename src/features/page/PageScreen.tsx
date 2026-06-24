@@ -1,4 +1,3 @@
-import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -36,6 +35,7 @@ import {
   collectNoteAttachmentsForChat,
   extractVoiceTranscripts,
 } from '../notes/note-to-chat-payload';
+import { setAppClipboardStringAsync } from '../clipboard-intake/write-app-clipboard';
 import { writeNoteChatPrefill } from '../chat/note-chat-prefill-storage';
 import { NoteEditorBridge } from '../notes/editor/NoteEditorBridge';
 import type {
@@ -404,7 +404,7 @@ export function PageScreen() {
       await flushSave();
       const message = markdownRef.current.trim() || titleRef.current.trim() || pm.untitledNote;
       if (Platform.OS === 'web') {
-        await Clipboard.setStringAsync(message);
+        await setAppClipboardStringAsync(message);
         setSnackMsg(pm.shareNotesCopied);
         return;
       }
@@ -413,7 +413,7 @@ export function PageScreen() {
         title: titleRef.current.trim() || pm.shareNotesTitle,
       });
     } catch {
-      await Clipboard.setStringAsync(markdownRef.current.trim() || titleRef.current.trim() || pm.untitledNote);
+      await setAppClipboardStringAsync(markdownRef.current.trim() || titleRef.current.trim() || pm.untitledNote);
       setSnackMsg(pm.shareNotesCopied);
     }
   }, [flushSave, pm.shareNotesCopied, pm.shareNotesTitle, pm.untitledNote]);

@@ -12,7 +12,6 @@
  * the share the first time it becomes visible for a given request — caller
  * does NOT need to fire the mutation themselves.
  */
-import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -38,6 +37,7 @@ import type {
   ShareAutoRequest,
   ShareReachability,
 } from '../../api/share';
+import { setAppClipboardStringAsync } from '../clipboard-intake/write-app-clipboard';
 import { SharePreviewModal } from './SharePreviewModal';
 
 export type ShareSheetProps = {
@@ -88,7 +88,7 @@ export const ShareSheet = memo(function ShareSheet({ visible, request, onClose }
 
   const handleCopy = useCallback(async () => {
     if (!data?.share.shareUrl) return;
-    await Clipboard.setStringAsync(data.share.shareUrl);
+    await setAppClipboardStringAsync(data.share.shareUrl);
     setCopied(true);
   }, [data?.share.shareUrl]);
 

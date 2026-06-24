@@ -497,6 +497,7 @@ export const en = {
     sourceCode: 'Source code',
     softwareVersion: 'Version',
     gatewayNotConfigured: 'Not configured',
+    clipboardIntake: 'Detect clipboard content',
     // Gateway section
     gateway: 'Gateway',
     gatewayHint: 'Manage multiple gateway connections. MMKV persists these in a development build. Expo Go uses in-memory storage only.',
@@ -1038,6 +1039,19 @@ export const en = {
     search: 'Search',
     loading: 'Loading…',
     error: 'Error',
+  },
+
+  contentIntake: {
+    saveLink: 'Save link',
+    saveCode: 'Save code',
+    saveChecklist: 'Save checklist',
+    saveToNote: 'Save as note',
+    summarizeLink: 'Summarize link',
+    explainCode: 'Explain code',
+    organizeChecklist: 'Organize checklist',
+    summarizeText: 'Summarize',
+    exploreInChat: 'Explore in chat',
+    savedToNote: 'Saved as note',
   },
 
   listInteraction: {

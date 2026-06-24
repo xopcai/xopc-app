@@ -12,6 +12,7 @@ export const KEYS = {
   pendingRunPrefix: 'xopc:pendingRun:',
   language: 'prefs.language',
   themePreference: 'prefs.themePreference',
+  clipboardIntakeEnabled: 'prefs.clipboardIntakeEnabled',
   defaultAgentId: 'prefs.defaultAgentId',
   selectedModelRef: 'prefs.selectedModelRef',
   noteTags: 'prefs.noteTags',

@@ -6,7 +6,6 @@
  *
  * The page component (`app/chat/[k].tsx`) remains a thin render shell.
  */
-import * as Clipboard from 'expo-clipboard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -29,6 +28,8 @@ import { queryKeys } from '../../query/keys';
 import { getColors } from '../../theme';
 
 import { EMPTY_CHAT_GOAL_PREFILL } from './chat-empty-shortcuts';
+import { consumeContentChatIntake } from '../content-intake/content-chat-handoff';
+import { setAppClipboardStringAsync } from '../clipboard-intake/write-app-clipboard';
 import { buildUserResendPayload, findPrecedingUserMessage } from './composer-send-helpers';
 import type { ComposerAttachment, WireAttachment } from './composer.types';
 import type { Message } from './messages.types';
@@ -216,6 +217,14 @@ export function useChatPage(options: UseChatPageOptions = {}) {
     flushPendingSend();
   }, [flushPendingSend]);
 
+  useEffect(() => {
+    if (!sessionKey || chatSession.streaming || chatSession.clarifyPrompt) return;
+    const intake = consumeContentChatIntake(sessionKey);
+    if (!intake) return;
+    pendingSendRef.current = { text: intake.prompt };
+    flushPendingSend();
+  }, [chatSession.clarifyPrompt, chatSession.streaming, flushPendingSend, sessionKey]);
+
   const handleComposerSend = useCallback(
     async (text: string, attachments?: WireAttachment[]) => {
       if (bootstrap.bootstrapError && !sessionKey) return false;
@@ -346,7 +355,7 @@ export function useChatPage(options: UseChatPageOptions = {}) {
 
   const handleUserMessageCopy = useCallback(
     (text: string) => {
-      void Clipboard.setStringAsync(text)
+      void setAppClipboardStringAsync(text)
         .then(() => chatSession.setSnackMsg(m.chat.messageCopied))
         .catch(() => chatSession.setSnackMsg(m.chat.messageCopyFailed));
     },
@@ -363,7 +372,7 @@ export function useChatPage(options: UseChatPageOptions = {}) {
 
   const handleAssistantCopy = useCallback(
     (text: string) => {
-      void Clipboard.setStringAsync(text)
+      void setAppClipboardStringAsync(text)
         .then(() => chatSession.setSnackMsg(m.chat.messageCopied))
         .catch(() => chatSession.setSnackMsg(m.chat.messageCopyFailed));
     },

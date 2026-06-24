@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { apiFetch } from '../../api/client';
-import { uploadNoteMedia } from '../notes';
+import { captureNote, uploadNoteMedia } from '../notes';
 
 vi.mock('react-native', () => ({
   Platform: { OS: 'web' },
@@ -51,5 +51,42 @@ describe('uploadNoteMedia', () => {
     expect(appended.name).toBe('photo.png');
     expect(appended.type).toBe('image/png');
     expect(appended.size).toBe(4);
+  });
+});
+
+describe('captureNote attachments', () => {
+  beforeEach(() => {
+    mockedApiFetch.mockReset();
+    mockedApiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ note: { id: 'note-1' } }),
+    } as Response);
+  });
+
+  it('creates a note with the first attachment in the multipart request', async () => {
+    await expect(captureNote({
+      text: 'receipt',
+      kind: 'media',
+      attachments: [{
+        fileName: 'receipt.png',
+        mimeType: 'image/png',
+        data: btoa('png-data'),
+      }],
+    })).resolves.toEqual({ note: { id: 'note-1' } });
+
+    const [path, init] = mockedApiFetch.mock.calls[0];
+    expect(path).toBe('/api/notes');
+    expect(init?.method).toBe('POST');
+    expect(init?.body).toBeInstanceOf(FormData);
+
+    const form = init?.body as FormData;
+    expect(form.get('markdown')).toBe('receipt');
+    expect(form.get('kind')).toBe('media');
+    expect(form.get('channel')).toBe('app');
+
+    const file = form.get('file') as File;
+    expect(file.name).toBe('receipt.png');
+    expect(file.type).toBe('image/png');
+    expect(await file.text()).toBe('png-data');
   });
 });

@@ -16,7 +16,6 @@
  *   - Thumbnails are loaded from `${shareUrl}/thumbnail` (same poller as
  *     ShareSheet uses); placeholder SVG → real jpeg.
  */
-import * as Clipboard from 'expo-clipboard';
 import { useMemo, useState } from 'react';
 import {
   FlatList,
@@ -36,6 +35,8 @@ import {
   Portal,
   Text,
 } from 'react-native-paper';
+
+import { setAppClipboardStringAsync } from '../clipboard-intake/write-app-clipboard';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { FloatingHeader } from '../../components/FloatingHeader';
@@ -207,7 +208,7 @@ function ShareRow({
   const closeActions = () => setActionsVisible(false);
 
   const handleCopy = async () => {
-    await Clipboard.setStringAsync(item.shareUrl);
+    await setAppClipboardStringAsync(item.shareUrl);
     closeActions();
   };
 

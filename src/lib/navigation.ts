@@ -2,6 +2,8 @@ import { useFocusEffect, type ImperativeRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { BackHandler, Platform } from 'react-native';
 
+import { buildIntakeRoute, type IntakeRouteParams } from '../features/content-intake/route-intake';
+
 type ChatRouteParams = { k: string; msg?: string };
 
 export function chatRoute(key: string, msg?: string): { pathname: '/chat/[k]'; params: ChatRouteParams } {
@@ -16,6 +18,20 @@ export function openChat(
   options?: { msg?: string; replace?: boolean },
 ): void {
   const href = chatRoute(key, options?.msg);
+  if (options?.replace) router.replace(href);
+  else router.push(href);
+}
+
+export function intakeRoute(input: IntakeRouteParams): { pathname: '/intake'; params: IntakeRouteParams } {
+  return buildIntakeRoute(input);
+}
+
+export function openIntake(
+  router: ImperativeRouter,
+  input: IntakeRouteParams,
+  options?: { replace?: boolean },
+): void {
+  const href = intakeRoute(input);
   if (options?.replace) router.replace(href);
   else router.push(href);
 }

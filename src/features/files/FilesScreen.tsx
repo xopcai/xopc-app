@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
@@ -33,6 +32,7 @@ import { useGatewayConfigured } from '../../query/sessions';
 import { useCreateShare } from '../../query/shares';
 import { floatingBottomPadding, radii, spacing, typography, useTheme } from '../../theme';
 import { FilePreviewModal, type PreviewableFile } from '../chat/FilePreviewModal';
+import { setAppClipboardStringAsync } from '../clipboard-intake/write-app-clipboard';
 import { mimeTypeFromFileName } from '../chat/tool-result-file-paths';
 import { ShareSheet } from '../share/ShareSheet';
 
@@ -184,7 +184,7 @@ export function FilesScreen() {
   };
 
   const copyEntryPath = async (entry: WorkspaceEntry) => {
-    await Clipboard.setStringAsync(entry.absolutePath ?? entry.path);
+    await setAppClipboardStringAsync(entry.absolutePath ?? entry.path);
     setToast(labels.pathCopied);
   };
 

@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
+import { Switch } from 'react-native-paper';
 
 import { FloatingHeader } from '@/components/FloatingHeader';
 import {
@@ -11,6 +12,7 @@ import { useMessages } from '@/i18n/messages';
 import { dismissOrHome, useDismissOnHardwareBack } from '@/lib/navigation';
 import { useGatewayConfigured } from '@/query/sessions';
 import { useGatewayStore } from '@/stores/gateway-store';
+import { usePreferencesStore } from '@/stores/preferences-store';
 
 import { AppearanceSection } from './AppearanceSection';
 import {
@@ -24,6 +26,8 @@ export function SettingsScreen() {
   const m = useMessages();
   const s = m.settings;
   const colors = useSettingsColors();
+  const clipboardIntakeEnabled = usePreferencesStore((st) => st.clipboardIntakeEnabled);
+  const setClipboardIntakeEnabled = usePreferencesStore((st) => st.setClipboardIntakeEnabled);
 
   const configured = useGatewayConfigured();
   const connectionView = useGatewayConnectionView();
@@ -69,6 +73,21 @@ export function SettingsScreen() {
             value={gatewayValue}
             isLast
             onPress={() => router.push('/settings/gateway')}
+          />
+        </SettingsSection>
+
+        <SettingsSection title={s.sectionPreferences}>
+          <SettingsRow
+            icon="clipboard-text-outline"
+            iconColor={colors.accent}
+            label={s.clipboardIntake}
+            showChevron={false}
+            rightAccessory={(
+              <Switch
+                value={clipboardIntakeEnabled}
+                onValueChange={setClipboardIntakeEnabled}
+              />
+            )}
           />
         </SettingsSection>
 

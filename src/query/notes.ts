@@ -176,6 +176,7 @@ export interface CaptureNoteInput {
   markdown?: string;
   text?: string;
   kind?: NoteKind;
+  channel?: 'app' | 'clipboard' | 'share';
   attachments?: CaptureNoteAttachment[];
 }
 
@@ -197,7 +198,12 @@ async function createNoteJson(input: CaptureNoteInput): Promise<{ note: { id: st
   const platform = Platform.OS === 'ios' ? 'ios' : 'android';
   const res = await apiFetch('/api/notes', {
     method: 'POST',
-    body: JSON.stringify({ markdown: (input.markdown ?? input.text)?.trim() || undefined, kind: input.kind, channel: 'app', platform }),
+    body: JSON.stringify({
+      markdown: (input.markdown ?? input.text)?.trim() || undefined,
+      kind: input.kind,
+      channel: input.channel ?? 'app',
+      platform,
+    }),
   });
   if (!res.ok) throw await readError(res);
   return readCreatedNote(res);
@@ -215,7 +221,7 @@ export async function captureNote(input: CaptureNoteInput): Promise<{ note: { id
   const form = new FormData();
   form.append('markdown', trimmedMarkdown);
   if (input.kind) form.append('kind', input.kind);
-  form.append('channel', 'app');
+  form.append('channel', input.channel ?? 'app');
   form.append('platform', platform);
   await appendCaptureAttachment(form, firstAttachment);
 

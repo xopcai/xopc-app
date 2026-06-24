@@ -1,6 +1,7 @@
-import * as Clipboard from 'expo-clipboard';
 import { useCallback, useState } from 'react';
 import { TextInput, type TextInputProps } from 'react-native-paper';
+
+import { setAppClipboardStringAsync } from '../clipboard-intake/write-app-clipboard';
 
 type GatewayTokenInputProps = Omit<TextInputProps, 'secureTextEntry' | 'right'> & {
   onCopied?: () => void;
@@ -24,7 +25,7 @@ export function GatewayTokenInput({
   const handleCopy = useCallback(() => {
     const text = typeof value === 'string' ? value.trim() : '';
     if (!text) return;
-    void Clipboard.setStringAsync(text)
+    void setAppClipboardStringAsync(text)
       .then(() => onCopied?.())
       .catch(() => onCopyFailed?.());
   }, [onCopied, onCopyFailed, value]);

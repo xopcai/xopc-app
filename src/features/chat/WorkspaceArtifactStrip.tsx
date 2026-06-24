@@ -1,4 +1,3 @@
-import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
@@ -8,6 +7,7 @@ import type { ShareAutoRequest } from '../../api/share';
 import { t, useMessages } from '../../i18n/messages';
 import { useGatewayStore } from '../../stores/gateway-store';
 import { useTheme } from '../../theme';
+import { setAppClipboardStringAsync } from '../clipboard-intake/write-app-clipboard';
 import { ShareSheet } from '../share/ShareSheet';
 import { prefetchShare } from '../share/share-prefetch';
 import { mapManageRouteToAppPath } from './file-reference-routes';
@@ -101,7 +101,7 @@ function OffWorkspaceArtifactCard({
     refInfo.manageRoute && !appRoute && (refInfo.locationKind === 'xopc-skills' || refInfo.locationKind === 'xopc-sessions');
 
   const copyPath = () => {
-    void Clipboard.setStringAsync(displayPath);
+    void setAppClipboardStringAsync(displayPath);
   };
 
   return (

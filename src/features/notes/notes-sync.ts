@@ -15,7 +15,7 @@ import {
 import { parseCaptureIntent } from './capture-parser';
 
 export type CaptureQueuePayload =
-  | { type: 'text'; text: string; kind?: NoteKind }
+  | { type: 'text'; text: string; kind?: NoteKind; channel?: 'app' | 'clipboard' | 'share' }
   | { type: 'attachment'; attachment: ComposerAttachment; text?: string }
   | ({ type: 'voice' } & QueuedVoiceCapture);
 
@@ -27,6 +27,7 @@ const captureQueue: OfflineQueue<CaptureQueuePayload> = createOfflineQueue<Captu
       await captureNote({
         text: payload.text,
         kind: payload.kind ?? parseCaptureIntent(payload.text).kind,
+        channel: payload.channel,
       });
       return;
     }
@@ -39,11 +40,12 @@ const captureQueue: OfflineQueue<CaptureQueuePayload> = createOfflineQueue<Captu
 });
 
 /** Queue a text note for later sync. Returns the operation ID. */
-export function queueNote(text: string, kind?: NoteKind): string {
+export function queueNote(text: string, kind?: NoteKind, channel?: 'app' | 'clipboard' | 'share'): string {
   return captureQueue.enqueue({
     type: 'text',
     text,
     kind: kind ?? parseCaptureIntent(text).kind,
+    channel,
   });
 }
 

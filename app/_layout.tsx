@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { PaperProvider } from 'react-native-paper';
 
+import { ClipboardIntakeModal } from '@/features/clipboard-intake/ClipboardIntakeModal';
 import { tryConsumeGatewayDeeplink } from '@/features/gateway/apply-gateway-deeplink';
 import { themedStackScreenOptions } from '@/lib/stack-screen-theme';
 import { createPaperTheme, getColors } from '@/theme';
@@ -26,7 +27,9 @@ import { useNoteTagsStore } from '@/stores/note-tags-store';
 
 export default function RootLayout() {
   const router = useRouter();
+  const prefsHydrated = usePreferencesStore((s) => s.hydrated);
   const resolvedTheme = usePreferencesStore((s) => s.resolvedTheme);
+  const clipboardIntakeEnabled = usePreferencesStore((s) => s.clipboardIntakeEnabled);
   const hydratePrefs = usePreferencesStore((s) => s.hydrate);
   const hydrateNoteTags = useNoteTagsStore((s) => s.hydrate);
   const hydrateGateway = useGatewayStore((s) => s.hydrateFromStorage);
@@ -126,6 +129,13 @@ export default function RootLayout() {
                 <Stack.Screen name="items/[id]" options={{ headerShown: false }} />
                 <Stack.Screen name="files/index" options={{ headerShown: false }} />
                 <Stack.Screen
+                  name="intake"
+                  options={{
+                    headerShown: false,
+                    presentation: 'transparentModal',
+                  }}
+                />
+                <Stack.Screen
                   name="settings"
                   options={{
                     headerShown: false,
@@ -158,6 +168,7 @@ export default function RootLayout() {
                 visible={connectLandingVisible}
                 onRequestClose={onConnectLandingClose}
               />
+              <ClipboardIntakeModal enabled={prefsHydrated && clipboardIntakeEnabled && configured && !connectLandingVisible} />
             </GatewayConnectLandingContext.Provider>
           </PaperProvider>
         </QueryClientProvider>

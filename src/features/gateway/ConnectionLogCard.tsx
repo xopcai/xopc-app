@@ -7,9 +7,9 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Text } from 'react-native-paper';
-import * as Clipboard from 'expo-clipboard';
 
 import { useMessages } from '../../i18n/messages';
+import { setAppClipboardStringAsync } from '../clipboard-intake/write-app-clipboard';
 import { SettingsSection, useSettingsColors } from '../settings/settings-ui';
 
 import {
@@ -42,7 +42,7 @@ export const ConnectionLogCard = memo(function ConnectionLogCard({
     const text = events
       .map((e) => formatEventLine(e))
       .join('\n');
-    await Clipboard.setStringAsync(text);
+    await setAppClipboardStringAsync(text);
     onCopied?.();
   };
 

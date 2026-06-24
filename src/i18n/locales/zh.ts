@@ -495,6 +495,7 @@ export const zh: MessageBundle = {
     sourceCode: '源代码',
     softwareVersion: '软件版本',
     gatewayNotConfigured: '未配置',
+    clipboardIntake: '检测剪贴板内容',
     // 网关
     gateway: '网关',
     gatewayHint: '管理多个网关连接。开发构建中通过 MMKV 持久化存储。Expo Go 仅使用内存存储。',
@@ -1038,6 +1039,19 @@ export const zh: MessageBundle = {
     search: '搜索',
     loading: '加载中…',
     error: '错误',
+  },
+
+  contentIntake: {
+    saveLink: '保存链接',
+    saveCode: '保存代码',
+    saveChecklist: '保存清单',
+    saveToNote: '保存为笔记',
+    summarizeLink: '总结链接',
+    explainCode: '解释代码',
+    organizeChecklist: '整理清单',
+    summarizeText: '总结内容',
+    exploreInChat: '对话探索',
+    savedToNote: '已保存为笔记',
   },
 
   listInteraction: {
