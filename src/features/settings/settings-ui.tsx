@@ -1,7 +1,7 @@
-import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
-import { useTheme } from '../../theme';
+import { radii, spacing, typography, useTheme } from '../../theme';
 
 export function useSettingsColors() {
   const { colors } = useTheme();
@@ -33,7 +33,15 @@ export function SettingsSection({ title, children, style }: SettingsSectionProps
       {title ? (
         <Text style={[styles.sectionTitle, { color: colors.sectionLabel }]}>{title}</Text>
       ) : null}
-      <View style={[styles.card, { backgroundColor: colors.card }]}>{children}</View>
+      <View
+        style={[
+          styles.card,
+          Platform.OS === 'web' ? styles.cardRaisedWeb : styles.cardRaisedNative,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
+        {children}
+      </View>
     </View>
   );
 }
@@ -176,17 +184,27 @@ export function SettingsAgentRow({
 
 const styles = StyleSheet.create({
   section: {
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   sectionTitle: {
-    fontSize: 13,
-    fontWeight: '500',
-    marginBottom: 8,
-    marginLeft: 4,
+    ...typography.micro,
+    marginBottom: spacing.sm,
+    marginLeft: spacing.xs,
   },
   card: {
-    borderRadius: 16,
+    borderRadius: radii.xl,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
+  },
+  cardRaisedNative: {
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  cardRaisedWeb: {
+    boxShadow: '0 2px 10px rgba(17, 19, 24, 0.07)',
   },
   row: {
     flexDirection: 'row',

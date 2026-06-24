@@ -73,77 +73,77 @@ export type ColorScheme = {
 // ── Surface & Layer ─────────────────────────────────────────
 
 const lightSurface: SurfaceColors = {
-  base: '#FFFFFF',
-  panel: '#FAFAFA',
-  input: '#FAFAFA',
-  hover: '#F4F6FF',
-  active: '#EEF2FF',
+  base: '#F7F8FA',
+  panel: '#FFFFFF',
+  input: '#F2F4F7',
+  hover: '#F0F4FF',
+  active: '#E8EEFF',
 };
 
 const darkSurface: SurfaceColors = {
-  base: '#0A0A0A',
-  panel: '#121212',
-  input: '#1A1A1A',
-  hover: '#1A1A1A',
-  active: '#202020',
+  base: '#090A0C',
+  panel: '#121418',
+  input: '#181B20',
+  hover: '#1D2430',
+  active: '#202A3D',
 };
 
 // ── Text ────────────────────────────────────────────────────
 
 const lightText: TextColors = {
-  primary: '#111111',
-  secondary: '#666666',
-  tertiary: '#999999',
-  disabled: '#B7B7B7',
+  primary: '#111318',
+  secondary: '#5F6673',
+  tertiary: '#8B93A1',
+  disabled: '#B8BEC8',
   inverse: '#FFFFFF',
 };
 
 const darkText: TextColors = {
-  primary: '#F5F5F5',
-  secondary: '#A1A1A1',
-  tertiary: '#666666',
-  disabled: '#4F4F4F',
+  primary: '#F4F6FA',
+  secondary: '#A8AFBA',
+  tertiary: '#737B88',
+  disabled: '#4F5661',
   inverse: '#000000',
 };
 
 // ── Border ──────────────────────────────────────────────────
 
 const lightBorder: BorderColors = {
-  subtle: '#F1F1F1',
-  default: '#ECECEC',
-  strong: '#D8DCE8',
+  subtle: '#ECEFF4',
+  default: '#DFE4EC',
+  strong: '#CBD3E1',
 };
 
 const darkBorder: BorderColors = {
-  subtle: '#1A1A1A',
-  default: '#222222',
-  strong: '#333333',
+  subtle: '#1A1D23',
+  default: '#252A33',
+  strong: '#343B49',
 };
 
 // ── Accent & Semantic ───────────────────────────────────────
 
 const lightAccent: AccentColors = {
-  primary: '#3A6BFF',
-  primaryHover: '#2F55D6',
+  primary: '#315CFF',
+  primaryHover: '#294CD6',
   onPrimary: '#FFFFFF',
-  selectionBg: 'rgba(58,107,255,0.10)',
-  soft: '#EEF2FF',
+  selectionBg: 'rgba(49,92,255,0.10)',
+  soft: '#EEF3FF',
 };
 
 const darkAccent: AccentColors = {
-  primary: '#3A6BFF',
-  primaryHover: '#6F91FF',
+  primary: '#6F91FF',
+  primaryHover: '#91AAFF',
   onPrimary: '#FFFFFF',
-  selectionBg: 'rgba(58,107,255,0.18)',
-  soft: '#151A2B',
+  selectionBg: 'rgba(111,145,255,0.18)',
+  soft: '#151B2F',
 };
 
 export const semantic = {
-  success: { light: '#2CCB7F', dark: '#2CCB7F' },
-  warning: { light: '#FFB84D', dark: '#FFB84D' },
-  error: { light: '#FF5D5D', dark: '#FF5D5D' },
+  success: { light: '#1FA873', dark: '#35D18A' },
+  warning: { light: '#D98A19', dark: '#FFBE55' },
+  error: { light: '#E5484D', dark: '#FF6B6B' },
   errorBold: { light: '#E5484D', dark: '#FF6B6B' },
-  info: { light: '#3A6BFF', dark: '#6F91FF' },
+  info: { light: '#315CFF', dark: '#6F91FF' },
 } as const;
 
 // ── Composed palette per scheme ─────────────────────────────

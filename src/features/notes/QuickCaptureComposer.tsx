@@ -10,7 +10,7 @@ import {
 import { Icon } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
-import { typography, useTheme } from '../../theme';
+import { radii, spacing, typography, useTheme } from '../../theme';
 import type { AttachmentPickSource } from '../chat/attachment-file-io';
 import { AttachmentSourceSheet } from '../chat/attachment-source-sheet';
 import { MIN_COMPOSER_INPUT_HEIGHT } from '../chat/composer-layout';
@@ -45,7 +45,7 @@ export function QuickCaptureComposer({
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const accent = colors.accent.primary;
-  const surface = colors.surface.input;
+  const surface = colors.surface.panel;
   const border = colors.border.default;
   const canSubmit = value.trim().length > 0 && !disabled && !submitting;
 
@@ -76,7 +76,13 @@ export function QuickCaptureComposer({
 
   const renderVoiceToggle = () => (
     <Pressable
-      style={styles.toolBtn}
+      style={({ pressed }) => [
+        styles.toolBtn,
+        {
+          backgroundColor: pressed ? colors.surface.hover : colors.surface.input,
+          opacity: disabled || submitting ? 0.54 : 1,
+        },
+      ]}
       onPress={toggleMode}
       disabled={disabled || submitting}
       accessibilityLabel={mode === 'text' ? 'Switch to voice input' : 'Switch to keyboard'}
@@ -91,7 +97,13 @@ export function QuickCaptureComposer({
 
   const renderAttachButton = () => (
     <Pressable
-      style={styles.toolBtn}
+      style={({ pressed }) => [
+        styles.toolBtn,
+        {
+          backgroundColor: pressed ? colors.surface.hover : colors.surface.input,
+          opacity: disabled || submitting ? 0.54 : 1,
+        },
+      ]}
       onPress={() => setSheetOpen(true)}
       disabled={disabled || submitting}
       accessibilityLabel={cm.attachFile}
@@ -122,7 +134,13 @@ export function QuickCaptureComposer({
     <>
       {voice.feedback}
 
-      <View style={[styles.shell, { backgroundColor: surface, borderColor: border }]}>
+      <View
+        style={[
+          styles.shell,
+          Platform.OS === 'web' ? styles.shellRaisedWeb : styles.shellRaisedNative,
+          { backgroundColor: surface, borderColor: border },
+        ]}
+      >
         {mode === 'text' ? (
           <View style={styles.compactRow}>
             {renderVoiceToggle()}
@@ -147,7 +165,14 @@ export function QuickCaptureComposer({
           <View style={styles.compactRow}>
             {renderVoiceToggle()}
             <View
-              style={[styles.holdPad, voice.active && { opacity: 0.92 }]}
+              style={[
+                styles.holdPad,
+                {
+                  backgroundColor: colors.surface.input,
+                  borderColor: colors.border.subtle,
+                },
+                voice.active && { opacity: 0.92 },
+              ]}
               {...voice.panHandlers}
             >
               <Text style={[styles.holdLabel, { color: colors.text.secondary }]}>
@@ -176,16 +201,26 @@ export function QuickCaptureComposer({
 
 const styles = StyleSheet.create({
   shell: {
-    borderWidth: 1,
-    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.xxl,
     overflow: 'hidden',
+  },
+  shellRaisedNative: {
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 9,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  shellRaisedWeb: {
+    boxShadow: '0 4px 14px rgba(17, 19, 24, 0.10)',
   },
   compactRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 4,
-    paddingVertical: 4,
-    gap: 2,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
   },
   compactInputWrap: {
     flex: 1,
@@ -195,14 +230,14 @@ const styles = StyleSheet.create({
   toolBtn: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: radii.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sendCircle: {
     width: 34,
     height: 34,
-    borderRadius: 17,
+    borderRadius: radii.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -223,7 +258,8 @@ const styles = StyleSheet.create({
     marginVertical: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 14,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   holdLabel: {
     ...typography.body,

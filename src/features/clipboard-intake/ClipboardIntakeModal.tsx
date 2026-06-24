@@ -24,6 +24,7 @@ export function ClipboardIntakeModal({ enabled }: ClipboardIntakeModalProps) {
       toast={toast}
       onSave={() => void saveToNote(intakeCandidate)}
       onExplore={() => exploreInChat(intakeCandidate)}
+      onDismiss={markHandled}
       onToastDismiss={() => setToast('')}
     />
   );

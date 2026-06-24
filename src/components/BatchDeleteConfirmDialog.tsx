@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, useWindowDimensions } from 'react-native';
 import { Button, Dialog, Paragraph, Portal } from 'react-native-paper';
 
 import { t, useMessages } from '../i18n/messages';
@@ -22,11 +22,13 @@ export const BatchDeleteConfirmDialog = memo(function BatchDeleteConfirmDialog({
 }: BatchDeleteConfirmDialogProps) {
   const m = useMessages();
   const { colors } = useTheme();
+  const { width } = useWindowDimensions();
   const li = m.listInteraction;
+  const dialogWidth = Math.min(400, Math.max(0, width - 52));
 
   return (
     <Portal>
-      <Dialog visible={visible} onDismiss={onDismiss} style={styles.dialog}>
+      <Dialog visible={visible} onDismiss={onDismiss} style={[styles.dialog, { width: dialogWidth }]}>
         <Dialog.Title>{li.batchDeleteTitle}</Dialog.Title>
         <Dialog.Content>
           <Paragraph>{t(li.batchDeleteMessage, { count })}</Paragraph>
@@ -51,7 +53,6 @@ export const BatchDeleteConfirmDialog = memo(function BatchDeleteConfirmDialog({
 
 const styles = StyleSheet.create({
   dialog: {
-    maxWidth: 400,
     alignSelf: 'center',
   },
 });

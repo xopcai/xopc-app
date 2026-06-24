@@ -1051,6 +1051,7 @@ export const zh: MessageBundle = {
     organizeChecklist: '整理清单',
     summarizeText: '总结内容',
     exploreInChat: '对话探索',
+    dismiss: '忽略',
     savedToNote: '已保存为笔记',
   },
 

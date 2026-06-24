@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Button, Text } from 'react-native-paper';
+import { Button, Icon, Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
+import { radii, spacing, typography } from '../../theme';
 import {
   formatReachabilityReason,
   reachabilityStatusColor,
@@ -81,7 +82,18 @@ function ConnectionRow({
         {value}
       </Text>
       {statusLabel ? (
-        <Text style={[styles.rowStatus, { color: statusColor }]}>{statusLabel}</Text>
+        <View
+          style={[
+            styles.rowStatusPill,
+            {
+              backgroundColor: colors.accentSoft,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+          <Text style={[styles.rowStatus, { color: statusColor }]}>{statusLabel}</Text>
+        </View>
       ) : null}
       {reasonText ? (
         <Text style={[styles.rowReason, { color: colors.textMuted }]} selectable numberOfLines={4}>
@@ -131,6 +143,11 @@ export function GatewayConnectionCard({ onSyncNotice }: GatewayConnectionCardPro
   const activeReachability =
     view.connectionKind === 'lan' ? reachability.lan : reachability.tunnel;
   const activeRouteUnreachable = activeReachability.status === 'unreachable';
+  const activeStatusColor = reachabilityStatusColor(activeReachability.status, {
+    success: colors.success,
+    error: colors.error,
+    muted: colors.textMuted,
+  });
   const activeRouteReason = formatReachabilityReason(activeReachability, {
     timeout: g.addressUnreachableReasonTimeout,
     networkError: g.addressUnreachableReasonNetwork,
@@ -144,24 +161,52 @@ export function GatewayConnectionCard({ onSyncNotice }: GatewayConnectionCardPro
       <View
         style={[
           styles.kindBanner,
-          { borderBottomColor: colors.border },
+          {
+            backgroundColor: colors.accentSoft,
+            borderBottomColor: colors.border,
+          },
         ]}
       >
-        <Text variant="labelLarge" style={{ color: colors.text }}>
-          {g.connectionCurrent}: {kindLabel}
-        </Text>
+        <View style={styles.bannerHeader}>
+          <View style={[styles.bannerIcon, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Icon source="access-point-network" size={18} color={colors.accent} />
+          </View>
+          <View style={styles.bannerCopy}>
+            <Text style={[styles.bannerTitle, { color: colors.text }]}>
+              {g.connectionCurrent}: {kindLabel}
+            </Text>
+            <View
+              style={[
+                styles.activeStatusPill,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <View style={[styles.statusDot, { backgroundColor: activeStatusColor }]} />
+              <Text style={[styles.activeStatusText, { color: activeStatusColor }]}>
+                {reachabilityStatusLabel(activeReachability.status, {
+                  reachable: g.addressReachable,
+                  unreachable: g.addressUnreachable,
+                  checking: g.connectionDetecting,
+                })}
+              </Text>
+            </View>
+          </View>
+        </View>
         {view.activeHost ? (
-          <Text variant="bodySmall" style={{ color: colors.textMuted, marginTop: 4 }}>
+          <Text style={[styles.bannerMeta, { color: colors.textMuted }]} numberOfLines={2}>
             {g.connectionActiveUrl}: {view.activeHost}
           </Text>
         ) : null}
         {activeRouteUnreachable && !checking ? (
           <>
-            <Text variant="bodySmall" style={{ color: colors.error, marginTop: 4 }}>
+            <Text style={[styles.bannerError, { color: colors.error }]}>
               {g.gatewayUnreachable}
             </Text>
             {activeRouteReason ? (
-              <Text variant="bodySmall" style={{ color: colors.textMuted, marginTop: 2 }} selectable>
+              <Text style={[styles.bannerReason, { color: colors.textMuted }]} selectable>
                 {activeRouteReason}
               </Text>
             ) : null}
@@ -206,41 +251,99 @@ export function GatewayConnectionCard({ onSyncNotice }: GatewayConnectionCardPro
 
 const styles = StyleSheet.create({
   section: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   kindBanner: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  bannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  bannerIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.xs,
+  },
+  bannerTitle: {
+    ...typography.ui,
+  },
+  bannerMeta: {
+    ...typography.label,
+    marginTop: spacing.sm,
+  },
+  bannerError: {
+    ...typography.label,
+    fontWeight: '500',
+    marginTop: spacing.sm,
+  },
+  bannerReason: {
+    ...typography.caption,
+    marginTop: spacing.xxs,
+  },
+  activeStatusPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  activeStatusText: {
+    ...typography.micro,
   },
   actionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'flex-start',
-    marginTop: 4,
-    marginLeft: -8,
-    gap: 4,
+    marginTop: spacing.sm,
+    marginLeft: -spacing.sm,
+    gap: spacing.xs,
   },
   row: {
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    gap: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    gap: spacing.xs,
   },
   rowLabel: {
-    fontSize: 13,
+    ...typography.label,
     fontWeight: '500',
   },
   rowValue: {
-    fontSize: 15,
-    lineHeight: 20,
+    ...typography.body,
+  },
+  rowStatusPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   rowStatus: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '500',
+    ...typography.micro,
   },
   rowReason: {
-    fontSize: 12,
-    lineHeight: 17,
+    ...typography.caption,
   },
 });

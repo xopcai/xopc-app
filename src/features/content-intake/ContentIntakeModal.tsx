@@ -15,6 +15,7 @@ export type ContentIntakeModalProps = {
   toast: string;
   onSave: () => void;
   onExplore: () => void;
+  onDismiss?: () => void;
   onToastDismiss: () => void;
 };
 
@@ -25,6 +26,7 @@ export function ContentIntakeModal({
   toast,
   onSave,
   onExplore,
+  onDismiss,
   onToastDismiss,
 }: ContentIntakeModalProps) {
   const { colors } = useTheme();
@@ -82,7 +84,7 @@ export function ContentIntakeModal({
 
   return (
     <>
-      <Modal visible={visible} transparent animationType="fade" onRequestClose={() => {}}>
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss ?? (() => {})}>
         <View style={[styles.scrim, { backgroundColor: colors.overlay.scrim }]}>
           <Animated.View
             style={[
@@ -98,6 +100,22 @@ export function ContentIntakeModal({
               {intent?.previewText ?? ''}
             </Text>
             <View style={styles.actions}>
+              {onDismiss ? (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={disabled}
+                  onPress={() => runAction(onDismiss)}
+                  style={({ pressed }) => [
+                    styles.dismissButton,
+                    pressed && styles.pressed,
+                    disabled && styles.disabled,
+                  ]}
+                >
+                  <Text style={[styles.dismissText, { color: colors.text.tertiary }]}>
+                    {m.contentIntake.dismiss}
+                  </Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 disabled={disabled}
@@ -176,6 +194,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   buttonText: {
+    ...typography.label,
+  },
+  dismissButton: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radii.md,
+  },
+  dismissText: {
     ...typography.label,
   },
   pressed: {

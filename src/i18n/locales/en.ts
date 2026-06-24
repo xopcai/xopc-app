@@ -1051,6 +1051,7 @@ export const en = {
     organizeChecklist: 'Organize checklist',
     summarizeText: 'Summarize',
     exploreInChat: 'Explore in chat',
+    dismiss: 'Dismiss',
     savedToNote: 'Saved as note',
   },
 

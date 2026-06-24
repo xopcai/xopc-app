@@ -53,6 +53,10 @@ export function ContentIntakeRouteScreen() {
         toast={toast}
         onSave={() => void handleSave()}
         onExplore={handleExplore}
+        onDismiss={() => {
+          markHandled();
+          router.replace('/');
+        }}
         onToastDismiss={() => setToast('')}
       />
     </View>

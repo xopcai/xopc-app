@@ -22,7 +22,7 @@ import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_LONG } from '../../constant
 import { useMessages } from '../../i18n/messages';
 import { motion } from '../../motion';
 import { transcribeVoice } from '../../api/agent-client';
-import { typography, useTheme } from '../../theme';
+import { radii, spacing, typography, useTheme } from '../../theme';
 import { useOptionalWorkspaceTransition } from '../workspace/workspace-transition-context';
 import { ChatPendingFollowUpStack } from './ChatPendingFollowUpStack';
 import { canSendComposerDraft } from './composer-send-helpers';
@@ -587,9 +587,10 @@ export const ChatComposer = memo(function ChatComposer({
     [draft],
   );
 
-  const surface = colors.surface.input;
+  const surface = colors.surface.panel;
   const border = colors.border.default;
   const accent = colors.accent.primary;
+  const shellBorder = isExpanded || mode === 'voice' ? colors.border.strong : border;
 
   const toggleMode = useCallback(() => {
     if (disabled || streaming || hudOpen || transcribing) return;
@@ -641,8 +642,8 @@ export const ChatComposer = memo(function ChatComposer({
       style={({ pressed }) => [
         styles.captureChip,
         {
-          borderColor: border,
-          backgroundColor: colors.surface.panel,
+          borderColor: colors.border.subtle,
+          backgroundColor: pressed ? colors.surface.hover : colors.surface.panel,
           opacity: itemDisabled ? 0.45 : pressed ? 0.78 : 1,
         },
       ]}
@@ -683,7 +684,13 @@ export const ChatComposer = memo(function ChatComposer({
 
   const renderVoiceToggle = () => (
     <Pressable
-      style={styles.toolBtn}
+      style={({ pressed }) => [
+        styles.toolBtn,
+        {
+          backgroundColor: pressed ? colors.surface.hover : colors.surface.input,
+          opacity: disabled || streaming ? 0.54 : 1,
+        },
+      ]}
       onPress={toggleMode}
       disabled={disabled || streaming}
       accessibilityLabel={mode === 'text' ? 'Switch to voice input' : 'Switch to keyboard'}
@@ -698,7 +705,13 @@ export const ChatComposer = memo(function ChatComposer({
 
   const renderAttachButton = () => (
     <Pressable
-      style={styles.toolBtn}
+      style={({ pressed }) => [
+        styles.toolBtn,
+        {
+          backgroundColor: pressed ? colors.surface.hover : colors.surface.input,
+          opacity: disabled || att.attachments.length >= att.maxAttachments ? 0.54 : 1,
+        },
+      ]}
       onPress={openAttachmentSheet}
       disabled={disabled || att.attachments.length >= att.maxAttachments}
       accessibilityLabel={cm.attachFile}
@@ -843,7 +856,12 @@ export const ChatComposer = memo(function ChatComposer({
             if (rect) transition?.notifyComposerAnchor(rect);
           });
         }}
-        style={[styles.shell, { backgroundColor: surface, borderColor: border }, shellRevealStyle]}
+        style={[
+          styles.shell,
+          Platform.OS === 'web' ? styles.shellRaisedWeb : styles.shellRaisedNative,
+          { backgroundColor: surface, borderColor: shellBorder },
+          shellRevealStyle,
+        ]}
       >
         {mode === 'text' ? (
           <>
@@ -890,7 +908,15 @@ export const ChatComposer = memo(function ChatComposer({
         ) : isExpanded ? (
           <>
             <View
-              style={[styles.holdPad, styles.holdPadExpanded, hudOpen && { opacity: 0.92 }]}
+              style={[
+                styles.holdPad,
+                styles.holdPadExpanded,
+                {
+                  backgroundColor: colors.surface.input,
+                  borderColor: colors.border.subtle,
+                },
+                hudOpen && { opacity: 0.92 },
+              ]}
               {...panResponder.panHandlers}
             >
               <Text style={[styles.holdLabel, { color: colors.text.secondary }]}>
@@ -914,7 +940,15 @@ export const ChatComposer = memo(function ChatComposer({
           <View style={styles.compactRow}>
             {renderVoiceToggle()}
             <View
-              style={[styles.holdPad, styles.holdPadCompact, hudOpen && { opacity: 0.92 }]}
+              style={[
+                styles.holdPad,
+                styles.holdPadCompact,
+                {
+                  backgroundColor: colors.surface.input,
+                  borderColor: colors.border.subtle,
+                },
+                hudOpen && { opacity: 0.92 },
+              ]}
               {...panResponder.panHandlers}
             >
               <Text style={[styles.holdLabel, { color: colors.text.secondary }]}>
@@ -945,32 +979,42 @@ export const ChatComposer = memo(function ChatComposer({
 
 const styles = StyleSheet.create({
   wrap: {
-    paddingHorizontal: 10,
-    paddingTop: 6,
-    paddingBottom: 4,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
   shell: {
-    borderWidth: 1,
-    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.xxl,
     overflow: 'hidden',
+  },
+  shellRaisedNative: {
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 9,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  shellRaisedWeb: {
+    boxShadow: '0 4px 14px rgba(17, 19, 24, 0.10)',
   },
   captureRail: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingBottom: 8,
+    gap: spacing.sm,
+    paddingBottom: spacing.sm,
   },
   captureChip: {
     flex: 1,
     minWidth: 0,
     height: 38,
-    borderRadius: 19,
+    borderRadius: radii.full,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    paddingHorizontal: 8,
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
   },
   captureLabel: {
     ...typography.label,
@@ -979,13 +1023,13 @@ const styles = StyleSheet.create({
   compactRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 4,
-    paddingVertical: 4,
-    gap: 2,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
   },
   expandedInput: {
-    paddingHorizontal: 12,
-    paddingTop: 6,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
     paddingBottom: 0,
   },
   compactInputWrap: {
@@ -996,10 +1040,10 @@ const styles = StyleSheet.create({
   toolRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingBottom: 6,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.sm,
     paddingTop: 0,
-    gap: 4,
+    gap: spacing.xs,
   },
   toolSpacer: {
     flex: 1,
@@ -1007,21 +1051,21 @@ const styles = StyleSheet.create({
   toolBtn: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: radii.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sendCircle: {
     width: 34,
     height: 34,
-    borderRadius: 17,
+    borderRadius: radii.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   streamingActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   input: {
     ...typography.body,
@@ -1046,7 +1090,8 @@ const styles = StyleSheet.create({
   holdPad: {
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 14,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   holdPadCompact: {
     flex: 1,
@@ -1055,9 +1100,9 @@ const styles = StyleSheet.create({
   },
   holdPadExpanded: {
     minHeight: 44,
-    marginHorizontal: 8,
-    marginTop: 10,
-    marginBottom: 4,
+    marginHorizontal: spacing.sm,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
   },
   holdLabel: {
     ...typography.body,

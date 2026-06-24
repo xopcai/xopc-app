@@ -5,6 +5,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { analyzeIntakeContent, shouldOfferContentIntake, type ContentIntakeIntent } from '../content-intake/content-intent';
 import { isLatestAppClipboardHash } from './app-clipboard-origin';
 import { hashClipboardText } from './clipboard-hash';
+import { isClipboardHashHandled, rememberClipboardHashHandled } from './clipboard-intake-store';
 
 export type ClipboardCandidate = {
   text: string;
@@ -30,7 +31,10 @@ export function useClipboardIntake(enabled: boolean): {
 
   const markHandled = useCallback(() => {
     setCandidate((current) => {
-      if (current) lastHashRef.current = current.hash;
+      if (current) {
+        lastHashRef.current = current.hash;
+        rememberClipboardHashHandled(current.hash);
+      }
       return null;
     });
   }, []);
@@ -42,14 +46,21 @@ export function useClipboardIntake(enabled: boolean): {
       const hasText = await Clipboard.hasStringAsync();
       if (!hasText) return;
       const text = (await Clipboard.getStringAsync()).trim();
+      if (!text) return;
       const hash = hashClipboardText(text);
       if (hash === lastHashRef.current) return;
-      if (!shouldOfferContentIntake(text)) {
+      if (isClipboardHashHandled(hash)) {
         lastHashRef.current = hash;
         return;
       }
       if (isLatestAppClipboardHash(hash)) {
         lastHashRef.current = hash;
+        rememberClipboardHashHandled(hash);
+        return;
+      }
+      if (!shouldOfferContentIntake(text)) {
+        lastHashRef.current = hash;
+        rememberClipboardHashHandled(hash);
         return;
       }
       setCandidate({ text, hash, intent: analyzeIntakeContent(text) });

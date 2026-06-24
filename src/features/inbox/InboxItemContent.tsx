@@ -4,7 +4,7 @@ import { Text } from 'react-native-paper';
 
 import { useMessages } from '../../i18n/messages';
 import type { NoteIndexEntry } from '../../query/notes';
-import { useTheme } from '../../theme';
+import { spacing, typography, useTheme } from '../../theme';
 import { resolveNoteListDisplay } from '../notes/note-list-display';
 import { readLocalNote } from '../notes/notes-local';
 
@@ -50,7 +50,7 @@ export function InboxItemContent({ note }: InboxItemContentProps) {
 }
 
 const styles = StyleSheet.create({
-  copy: { flex: 1, gap: 4 },
-  title: { fontSize: 15, fontWeight: '600', lineHeight: 21 },
-  detail: { fontSize: 13, lineHeight: 18 },
+  copy: { flex: 1, gap: spacing.xs, minWidth: 0 },
+  title: { ...typography.body, fontWeight: '600' },
+  detail: { ...typography.label },
 });

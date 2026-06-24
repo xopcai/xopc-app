@@ -13,6 +13,8 @@ export const KEYS = {
   language: 'prefs.language',
   themePreference: 'prefs.themePreference',
   clipboardIntakeEnabled: 'prefs.clipboardIntakeEnabled',
+  clipboardHandledHashes: 'clipboard.handledHashes',
+  clipboardLatestAppHash: 'clipboard.latestAppHash',
   defaultAgentId: 'prefs.defaultAgentId',
   selectedModelRef: 'prefs.selectedModelRef',
   noteTags: 'prefs.noteTags',

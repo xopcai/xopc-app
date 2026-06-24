@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,7 +27,7 @@ import { queryKeys } from '../../query/keys';
 import { useGatewayConfigured } from '../../query/sessions';
 import { invalidateHomeFeed } from '../../query/workspace-sync';
 import { NOTE_KIND_ICONS } from '../notes/note-list-display';
-import { useTheme, FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
+import { radii, spacing, typography, useTheme, FLOATING_BOTTOM_OFFSET, floatingBottomPadding } from '../../theme';
 import {
   captureNoteWithComposerAttachment,
   captureNoteWithVoice,
@@ -250,12 +250,18 @@ export function InboxScreen() {
     const selected = selectedIds.has(item.id);
     const row = (
       <Pressable
-        style={[
+        style={({ pressed }) => [
           styles.itemCard,
+          !selected && (Platform.OS === 'web' ? styles.itemCardRaisedWeb : styles.itemCardRaisedNative),
           {
-            backgroundColor: selected ? colors.accent.selectionBg : colors.surface.panel,
-            borderColor: selected ? colors.accent.primary : colors.border.subtle,
+            backgroundColor: selected
+              ? colors.accent.selectionBg
+              : pressed
+                ? colors.surface.hover
+                : colors.surface.panel,
+            borderColor: selected ? colors.accent.primary : colors.border.default,
           },
+          pressed && !selected && (Platform.OS === 'web' ? styles.itemCardPressedWeb : styles.itemCardPressedNative),
         ]}
         onPress={() => handleItemPress(item)}
         onLongPress={() => handleItemLongPress(item)}
@@ -265,7 +271,15 @@ export function InboxScreen() {
         {selectionMode ? (
           <ListSelectionCheckbox selected={selected} />
         ) : (
-          <View style={[styles.itemIcon, { backgroundColor: colors.accent.selectionBg }]}>
+          <View
+            style={[
+              styles.itemIcon,
+              {
+                backgroundColor: selected ? colors.surface.panel : colors.accent.soft,
+                borderColor: selected ? colors.accent.primary : colors.border.subtle,
+              },
+            ]}
+          >
             <Icon source={NOTE_KIND_ICONS[item.kind] ?? 'lightbulb-outline'} size={20} color={colors.accent.primary} />
           </View>
         )}
@@ -288,7 +302,10 @@ export function InboxScreen() {
   }, [
     colors.accent.primary,
     colors.accent.selectionBg,
+    colors.accent.soft,
+    colors.border.default,
     colors.border.subtle,
+    colors.surface.hover,
     colors.surface.panel,
     handleItemLongPress,
     handleItemPress,
@@ -387,24 +404,43 @@ export function InboxScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   bottomBar: {
-    paddingHorizontal: 10,
-    paddingTop: 6,
-    paddingBottom: 4,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
-  listContent: { padding: 16, gap: 10 },
+  listContent: { padding: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
   itemCard: {
     height: INBOX_ITEM_HEIGHT,
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.xl,
+    paddingHorizontal: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
+  },
+  itemCardRaisedNative: {
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+  },
+  itemCardRaisedWeb: {
+    boxShadow: '0 3px 10px rgba(17, 19, 24, 0.08)',
+  },
+  itemCardPressedNative: {
+    shadowOpacity: 0.03,
+    transform: [{ translateY: 1 }],
+  },
+  itemCardPressedWeb: {
+    boxShadow: '0 1px 4px rgba(17, 19, 24, 0.06)',
+    transform: [{ translateY: 1 }],
   },
   itemIcon: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -415,7 +451,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 36,
     gap: 8,
   },
-  emptyTitle: { fontSize: 18, fontWeight: '600' },
-  emptyText: { fontSize: 13, textAlign: 'center', lineHeight: 19 },
+  emptyTitle: { ...typography.heading },
+  emptyText: { ...typography.label, textAlign: 'center' },
   footerLoader: { alignItems: 'center', paddingVertical: 14 },
 });
