@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
@@ -60,7 +60,7 @@ import { QuickCaptureComposer } from '../notes/QuickCaptureComposer';
 import { useVoiceCaptureInteraction } from '../notes/use-voice-capture-interaction';
 import { WorkspaceSearchOverlay } from '../search/WorkspaceSearchOverlay';
 import { AgentAvatar } from '../ai/AgentAvatar';
-import { readAgentUsage, touchAgentUsage } from '../ai/agent-usage-cache';
+import { readAgentUsage, sortHomeAgents, touchAgentUsage } from '../ai/agent-usage-cache';
 import { useHomeChatPrefetch } from './use-home-chat-prefetch';
 import { useWorkspaceNavigation } from './workspace-navigation-context';
 
@@ -143,6 +143,12 @@ export function WorkspaceHomeScreen() {
     setAgentUsage(readAgentUsage(activeGatewayId));
   }, [activeGatewayId]);
 
+  useFocusEffect(
+    useCallback(() => {
+      setAgentUsage(readAgentUsage(activeGatewayId));
+    }, [activeGatewayId]),
+  );
+
   const homeQuery = useQuery({
     queryKey: queryKeys.home,
     queryFn: fetchHome,
@@ -182,13 +188,8 @@ export function WorkspaceHomeScreen() {
 
   const homeAgents = useMemo(() => {
     const agents = agentsQuery.data?.items ?? [];
-    return [...agents].sort((a, b) => {
-      const aUsed = agentUsage[a.id] ?? 0;
-      const bUsed = agentUsage[b.id] ?? 0;
-      if (aUsed !== bUsed) return bUsed - aUsed;
-      return (a.name ?? a.id).localeCompare(b.name ?? b.id);
-    });
-  }, [agentUsage, agentsQuery.data?.items]);
+    return sortHomeAgents(agents, agentUsage, defaultAgentId);
+  }, [agentUsage, agentsQuery.data?.items, defaultAgentId]);
 
   const m = useMessages();
   const hm = m.homePage;
@@ -317,7 +318,8 @@ export function WorkspaceHomeScreen() {
 
   const createAgentSessionMutation = useMutation({
     mutationFn: (agentId: string) => createSession(agentId),
-    onSuccess: (key) => {
+    onSuccess: (key, agentId) => {
+      touchAgentUsage(activeGatewayId, agentId);
       invalidateSessionLists(queryClient);
       openChat(router, key);
     },
@@ -513,7 +515,6 @@ export function WorkspaceHomeScreen() {
                   : undefined
               }
               onAgentPress={(agentId) => {
-                setAgentUsage(touchAgentUsage(activeGatewayId, agentId));
                 createAgentSessionMutation.mutate(agentId);
               }}
             />
