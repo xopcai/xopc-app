@@ -33,6 +33,7 @@ import { captureNote, fetchNotes, type NoteIndexEntry } from '../../query/notes'
 import { invalidateHomeFeed, invalidateSessionLists } from '../../query/workspace-sync';
 import { resolveNoteListTitle } from '../notes/note-title';
 import { readLocalNote } from '../notes/notes-local';
+import { noteKindLabel } from '../notes/note-list-display';
 import { createSession, useGatewayConfigured } from '../../query/sessions';
 import { fetchChatAgents, type ChatAgentOption, useEffectiveDefaultAgentId } from '../../query/agents';
 import { useGatewayStore } from '../../stores/gateway-store';
@@ -72,6 +73,8 @@ type CapturePayload =
   | { type: 'text'; text: string }
   | { type: 'attachment'; attachment: ComposerAttachment }
   | { type: 'voice'; uri: string; durationMillis: number; mimeType: string };
+
+const HOME_INBOX_PREVIEW_LIMIT = 50;
 
 function iconForNoteKind(kind: NoteIndexEntry['kind']): string {
   if (kind === 'task') return 'checkbox-marked-circle-outline';
@@ -193,6 +196,29 @@ export function WorkspaceHomeScreen() {
   const im = m.inboxPage;
   const cm = m.chat;
   const homeDefaults = useMemo(() => fallbackHomeData(defaultAgentId), [defaultAgentId]);
+  const inboxCount = home?.inboxCount ?? 0;
+
+  const inboxPreviewQuery = useQuery({
+    queryKey: [...queryKeys.notes('inbox'), 'home-preview'] as const,
+    queryFn: () =>
+      fetchNotes({
+        status: 'inbox',
+        limit: HOME_INBOX_PREVIEW_LIMIT,
+        offset: 0,
+        sortBy: 'createdAt',
+        sortOrder: 'desc',
+      }),
+    enabled: configured && inboxCount > 0,
+    staleTime: 60_000,
+  });
+
+  const inboxPreviewItems = inboxPreviewQuery.data?.items.slice(0, 2) ?? [];
+  const inboxTodayCount = useMemo(() => {
+    const items = inboxPreviewQuery.data?.items ?? [];
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    return items.filter((item) => item.createdAt >= start.getTime()).length;
+  }, [inboxPreviewQuery.data?.items]);
 
   const handleNotePress = useCallback((item: NoteIndexEntry) => {
     openNoteDetail(router, item.id);
@@ -426,7 +452,6 @@ export function WorkspaceHomeScreen() {
 
   const refreshing = homeQuery.isFetching && !homeQuery.isLoading;
   const pendingTasks = home?.pendingTasks ?? [];
-  const inboxCount = home?.inboxCount ?? 0;
   const pendingTaskCount = home?.pendingTaskCount ?? 0;
   const gateway = home?.gateway ?? homeDefaults.gateway;
   const attentionWorkflow = home?.workflowRuns.attention[0];
@@ -465,6 +490,8 @@ export function WorkspaceHomeScreen() {
             />
             <AttentionSection
               inboxCount={inboxCount}
+              inboxTodayCount={inboxTodayCount}
+              inboxPreviewItems={inboxPreviewItems}
               pendingTaskCount={pendingTaskCount}
               workflowAttentionCount={home?.workflowRuns.attention.length ?? 0}
               nextTask={nextTask}
@@ -667,6 +694,8 @@ function ContinueSection({
 
 function AttentionSection({
   inboxCount,
+  inboxTodayCount,
+  inboxPreviewItems,
   pendingTaskCount,
   workflowAttentionCount,
   nextTask,
@@ -677,6 +706,8 @@ function AttentionSection({
   onWorkflowPress,
 }: {
   inboxCount: number;
+  inboxTodayCount: number;
+  inboxPreviewItems: NoteIndexEntry[];
   pendingTaskCount: number;
   workflowAttentionCount: number;
   nextTask?: NoteIndexEntry;
@@ -690,9 +721,6 @@ function AttentionSection({
   const { homePage: hm } = useMessages();
   const nextTaskTitle = nextTask ? resolveNoteListTitle(nextTask, hm.untitled, readLocalNote(nextTask.id)) : null;
   const metrics = [
-    inboxCount > 0
-      ? { key: 'inbox', icon: 'tray-full', label: hm.inboxMetric, value: inboxCount, onPress: onInboxPress }
-      : null,
     pendingTaskCount > 0
       ? { key: 'tasks', icon: 'checkbox-marked-circle-outline', label: hm.tasksMetric, value: pendingTaskCount, onPress: onTasksPress }
       : null,
@@ -702,10 +730,14 @@ function AttentionSection({
   ].filter((metric): metric is NonNullable<typeof metric> => metric != null);
   const hasNextItem = Boolean(attentionWorkflow || nextTask);
 
-  if (metrics.length === 0 && !hasNextItem) return null;
-
   return (
     <Section title={hm.sectionAttention}>
+      <InboxPreviewPanel
+        inboxCount={inboxCount}
+        todayCount={inboxTodayCount}
+        items={inboxPreviewItems}
+        onPress={onInboxPress}
+      />
       {metrics.length > 0 ? (
         <View style={styles.metricsGrid}>
           {metrics.map((metric) => (
@@ -739,6 +771,88 @@ function AttentionSection({
         </Pressable>
       ) : null}
     </Section>
+  );
+}
+
+function InboxPreviewPanel({
+  inboxCount,
+  todayCount,
+  items,
+  onPress,
+}: {
+  inboxCount: number;
+  todayCount: number;
+  items: NoteIndexEntry[];
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  const { homePage: hm } = useMessages();
+  const statusText = inboxCount > 0
+    ? todayCount > 0
+      ? t(hm.inboxPendingTodayCount, { count: inboxCount, today: todayCount })
+      : t(hm.inboxPendingCount, { count: inboxCount })
+    : hm.inboxClearHint;
+
+  return (
+    <Pressable
+      style={[styles.inboxPanel, { backgroundColor: colors.surface.panel, borderColor: colors.border.default }]}
+      onPress={onPress}
+    >
+      <View style={styles.inboxHeader}>
+        <View style={styles.inboxTitleRow}>
+          <View style={[styles.iconBubble, { backgroundColor: colors.accent.selectionBg }]}>
+            <Icon source={inboxCount > 0 ? 'tray-full' : 'tray'} size={18} color={colors.accent.primary} />
+          </View>
+          <View style={styles.rowCopy}>
+            <Text style={[styles.rowTitle, { color: colors.text.primary }]}>{hm.inboxMetric}</Text>
+            <Text numberOfLines={1} style={[styles.rowSubtitle, { color: colors.text.tertiary }]}>
+              {statusText}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.inboxAction}>
+          <Text style={[styles.openText, { color: colors.accent.primary }]}>{hm.organizeInbox}</Text>
+          <Icon source="chevron-right" size={18} color={colors.accent.primary} />
+        </View>
+      </View>
+
+      {inboxCount > 0 ? (
+        <View style={styles.inboxPreviewList}>
+          {items.length > 0 ? items.map((item, index) => (
+            <InboxPreviewItem key={item.id} item={item} showDivider={index < items.length - 1} />
+          )) : (
+            <Text style={[styles.inboxEmptyHint, { color: colors.text.tertiary }]}>
+              {hm.inboxPreviewLoading}
+            </Text>
+          )}
+        </View>
+      ) : (
+        <Text style={[styles.inboxEmptyHint, { color: colors.text.tertiary }]}>
+          {hm.inboxNewCaptureHint}
+        </Text>
+      )}
+    </Pressable>
+  );
+}
+
+function InboxPreviewItem({ item, showDivider }: { item: NoteIndexEntry; showDivider: boolean }) {
+  const { colors } = useTheme();
+  const { homePage: hm, notesPage: pm } = useMessages();
+  const title = resolveNoteListTitle(item, hm.untitled, readLocalNote(item.id));
+  const kind = noteKindLabel(item.kind, pm);
+  const meta = `${kind} · ${timeLabel(item.createdAt, hm)}`;
+
+  return (
+    <View style={styles.inboxPreviewRow}>
+      <View style={[styles.iconBubbleSmall, { backgroundColor: colors.surface.input }]}>
+        <Icon source={iconForNoteKind(item.kind)} size={16} color={colors.text.secondary} />
+      </View>
+      <View style={styles.rowCopy}>
+        <Text numberOfLines={1} style={[styles.rowTitle, { color: colors.text.primary }]}>{title}</Text>
+        <Text numberOfLines={1} style={[styles.rowSubtitle, { color: colors.text.tertiary }]}>{meta}</Text>
+      </View>
+      {showDivider ? <View style={[styles.inboxPreviewDivider, { backgroundColor: colors.border.subtle }]} /> : null}
+    </View>
   );
 }
 
@@ -1099,6 +1213,57 @@ const styles = StyleSheet.create({
   },
   metricValue: { fontSize: 24, lineHeight: 30, fontWeight: '600' },
   metricLabel: { ...typography.caption, fontWeight: '500' },
+  inboxPanel: {
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  inboxHeader: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  inboxTitleRow: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  inboxAction: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xxs,
+  },
+  inboxPreviewList: {
+    gap: spacing.sm,
+  },
+  inboxPreviewRow: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  iconBubbleSmall: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inboxPreviewDivider: {
+    position: 'absolute',
+    left: 44,
+    right: 0,
+    bottom: -spacing.xs,
+    height: StyleSheet.hairlineWidth,
+  },
+  inboxEmptyHint: { ...typography.label, fontWeight: '500' },
   disabled: { opacity: 0.6 },
   libraryGrid: {
     flexDirection: 'row',

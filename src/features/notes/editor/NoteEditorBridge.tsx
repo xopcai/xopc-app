@@ -25,6 +25,7 @@ export interface NoteEditorBridgeProps {
   onRequestAi: (request: EditorAiRequest) => Promise<EditorAiResponse | null>;
   onApplyAiMetadata: (metadata: EditorAiMetadata) => Promise<void>;
   onRequestWikiLink: (query: string) => Promise<EditorWikiLinkCandidate[]>;
+  onFocusChange?: (focused: boolean) => void;
 }
 
 export const NoteEditorBridge = memo(function NoteEditorBridge({

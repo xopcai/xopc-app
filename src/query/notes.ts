@@ -153,7 +153,7 @@ export async function fetchNotes(query?: NotesListQuery): Promise<NotesListResul
   return { items, total: parsed.data.total, limit, offset, hasMore };
 }
 
-export async function quickCaptureNote(markdown: string): Promise<{ note: { id: string } }> {
+export async function quickCaptureNote(markdown: string): Promise<CaptureNoteResult> {
   const platform = Platform.OS === 'ios' ? 'ios' : 'android';
   const res = await apiFetch('/api/notes/quick-capture', {
     method: 'POST',
@@ -180,6 +180,8 @@ export interface CaptureNoteInput {
   attachments?: CaptureNoteAttachment[];
 }
 
+export type CaptureNoteResult = { note: { id: string } & Partial<Note> };
+
 async function appendCaptureAttachment(form: FormData, attachment: CaptureNoteAttachment): Promise<void> {
   if (attachment.file) {
     form.append('file', attachment.file, attachment.fileName);
@@ -194,7 +196,7 @@ async function appendCaptureAttachment(form: FormData, attachment: CaptureNoteAt
   if (attachment.duration != null) form.append('duration', String(attachment.duration));
 }
 
-async function createNoteJson(input: CaptureNoteInput): Promise<{ note: { id: string } }> {
+async function createNoteJson(input: CaptureNoteInput): Promise<CaptureNoteResult> {
   const platform = Platform.OS === 'ios' ? 'ios' : 'android';
   const res = await apiFetch('/api/notes', {
     method: 'POST',
@@ -209,7 +211,7 @@ async function createNoteJson(input: CaptureNoteInput): Promise<{ note: { id: st
   return readCreatedNote(res);
 }
 
-export async function captureNote(input: CaptureNoteInput): Promise<{ note: { id: string } }> {
+export async function captureNote(input: CaptureNoteInput): Promise<CaptureNoteResult> {
   const trimmedMarkdown = (input.markdown ?? input.text)?.trim() ?? '';
   if (!input.attachments?.length) {
     if (!input.kind && trimmedMarkdown) return quickCaptureNote(trimmedMarkdown);
@@ -241,11 +243,11 @@ export async function captureNote(input: CaptureNoteInput): Promise<{ note: { id
   return { note };
 }
 
-async function readCreatedNote(res: Response): Promise<{ note: { id: string } }> {
-  const data = await res.json() as { note?: { id?: string } };
+async function readCreatedNote(res: Response): Promise<CaptureNoteResult> {
+  const data = await res.json() as { note?: Partial<Note> & { id?: string } };
   const id = data.note?.id?.trim();
   if (!id) throw new Error('Create note: missing id');
-  return { note: { id } };
+  return { note: { ...data.note, id } };
 }
 
 export async function updateNote(id: string, patch: Record<string, unknown>): Promise<Note> {

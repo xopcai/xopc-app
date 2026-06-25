@@ -111,6 +111,8 @@ export function PageScreen() {
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [snackMsg, setSnackMsg] = useState('');
   const [moreVisible, setMoreVisible] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [editorFocused, setEditorFocused] = useState(false);
   const [actionLoading, setActionLoading] = useState<'catalyst' | 'openChat' | null>(null);
   const [, setSelection] = useState<EditorSelectionContext | null>(null);
 
@@ -321,6 +323,20 @@ export function PageScreen() {
 
   useEffect(() => () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+      setEditorFocused(false);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
   }, []);
 
   useFocusEffect(
@@ -562,6 +578,10 @@ export function PageScreen() {
     wikiLinkPlaceholder: pm.wikiLinkSearchPlaceholder,
     wikiLinkInsertTyped: pm.wikiLinkInsertTyped,
     wikiLinkNoResults: pm.wikiLinkNoResults,
+    heading: pm.editorBlockHeading,
+    link: pm.editorInsertLink,
+    undo: pm.editorUndo,
+    redo: pm.editorRedo,
     bold: pm.editorFormatBold,
     italic: pm.editorFormatItalic,
     todo: pm.editorBlockTodo,
@@ -569,10 +589,16 @@ export function PageScreen() {
     ordered: pm.editorBlockNumberedList,
     quote: pm.editorBlockQuote,
     code: pm.editorBlockCode,
+    imageReplace: pm.editorReplaceImage,
+    imageRemove: pm.editorImageRemove,
+    imageCopyLink: pm.editorCopyImageLink,
+    imageCaption: pm.editorCaption,
+    linkUrlPlaceholder: pm.editorLinkUrlPlaceholder,
   }), [pm]);
 
   const showLoading = noteQuery.isLoading && !note;
   const showError = noteQuery.isError && !note;
+  const showViewActions = Boolean(note && id && !keyboardVisible && !editorFocused);
 
   const rightActions = useMemo(() => [
     { icon: 'check', label: pm.done, onPress: handleDone },
@@ -605,6 +631,7 @@ export function PageScreen() {
             <TextInput
               value={title}
               onChangeText={updateTitle}
+              onFocus={() => setEditorFocused(false)}
               placeholder={pm.untitledNote}
               placeholderTextColor={colors.text.tertiary}
               accessibilityLabel={pm.aiMetadataNoteTitle}
@@ -622,6 +649,7 @@ export function PageScreen() {
             onRequestAi={handleRequestAi}
             onApplyAiMetadata={handleApplyAiMetadata}
             onRequestWikiLink={handleRequestWikiLink}
+            onFocusChange={setEditorFocused}
           />
         </View>
       ) : null}
@@ -630,7 +658,7 @@ export function PageScreen() {
         <Pressable
           style={[
             styles.retryBar,
-            note && id ? styles.retryBarAboveActions : null,
+            showViewActions ? styles.retryBarAboveActions : null,
             { backgroundColor: colors.surface.panel, borderColor: colors.border.default },
           ]}
           onPress={() => void flushSave()}
@@ -642,7 +670,7 @@ export function PageScreen() {
         </Pressable>
       ) : null}
 
-      {note && id ? (
+      {showViewActions ? (
         <NoteViewActionBar
           labels={{
             catalyst: pm.catalystTitle,
