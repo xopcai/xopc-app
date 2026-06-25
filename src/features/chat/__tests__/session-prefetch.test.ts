@@ -1,11 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../../api/client', () => ({
-  apiFetch: vi.fn(),
-  notifyUnauthorizedIfNeeded: vi.fn(),
-  formatApiHttpError: vi.fn(),
-}));
-
 vi.mock('../../../stores/gateway-store', () => ({
   useGatewayStore: Object.assign(vi.fn(), {
     getState: vi.fn(() => ({
@@ -22,24 +16,17 @@ import { createSession } from '../../../query/sessions';
 import {
   prefetchNewChatSession,
   resetSessionPrefetchCacheForTests,
-  takeOptimisticSessionKey,
-  ensureOptimisticSessionRegistered,
+  takeNewChatSessionKey,
 } from '../session-prefetch';
 
 const mockedCreate = vi.mocked(createSession);
 
-async function flushRegistration(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-}
-
 beforeEach(() => {
   resetSessionPrefetchCacheForTests();
   mockedCreate.mockReset();
-  mockedCreate.mockImplementation(async (agentId, options) => {
+  mockedCreate.mockImplementation(async (agentId) => {
     const id = (agentId ?? 'main').trim().toLowerCase() || 'main';
-    const chatId = options?.chatId ?? 'chat_fallback';
-    return `agent:${id}:webchat:default:direct:${chatId}`;
+    return `agent:${id}:webchat:default:direct:server-owned`;
   });
 });
 
@@ -47,34 +34,33 @@ afterEach(() => {
   resetSessionPrefetchCacheForTests();
 });
 
-describe('optimistic session prefetch', () => {
-  it('takeOptimisticSessionKey returns immediately without POST', async () => {
-    const key = takeOptimisticSessionKey('main');
-    expect(key).toMatch(/^agent:main:webchat:default:direct:chat_\d+_[a-z0-9]+$/);
-    await flushRegistration();
-    expect(mockedCreate).toHaveBeenCalledTimes(0);
+describe('server session prefetch', () => {
+  it('takes a server-created session key', async () => {
+    await expect(takeNewChatSessionKey('main')).resolves.toBe(
+      'agent:main:webchat:default:direct:server-owned',
+    );
+    expect(mockedCreate).toHaveBeenCalledTimes(1);
+    expect(mockedCreate).toHaveBeenCalledWith('main');
   });
 
-  it('ensureOptimisticSessionRegistered POSTs on first message', async () => {
-    const key = takeOptimisticSessionKey('main');
-    await expect(ensureOptimisticSessionRegistered(key)).resolves.toBe(key);
-    await flushRegistration();
+  it('prefetch then take reuses the prefetched server key', async () => {
+    prefetchNewChatSession('main');
+    await expect(takeNewChatSessionKey('main')).resolves.toBe(
+      'agent:main:webchat:default:direct:server-owned',
+    );
     expect(mockedCreate).toHaveBeenCalledTimes(1);
   });
 
-  it('prefetch then take reuses the same prefetched key without POST', async () => {
-    prefetchNewChatSession('main', { forceNew: true });
-    const key1 = takeOptimisticSessionKey('main');
-    const key2 = takeOptimisticSessionKey('main');
-    expect(key2).not.toBe(key1);
-    await flushRegistration();
-    expect(mockedCreate).toHaveBeenCalledTimes(0);
-  });
+  it('different agents cache independently', async () => {
+    prefetchNewChatSession('main');
+    prefetchNewChatSession('other');
 
-  it('different agents cache independently without POST', async () => {
-    prefetchNewChatSession('main', { forceNew: true });
-    prefetchNewChatSession('other', { forceNew: true });
-    await flushRegistration();
-    expect(mockedCreate).toHaveBeenCalledTimes(0);
+    await expect(takeNewChatSessionKey('main')).resolves.toBe(
+      'agent:main:webchat:default:direct:server-owned',
+    );
+    await expect(takeNewChatSessionKey('other')).resolves.toBe(
+      'agent:other:webchat:default:direct:server-owned',
+    );
+    expect(mockedCreate).toHaveBeenCalledTimes(2);
   });
 });

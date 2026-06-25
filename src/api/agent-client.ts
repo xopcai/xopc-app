@@ -140,12 +140,12 @@ function wrapTerminalCallbacks(cb?: MessagingCallbacks): {
   };
 }
 
-function sseDispatchOptions(sseChatId: string, sender: AgentMessageSender): AgentSseDispatchOptions {
+function sseDispatchOptions(sessionKey: string, sender: AgentMessageSender): AgentSseDispatchOptions {
   return {
-    sseChatId,
-    savePendingRunId: (chatId, runId) => {
+    sseSessionKey: sessionKey,
+    savePendingRunId: (sessionKey, runId) => {
       sender.trackPendingRunId(runId);
-      setPendingAgentRun(chatId, runId);
+      setPendingAgentRun(sessionKey, runId);
     },
   };
 }
@@ -155,7 +155,7 @@ function sseDispatchOptions(sseChatId: string, sender: AgentMessageSender): Agen
  */
 export class AgentMessageSender {
   private _abort?: AbortController;
-  private _sseChatId = '';
+  private _sseSessionKey = '';
   /** `runId` from the `run_start` event for this POST/resume; do not clear a newer pending run. */
   private _trackedRunId?: string;
   /** Local transport teardown for resume/recovery — do not abort the server run or clear pending runId. */
@@ -165,8 +165,8 @@ export class AgentMessageSender {
     return !!this._abort;
   }
 
-  isStreamingFor(chatId: string): boolean {
-    return !!this._abort && this._sseChatId === chatId;
+  isStreamingFor(sessionKey: string): boolean {
+    return !!this._abort && this._sseSessionKey === sessionKey;
   }
 
   trackPendingRunId(runId: string): void {
@@ -195,8 +195,11 @@ export class AgentMessageSender {
   ): Promise<void> {
     this._abort = new AbortController();
     const abortController = this._abort;
-    const chatId = typeof body.chatId === 'string' ? body.chatId : typeof body.sessionKey === 'string' ? body.sessionKey : '';
-    this._sseChatId = chatId;
+    const sessionKey = typeof body.sessionKey === 'string' ? body.sessionKey : '';
+    if (!sessionKey) {
+      throw new Error('Missing sessionKey');
+    }
+    this._sseSessionKey = sessionKey;
 
     const mergedBody = {
       ...body,
@@ -204,7 +207,7 @@ export class AgentMessageSender {
     };
     const bodyJson = JSON.stringify(mergedBody);
     const terminal = wrapTerminalCallbacks(callbacks);
-    const opts = sseDispatchOptions(this._sseChatId, this);
+    const opts = sseDispatchOptions(this._sseSessionKey, this);
 
     try {
       if (shouldUseXhrForAgentSse()) {
@@ -283,9 +286,9 @@ export class AgentMessageSender {
   }
 
   private _notifyServerAbort(): void {
-    if (!this._sseChatId) return;
+    if (!this._sseSessionKey) return;
     try {
-      const raw = storage.getString(pendingRunStorageKey(this._sseChatId));
+      const raw = storage.getString(pendingRunStorageKey(this._sseSessionKey));
       if (!raw) return;
       const parsed = JSON.parse(raw) as { runId?: string };
       if (typeof parsed.runId !== 'string' || !parsed.runId) return;
@@ -300,11 +303,11 @@ export class AgentMessageSender {
   }
 
   private _forceClearPendingRun(): void {
-    const chatId = this._sseChatId;
-    if (!chatId) return;
+    const sessionKey = this._sseSessionKey;
+    if (!sessionKey) return;
     try {
-      storage.delete(pendingRunStorageKey(chatId));
-      clearPendingAgentRun(chatId);
+      storage.delete(pendingRunStorageKey(sessionKey));
+      clearPendingAgentRun(sessionKey);
     } catch {
       /* ignore */
     }
@@ -312,10 +315,10 @@ export class AgentMessageSender {
   }
 
   private _clearPendingRun(): void {
-    const chatId = this._sseChatId;
-    if (!chatId) return;
+    const sessionKey = this._sseSessionKey;
+    if (!sessionKey) return;
     try {
-      const key = pendingRunStorageKey(chatId);
+      const key = pendingRunStorageKey(sessionKey);
       const raw = storage.getString(key);
       if (raw) {
         const pr = JSON.parse(raw) as { runId?: string };
@@ -325,7 +328,7 @@ export class AgentMessageSender {
         }
       }
       storage.delete(key);
-      clearPendingAgentRun(chatId);
+      clearPendingAgentRun(sessionKey);
     } catch {
       /* ignore */
     }
@@ -377,18 +380,18 @@ export class AgentMessageSender {
     return this.sendMessage('', sessionKey, callbacks, [wire], options);
   }
 
-  async resume(runId: string, chatId: string, callbacks?: MessagingCallbacks): Promise<void> {
-    if (this.isStreamingFor(chatId)) {
+  async resume(runId: string, sessionKey: string, callbacks?: MessagingCallbacks): Promise<void> {
+    if (this.isStreamingFor(sessionKey)) {
       this.detachLocalStream();
     }
     this._trackedRunId = undefined;
     this._abort = new AbortController();
     const abortController = this._abort;
-    this._sseChatId = chatId;
+    this._sseSessionKey = sessionKey;
     this.trackPendingRunId(runId);
     const terminal = wrapTerminalCallbacks(callbacks);
-    const opts = sseDispatchOptions(chatId, this);
-    const bodyJson = JSON.stringify({ runId, chatId });
+    const opts = sseDispatchOptions(sessionKey, this);
+    const bodyJson = JSON.stringify({ runId, sessionKey });
 
     try {
       if (shouldUseXhrForAgentSse()) {
@@ -452,13 +455,13 @@ export class AgentMessageSender {
   }
 
   private _rePersistPendingRunAfterDetach(): void {
-    const chatId = this._sseChatId;
+    const sessionKey = this._sseSessionKey;
     const runId =
       this._trackedRunId?.trim() ||
-      (chatId ? readPendingAgentRunId(chatId) : null) ||
+      (sessionKey ? readPendingAgentRunId(sessionKey) : null) ||
       undefined;
-    if (chatId && runId) {
-      setPendingAgentRun(chatId, runId);
+    if (sessionKey && runId) {
+      setPendingAgentRun(sessionKey, runId);
     }
   }
 
@@ -471,13 +474,13 @@ export class AgentMessageSender {
     if ((aborted && !localDetach) || sawTerminal) return;
     const message = error instanceof Error ? error.message : String(error);
     if (!isTransientNetworkError(message)) return;
-    const chatId = this._sseChatId;
+    const sessionKey = this._sseSessionKey;
     const runId =
       this._trackedRunId?.trim() ||
-      (chatId ? readPendingAgentRunId(chatId) : null) ||
+      (sessionKey ? readPendingAgentRunId(sessionKey) : null) ||
       undefined;
-    if (chatId && runId) {
-      setPendingAgentRun(chatId, runId);
+    if (sessionKey && runId) {
+      setPendingAgentRun(sessionKey, runId);
     }
   }
 }

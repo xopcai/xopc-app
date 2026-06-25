@@ -90,6 +90,7 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput>(null);
+  const aiInputRef = useRef<TextInput>(null);
   const lastTextHistoryAtRef = useRef(0);
   const [selection, setSelection] = useState<MarkdownRange>({ start: 0, end: 0 });
   const [history, setHistory] = useState<NativeEditorHistory>(() => createNativeEditorHistory());
@@ -139,6 +140,14 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
       return start === current.start && end === current.end ? current : { start, end };
     });
   }, [markdown.length]);
+
+  useEffect(() => {
+    if (!active || !aiOpen) return undefined;
+    const frame = requestAnimationFrame(() => {
+      aiInputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [active, aiOpen]);
 
   const activate = useCallback(() => {
     setActive(true);
@@ -434,8 +443,10 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
           >
             <View style={styles.aiInputRow}>
               <TextInput
+                ref={aiInputRef}
                 value={aiInstruction}
                 onChangeText={setAiInstruction}
+                onFocus={activate}
                 placeholder={labels.aiPlaceholder}
                 placeholderTextColor={colors.text.tertiary}
                 editable={!aiLoading}

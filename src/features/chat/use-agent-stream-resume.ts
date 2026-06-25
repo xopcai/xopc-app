@@ -3,7 +3,7 @@ import type { RefObject } from 'react';
 
 import type { AgentMessageSender } from '../../api/agent-client';
 import { subscribeGatewayEvent } from '../gateway/gateway-event-bus';
-import { hasPendingAgentRunForChat, setPendingAgentRun } from '../gateway/pending-agent-run';
+import { hasPendingAgentRunForSession, setPendingAgentRun } from '../gateway/pending-agent-run';
 
 export type AgentStreamResumeOptions = {
   background?: boolean;
@@ -61,7 +61,7 @@ export function useAgentStreamResume(opts: {
     queueMicrotask(() => {
       if (activeSessionKeyRef.current !== sessionKey) return;
       if (senderRef.current.isStreamingFor(sessionKey)) return;
-      if (!hasPendingAgentRunForChat(sessionKey)) return;
+      if (!hasPendingAgentRunForSession(sessionKey)) return;
       void tryResumeRef.current({ background: true });
     });
   }, [streaming, sessionKey, activeSessionKeyRef, senderRef]);

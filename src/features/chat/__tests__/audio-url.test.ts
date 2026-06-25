@@ -14,9 +14,9 @@ describe('resolveAudioPlaybackUrl', () => {
   it('converts media:// audio uris to the gateway media read endpoint', () => {
     expect(resolveAudioPlaybackUrl(
       { type: 'audio', uri: 'media://tts/reply.mp3' },
-      'main:webchat:default:direct:chat_1',
+      'agent:main:webchat:default:direct:chat_1',
     )).toBe(
-      'http://gateway.test/api/media/read?uri=media%3A%2F%2Ftts%2Freply.mp3&sessionKey=main%3Awebchat%3Adefault%3Adirect%3Achat_1',
+      'http://gateway.test/api/media/read?uri=media%3A%2F%2Ftts%2Freply.mp3&sessionKey=agent%3Amain%3Awebchat%3Adefault%3Adirect%3Achat_1',
     );
   });
 

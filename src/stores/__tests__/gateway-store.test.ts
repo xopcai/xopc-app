@@ -26,7 +26,7 @@ vi.mock('../../storage/mmkv', () => ({
       memory.delete(key);
     },
   },
-  pendingRunStorageKey: (chatId: string) => `xopc:pendingRun:${chatId}`,
+  pendingRunStorageKey: (sessionKey: string) => `xopc:pendingRun:${sessionKey}`,
 }));
 
 vi.mock('../../storage/gateway-token-storage', () => ({

@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 
-import { takeOptimisticSessionKey } from '@/features/chat/session-prefetch';
+import { takeNewChatSessionKey } from '@/features/chat/session-prefetch';
 import { queueNote } from '@/features/notes/notes-sync';
 import { useMessages } from '@/i18n/messages';
 import { openChat } from '@/lib/navigation';
@@ -72,17 +72,22 @@ export function useContentIntakeActions(
   const exploreInChat = useCallback(
     (candidate: ContentIntakeCandidate | null) => {
       if (!candidate || saving) return;
-      const sessionKey = takeOptimisticSessionKey(defaultAgentId);
-      setContentChatIntake({
-        sessionKey,
-        text: candidate.text,
-        prompt: candidate.intent.chatPrompt,
-        source: candidate.source,
-      });
-      onHandled();
-      openChat(router, sessionKey, { replace: options.chatNavigation === 'replace' });
+      void takeNewChatSessionKey(defaultAgentId)
+        .then((sessionKey) => {
+          setContentChatIntake({
+            sessionKey,
+            text: candidate.text,
+            prompt: candidate.intent.chatPrompt,
+            source: candidate.source,
+          });
+          onHandled();
+          openChat(router, sessionKey, { replace: options.chatNavigation === 'replace' });
+        })
+        .catch((err) => {
+          setToast(err instanceof Error ? err.message : m.sessions.bootstrapFailed);
+        });
     },
-    [defaultAgentId, onHandled, options.chatNavigation, router, saving],
+    [defaultAgentId, m.sessions.bootstrapFailed, onHandled, options.chatNavigation, router, saving],
   );
 
   return { saving, toast, setToast, saveToNote, exploreInChat };

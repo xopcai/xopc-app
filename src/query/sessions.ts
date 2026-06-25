@@ -1,4 +1,3 @@
-import { generateNewChatId } from '../lib/session-key';
 import { apiFetch, formatApiHttpError } from '../api/client';
 import {
   readCachedSessions,
@@ -13,6 +12,7 @@ export type SessionStatus = 'active' | 'pinned' | 'archived';
 
 export type SessionListItem = {
   key: string;
+  sessionId?: string;
   name?: string;
   title?: string;
   displayName?: string;
@@ -20,6 +20,7 @@ export type SessionListItem = {
   updatedAt: string;
   sourceChannel?: string;
   status?: SessionStatus;
+  routing?: SessionRoutingMeta;
 };
 
 export type SessionMessage = {
@@ -30,9 +31,23 @@ export type SessionMessage = {
 
 export type SessionDetail = {
   key: string;
+  sessionId?: string;
   messages: SessionMessage[];
   name?: string;
   status?: SessionStatus;
+  sourceChannel?: string;
+  sourceChatId?: string;
+  routing?: SessionRoutingMeta;
+};
+
+export type SessionRoutingMeta = {
+  agentId: string;
+  source: string;
+  accountId: string;
+  peerKind: string;
+  peerId: string;
+  threadId?: string;
+  scopeId?: string;
 };
 
 export type SessionMessagePage = {
@@ -169,15 +184,9 @@ export async function fetchSessionMessagePage(
 
 export async function createSession(
   agentId?: string,
-  options?: { forceNew?: boolean; chatId?: string },
 ): Promise<string> {
   const body: Record<string, unknown> = { channel: 'webchat' };
   if (agentId?.trim()) body.agentId = agentId.trim().toLowerCase();
-  if (options?.chatId?.trim()) {
-    body.chat_id = options.chatId.trim();
-  } else if (options?.forceNew) {
-    body.chat_id = generateNewChatId();
-  }
   const res = await apiFetch('/api/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

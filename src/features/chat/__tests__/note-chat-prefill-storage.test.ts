@@ -21,7 +21,7 @@ import {
   writeNoteChatPrefill,
 } from '../note-chat-prefill-storage';
 
-const SESSION_KEY = 'agent:main:webchat:test-chat';
+const SESSION_KEY = 'agent:main:webchat:default:direct:test-chat';
 
 describe('note-chat-prefill-storage', () => {
   beforeEach(() => {

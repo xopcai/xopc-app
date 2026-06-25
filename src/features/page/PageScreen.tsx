@@ -400,7 +400,7 @@ export function PageScreen() {
       const instruction = kind === 'catalyst' ? pm.catalystChatPrompt : pm.editorSendToChatPrefix;
       const prefill = buildChatPrefill(instruction);
       const media = await collectNoteAttachmentsForChat(id, markdownRef.current, [], note.attachments);
-      const key = await createSession(undefined, { forceNew: true });
+      const key = await createSession();
       writeNoteChatPrefill(key, {
         text: prefill,
         attachments: media.attachments,

@@ -11,7 +11,7 @@ import type { MessageContent } from '../messages.types';
 const ctx = {
   apiUrl: (path: string) => `http://gateway.test${path}`,
   token: 'token-1',
-  sessionKey: 'main:webchat:default:direct:chat_1',
+  sessionKey: 'agent:main:webchat:default:direct:chat_1',
 };
 
 describe('image-source-utils', () => {
@@ -31,7 +31,7 @@ describe('image-source-utils', () => {
   it('converts generated workspace paths to raw gateway URLs', () => {
     const source = imageContentToSource({ type: 'image', source: { data: 'media/generated/cat.png' } }, ctx);
     expect(source?.uri).toBe(
-      'http://gateway.test/api/workspace/editor/raw?path=media%2Fgenerated%2Fcat.png&sessionKey=main%3Awebchat%3Adefault%3Adirect%3Achat_1',
+      'http://gateway.test/api/workspace/editor/raw?path=media%2Fgenerated%2Fcat.png&sessionKey=agent%3Amain%3Awebchat%3Adefault%3Adirect%3Achat_1',
     );
     expect(source?.headers).toEqual({ Authorization: 'Bearer token-1' });
   });
@@ -39,7 +39,7 @@ describe('image-source-utils', () => {
   it('converts media URI images to gateway media read URLs', () => {
     const source = imageContentToSource({ type: 'image', source: { data: 'media://generated/chat/cat.png' } }, ctx);
     expect(source?.uri).toBe(
-      'http://gateway.test/api/media/read?uri=media%3A%2F%2Fgenerated%2Fchat%2Fcat.png&sessionKey=main%3Awebchat%3Adefault%3Adirect%3Achat_1',
+      'http://gateway.test/api/media/read?uri=media%3A%2F%2Fgenerated%2Fchat%2Fcat.png&sessionKey=agent%3Amain%3Awebchat%3Adefault%3Adirect%3Achat_1',
     );
     expect(source?.headers).toEqual({ Authorization: 'Bearer token-1' });
   });
@@ -63,7 +63,7 @@ describe('image-source-utils', () => {
 
     expect(extractGeneratedImageSources(content, ctx)).toEqual([
       {
-        uri: 'http://gateway.test/api/workspace/editor/raw?path=media%2Fgenerated%2Fcat.png&sessionKey=main%3Awebchat%3Adefault%3Adirect%3Achat_1',
+        uri: 'http://gateway.test/api/workspace/editor/raw?path=media%2Fgenerated%2Fcat.png&sessionKey=agent%3Amain%3Awebchat%3Adefault%3Adirect%3Achat_1',
         headers: { Authorization: 'Bearer token-1' },
       },
     ]);

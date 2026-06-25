@@ -10,8 +10,8 @@ describe('workspaceRelativePathToApiPath', () => {
   });
 
   it('adds session scope to raw workspace route', () => {
-    expect(workspaceRelativePathToApiPath('tts/out.mp3', { sessionKey: 'main:webchat:default:direct:chat_1' })).toBe(
-      '/api/workspace/editor/raw?path=tts%2Fout.mp3&sessionKey=main%3Awebchat%3Adefault%3Adirect%3Achat_1',
+    expect(workspaceRelativePathToApiPath('tts/out.mp3', { sessionKey: 'agent:main:webchat:default:direct:chat_1' })).toBe(
+      '/api/workspace/editor/raw?path=tts%2Fout.mp3&sessionKey=agent%3Amain%3Awebchat%3Adefault%3Adirect%3Achat_1',
     );
   });
 

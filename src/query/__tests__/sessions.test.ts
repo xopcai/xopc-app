@@ -36,40 +36,33 @@ describe('createSession', () => {
     mockedApiFetch.mockReset();
     mockedApiFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ session: { key: 'agent:webchat:default:direct:chat_test' } }),
+      json: async () => ({
+        session: {
+          key: 'agent:main:webchat:default:direct:chat_test',
+          sessionId: 'sess_test',
+        },
+      }),
     } as Response);
   });
 
-  it('sends a chat_id when forceNew is enabled', async () => {
-    await createSession('MainAgent', { forceNew: true });
-
-    const [, init] = mockedApiFetch.mock.calls[0];
-    const body = JSON.parse(String(init?.body)) as {
-      agentId?: string;
-      channel?: string;
-      chat_id?: string;
-    };
-
-    expect(body.channel).toBe('webchat');
-    expect(body.agentId).toBe('mainagent');
-    expect(body.chat_id).toMatch(/^chat_\d+_[a-z0-9]+$/);
-  });
-
-  it('sends an explicit chat_id when provided', async () => {
-    await createSession('MainAgent', { chatId: 'chat_123_abc' });
-
-    const [, init] = mockedApiFetch.mock.calls[0];
-    const body = JSON.parse(String(init?.body)) as { chat_id?: string };
-    expect(body.chat_id).toBe('chat_123_abc');
-  });
-
-  it('does not send a chat_id by default so empty sessions can be reused', async () => {
+  it('creates webchat sessions without client-generated peer ids', async () => {
     await createSession('MainAgent');
 
     const [, init] = mockedApiFetch.mock.calls[0];
-    const body = JSON.parse(String(init?.body)) as { chat_id?: string };
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
 
-    expect(body.chat_id).toBeUndefined();
+    expect(body.channel).toBe('webchat');
+    expect(body.agentId).toBe('mainagent');
+    expect(body).toEqual({ channel: 'webchat', agentId: 'mainagent' });
+  });
+
+  it('does not send client session identity by default so empty sessions can be reused', async () => {
+    await createSession('MainAgent');
+
+    const [, init] = mockedApiFetch.mock.calls[0];
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+
+    expect(body).toEqual({ channel: 'webchat', agentId: 'mainagent' });
   });
 });
 
@@ -109,7 +102,7 @@ describe('fetchSessionsList', () => {
       json: async () => ({
         items: [
           {
-            key: 'agent:webchat:default:direct:chat_a',
+            key: 'agent:main:webchat:default:direct:chat_a',
             title: '真实会话标题',
             messageCount: 2,
             updatedAt: '2026-01-01T00:00:00Z',
@@ -129,7 +122,7 @@ describe('fetchSessionsList', () => {
 
   it('does not expose session key when title is missing', async () => {
     const title = sessionDisplayName({
-      key: 'agent:webchat:default:direct:chat_1781231485063_5yf0uh',
+      key: 'agent:main:webchat:default:direct:chat_1781231485063_5yf0uh',
       messageCount: 0,
       updatedAt: '2026-01-01T00:00:00Z',
     });
@@ -142,7 +135,7 @@ describe('fetchSessionsList', () => {
       ok: true,
       json: async () => ({
         items: [
-          { key: 'agent:webchat:default:direct:chat_a', messageCount: 2, updatedAt: '2026-01-01T00:00:00Z' },
+          { key: 'agent:main:webchat:default:direct:chat_a', messageCount: 2, updatedAt: '2026-01-01T00:00:00Z' },
         ],
         total: 42,
         limit: 20,
@@ -155,6 +148,6 @@ describe('fetchSessionsList', () => {
     expect(page.total).toBe(42);
     expect(page.hasMore).toBe(true);
     expect(page.items).toHaveLength(1);
-    expect(page.items[0].key).toBe('agent:webchat:default:direct:chat_a');
+    expect(page.items[0].key).toBe('agent:main:webchat:default:direct:chat_a');
   });
 });

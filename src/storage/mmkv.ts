@@ -113,6 +113,6 @@ export const storage: KeyValueStorage = {
   },
 };
 
-export function pendingRunStorageKey(chatId: string): string {
-  return `${KEYS.pendingRunPrefix}${chatId}`;
+export function pendingRunStorageKey(sessionKey: string): string {
+  return `${KEYS.pendingRunPrefix}${sessionKey}`;
 }

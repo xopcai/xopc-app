@@ -7,7 +7,7 @@ import {
 } from 'react';
 import { useRouter } from 'expo-router';
 
-import { prefetchNewChatSession, takeOptimisticSessionKey } from '../chat/session-prefetch';
+import { prefetchNewChatSession, takeNewChatSessionKey } from '../chat/session-prefetch';
 import { useEffectiveDefaultAgentId } from '../../query/agents';
 import { openChat } from '../../lib/navigation';
 
@@ -33,7 +33,7 @@ export function WorkspaceNavigationProvider({ children }: WorkspaceNavigationPro
   const defaultAgentId = useEffectiveDefaultAgentId();
 
   const prefetchAskAiSession = useCallback(() => {
-    prefetchNewChatSession(defaultAgentId, { forceNew: true });
+    prefetchNewChatSession(defaultAgentId);
   }, [defaultAgentId]);
 
   const registerFinalizeHandler = useCallback(
@@ -43,14 +43,16 @@ export function WorkspaceNavigationProvider({ children }: WorkspaceNavigationPro
     [transition],
   );
 
-    const openAskAi = useCallback(() => {
+  const openAskAi = useCallback(() => {
     if (transition) {
-      const sessionKey = takeOptimisticSessionKey(defaultAgentId);
-      void transition.openAskAi(sessionKey);
+      void takeNewChatSessionKey(defaultAgentId)
+        .then((sessionKey) => transition.openAskAi(sessionKey))
+        .catch(() => {});
       return;
     }
-    const sessionKey = takeOptimisticSessionKey(defaultAgentId);
-    openChat(router, sessionKey);
+    void takeNewChatSessionKey(defaultAgentId)
+      .then((sessionKey) => openChat(router, sessionKey))
+      .catch(() => {});
   }, [defaultAgentId, router, transition]);
   const value = useMemo(
     () => ({ openAskAi, prefetchAskAiSession, registerFinalizeHandler }),
@@ -73,10 +75,11 @@ export function useWorkspaceNavigation(): WorkspaceNavigationValue {
     () =>
       ctx ?? {
         openAskAi: () => {
-          const sessionKey = takeOptimisticSessionKey(defaultAgentId);
-          openChat(router, sessionKey);
+          void takeNewChatSessionKey(defaultAgentId)
+            .then((sessionKey) => openChat(router, sessionKey))
+            .catch(() => {});
         },
-        prefetchAskAiSession: () => prefetchNewChatSession(defaultAgentId, { forceNew: true }),
+        prefetchAskAiSession: () => prefetchNewChatSession(defaultAgentId),
         registerFinalizeHandler: () => {},
       },
     [ctx, defaultAgentId, router],

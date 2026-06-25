@@ -46,9 +46,9 @@ export type AgentSseCallbacks = {
 };
 
 export type AgentSseDispatchOptions = {
-  /** Current chat/session key (for persisting runId for abort). */
-  sseChatId?: string;
-  savePendingRunId?: (chatId: string, runId: string) => void;
+  /** Current session key (for persisting runId for abort/resume). */
+  sseSessionKey?: string;
+  savePendingRunId?: (sessionKey: string, runId: string) => void;
 };
 
 type ParsedEvent = {
@@ -109,8 +109,8 @@ export function dispatchAgentSseEvent(
 
   switch (effectiveEvent) {
     case 'run_start':
-      if (typeof parsed.runId === 'string' && options?.sseChatId) {
-        options.savePendingRunId?.(options.sseChatId, parsed.runId);
+      if (typeof parsed.runId === 'string' && options?.sseSessionKey) {
+        options.savePendingRunId?.(options.sseSessionKey, parsed.runId);
       }
       cb?.onStreamStart();
       break;

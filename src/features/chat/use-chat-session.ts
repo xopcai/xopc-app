@@ -30,7 +30,6 @@ import {
   canSendComposerDraft,
   buildOptimisticUserMessage,
 } from './composer-send-helpers';
-import { ensureOptimisticSessionRegistered } from './session-prefetch';
 import type { WireAttachment } from './composer.types';
 import type { AudioContent, Message, ProgressState } from './messages.types';
 import type { ClarifyPromptState } from './ClarifyPrompt';
@@ -519,7 +518,6 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       setAwaitingSessionRefresh(false);
       lastStreamActivityAtRef.current = Date.now();
       try {
-        await ensureOptimisticSessionRegistered(sessionKey);
         await senderRef.current.sendMessage(
           text.trim(),
           sessionKey,
@@ -584,7 +582,6 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
       streamRecoveryRef.current.cancelRecovery();
       setAwaitingSessionRefresh(false);
       try {
-        await ensureOptimisticSessionRegistered(sessionKey);
         await senderRef.current.sendVoiceMessage(
           payload,
           sessionKey,
@@ -657,7 +654,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
   // ── Pending run ──────────────────────────────────────────
   useEffect(() => {
     return subscribePendingAgentRunChanged((detail) => {
-      if (detail.chatId === sessionKey) {
+      if (detail.sessionKey === sessionKey) {
         setPendingRunTick((n) => n + 1);
       }
     });

@@ -11,7 +11,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { dismissOrHome, openChat, useDismissOnHardwareBack } from '../../lib/navigation';
-import { extractAgentIdFromWebchatSessionKey } from '../../lib/session-key';
 
 import { useGatewayStore } from '../../stores/gateway-store';
 import { usePreferencesStore } from '../../stores/preferences-store';
@@ -36,7 +35,7 @@ import type { Message } from './messages.types';
 import { MAX_PENDING_FOLLOW_UPS } from './pending-follow-up.types';
 import { sendOrQueueMessage } from './send-or-queue';
 import { parseSessionMessages, dedupeWireMessages } from './session-message-parser';
-import { takeOptimisticSessionKey } from './session-prefetch';
+import { takeNewChatSessionKey } from './session-prefetch';
 import { consumeNoteChatPrefill } from './note-chat-prefill-storage';
 import { MAX_CHAT_ATTACHMENTS } from './chat-limits';
 import { useChatPageBootstrap } from './use-chat-page-bootstrap';
@@ -99,10 +98,12 @@ export function useChatPage(options: UseChatPageOptions = {}) {
 
   const sessionKey = urlSessionKey || overlaySessionKey || bootstrap.pendingBootstrapKey;
 
-  // Re-init chat session with resolved sessionKey
+  // ── Session history ──────────────────────────────────────
+  const { sessionHistoryQuery } = useSessionHistory(sessionKey);
+
   const currentSessionAgentId = useMemo(
-    () => (sessionKey ? extractAgentIdFromWebchatSessionKey(sessionKey) ?? '' : ''),
-    [sessionKey],
+    () => sessionHistoryQuery.data?.pages[0]?.session.routing?.agentId?.trim().toLowerCase() ?? '',
+    [sessionHistoryQuery.data?.pages],
   );
 
   const modelsQuery = useQuery({
@@ -154,9 +155,6 @@ export function useChatPage(options: UseChatPageOptions = {}) {
     const model = models.find((item) => item.id === effectiveModelId);
     return model?.name ?? model?.id ?? (effectiveModelId || m.chat.modelPickerSelect);
   }, [effectiveModelId, m.chat.modelPickerSelect, modelsQuery.data?.items]);
-
-  // ── Session history ──────────────────────────────────────
-  const { sessionHistoryQuery } = useSessionHistory(sessionKey);
 
   // ── Parsed messages ──────────────────────────────────────
   const sessionMessages = useMemo<Message[]>(() => {
@@ -260,12 +258,16 @@ export function useChatPage(options: UseChatPageOptions = {}) {
 
   const handleAgentSelect = useCallback(
     (agentId: string) => {
-      const key = takeOptimisticSessionKey(agentId);
-      chatSession.activeSessionKeyRef.current = key;
-      bootstrap.setPendingBootstrapKey(key);
-      if (!embedded) {
-        openChat(router, key, { replace: true });
-      }
+      void (async () => {
+        const key = await takeNewChatSessionKey(agentId);
+        chatSession.activeSessionKeyRef.current = key;
+        bootstrap.setPendingBootstrapKey(key);
+        if (!embedded) {
+          openChat(router, key, { replace: true });
+        }
+      })().catch((err) => {
+        chatSession.setSnackMsg(err instanceof Error ? err.message : String(err));
+      });
     },
     [embedded, router, chatSession, bootstrap],
   );
@@ -276,12 +278,16 @@ export function useChatPage(options: UseChatPageOptions = {}) {
     chatSession.clearAllState();
 
     const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
-    const key = takeOptimisticSessionKey(agentId);
-    chatSession.activeSessionKeyRef.current = key;
-    bootstrap.setPendingBootstrapKey(key);
-    if (!embedded) {
-      openChat(router, key, { replace: true });
-    }
+    void (async () => {
+      const key = await takeNewChatSessionKey(agentId);
+      chatSession.activeSessionKeyRef.current = key;
+      bootstrap.setPendingBootstrapKey(key);
+      if (!embedded) {
+        openChat(router, key, { replace: true });
+      }
+    })().catch((err) => {
+      chatSession.setSnackMsg(err instanceof Error ? err.message : String(err));
+    });
   }, [agentsQuery.data, embedded, localDefaultAgentId, router, chatSession, bootstrap]);
 
   const queueFollowUpOrSend = useCallback(
@@ -409,7 +415,7 @@ export function useChatPage(options: UseChatPageOptions = {}) {
         switchGateway(profileId);
         await syncAfterGatewaySettingsSave();
         const agentId = resolveEffectiveDefaultAgentId(agentsQuery.data, localDefaultAgentId);
-        const key = takeOptimisticSessionKey(agentId);
+        const key = await takeNewChatSessionKey(agentId);
         chatSession.activeSessionKeyRef.current = key;
         bootstrap.setPendingBootstrapKey(key);
         setGatewaySheetVisible(false);

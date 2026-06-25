@@ -53,9 +53,9 @@ describe('dispatchAgentSseEvent', () => {
       'run_start',
       JSON.stringify(envelope('run_start', 'run-1', { channel: 'webchat' })),
       cb,
-      { sseChatId: 'chat_a', savePendingRunId },
+      { sseSessionKey: 'agent:main:webchat:default:direct:chat_a', savePendingRunId },
     );
-    expect(savePendingRunId).toHaveBeenCalledWith('chat_a', 'run-1');
+    expect(savePendingRunId).toHaveBeenCalledWith('agent:main:webchat:default:direct:chat_a', 'run-1');
     expect(cb.onStreamStart).toHaveBeenCalled();
   });
 

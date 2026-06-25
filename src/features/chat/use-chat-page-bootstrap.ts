@@ -1,9 +1,8 @@
 /**
  * Encapsulates the "auto-create session on cold start" logic.
  *
- * On first mount, if no session key exists in the URL, we assign a local
- * optimistic key so the user lands on a ready-to-type chat. Server registration
- * is deferred until the first message send.
+ * On first mount, if no session key exists in the URL, create a server-owned
+ * webchat session and navigate with the returned canonical key.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
@@ -11,7 +10,7 @@ import { useRouter } from 'expo-router';
 import { openChat } from '../../lib/navigation';
 
 import { resolveEffectiveDefaultAgentId } from '../../query/agents';
-import { takeOptimisticSessionKey } from './session-prefetch';
+import { takeNewChatSessionKey } from './session-prefetch';
 import type { useMessages } from '../../i18n/messages';
 
 export type ChatBootstrapDeps = {
@@ -43,6 +42,7 @@ export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResu
     gatewayOnline,
     agentsData,
     localDefaultAgentId,
+    messages,
     activeSessionKeyRef,
     shouldNavigateToRoute = true,
     shouldAutoBootstrap = true,
@@ -51,8 +51,8 @@ export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResu
   const router = useRouter();
 
   const [pendingBootstrapKey, setPendingBootstrapKey] = useState('');
-  const [creatingInitialSession] = useState(false);
-  const [bootstrapError] = useState<string | null>(null);
+  const [creatingInitialSession, setCreatingInitialSession] = useState(false);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const autoSessionAttemptedRef = useRef(false);
 
   useEffect(() => {
@@ -71,13 +71,25 @@ export function useChatPageBootstrap(deps: ChatBootstrapDeps): ChatBootstrapResu
 
     autoSessionAttemptedRef.current = true;
     const agentId = resolveEffectiveDefaultAgentId(agentsData, localDefaultAgentId);
-    const key = takeOptimisticSessionKey(agentId);
-    activeSessionKeyRef.current = key;
-    setPendingBootstrapKey(key);
-    if (shouldNavigateToRoute) {
-      openChat(router, key, { replace: true });
-    }
-  }, [urlSessionKey, gatewayOnline, agentsData, localDefaultAgentId, router, activeSessionKeyRef, shouldNavigateToRoute]);
+    setCreatingInitialSession(true);
+    setBootstrapError(null);
+
+    void takeNewChatSessionKey(agentId)
+      .then((key) => {
+        activeSessionKeyRef.current = key;
+        setPendingBootstrapKey(key);
+        if (shouldNavigateToRoute) {
+          openChat(router, key, { replace: true });
+        }
+      })
+      .catch((err) => {
+        autoSessionAttemptedRef.current = false;
+        setBootstrapError(err instanceof Error ? err.message : messages.sessions.bootstrapFailed);
+      })
+      .finally(() => {
+        setCreatingInitialSession(false);
+      });
+  }, [urlSessionKey, gatewayOnline, agentsData, localDefaultAgentId, messages.sessions.bootstrapFailed, router, activeSessionKeyRef, shouldNavigateToRoute]);
 
   // Auto-start on first mount when gateway is online
   useEffect(() => {
