@@ -39,10 +39,8 @@ describe('agent-usage-cache', () => {
     vi.useRealTimers();
   });
 
-  it('reads legacy timestamp usage as a single-use stat', () => {
-    expect(parseAgentUsage(JSON.stringify({ Main: 1000 }))).toEqual({
-      main: { count: 1, firstUsedAt: 1000, lastUsedAt: 1000 },
-    });
+  it('ignores non-structured usage records', () => {
+    expect(parseAgentUsage(JSON.stringify({ Main: 1000 }))).toEqual({});
   });
 
   it('increments structured usage and keeps the first timestamp', () => {

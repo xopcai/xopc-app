@@ -19,9 +19,6 @@ function storageKey(gatewayId: string | null | undefined): string {
 }
 
 function normalizeUsageStat(value: unknown): AgentUsageStat | null {
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-    return { count: 1, lastUsedAt: value, firstUsedAt: value };
-  }
   if (!value || typeof value !== 'object') return null;
   const raw = value as Record<string, unknown>;
   const count = typeof raw.count === 'number' && Number.isFinite(raw.count) ? raw.count : 0;

@@ -75,6 +75,9 @@ type CapturePayload =
   | { type: 'voice'; uri: string; durationMillis: number; mimeType: string };
 
 const HOME_INBOX_PREVIEW_LIMIT = 50;
+const HOME_INBOX_VISIBLE_PREVIEW_LIMIT = 1;
+const HOME_ATTENTION_WORKFLOW_LIMIT = 2;
+const HOME_ATTENTION_ITEM_LIMIT = 3;
 
 function iconForNoteKind(kind: NoteIndexEntry['kind']): string {
   if (kind === 'task') return 'checkbox-marked-circle-outline';
@@ -102,6 +105,36 @@ function workflowProgress(run: HomeWorkflowRun, hm: ReturnType<typeof useMessage
   const total = run.metrics.agentCount;
   if (total <= 0) return hm.workflowRunning;
   return t(hm.workflowProgress, { done: run.metrics.doneAgentCount, total });
+}
+
+function workflowAttentionRank(run: HomeWorkflowRun): number {
+  if (run.status === 'failed' || run.status === 'timeout' || run.metrics.errorAgentCount > 0) return 0;
+  if (run.status === 'cancelled') return 1;
+  if (run.status === 'running' || run.status === 'queued') return 2;
+  return 3;
+}
+
+function workflowStatusLabel(run: HomeWorkflowRun, hm: ReturnType<typeof useMessages>['homePage']): string {
+  if (run.status === 'failed') return hm.workflowFailed;
+  if (run.status === 'timeout') return hm.workflowTimeout;
+  if (run.status === 'cancelled') return hm.workflowCancelled;
+  if (run.status === 'queued') return hm.workflowQueued;
+  if (run.status === 'running') return hm.workflowRunning;
+  return hm.workflowNeedsReview;
+}
+
+function workflowAttentionMeta(run: HomeWorkflowRun, hm: ReturnType<typeof useMessages>['homePage']): string {
+  const progress = workflowProgress(run, hm);
+  if (run.metrics.errorAgentCount > 0) {
+    return `${progress} · ${t(hm.workflowErrorCount, { count: run.metrics.errorAgentCount })}`;
+  }
+  return `${progress} · ${workflowStatusLabel(run, hm)}`;
+}
+
+function workflowAttentionBadgeTone(run: HomeWorkflowRun): 'error' | 'warning' | 'info' {
+  if (run.status === 'failed' || run.status === 'timeout' || run.metrics.errorAgentCount > 0) return 'error';
+  if (run.status === 'cancelled') return 'warning';
+  return 'info';
 }
 
 function fallbackHomeData(agentId: string): Pick<HomeData, 'activeAgent' | 'gateway' | 'workflowRuns' | 'nextCronJobs' | 'recentCronRuns'> {
@@ -454,9 +487,8 @@ export function WorkspaceHomeScreen() {
 
   const refreshing = homeQuery.isFetching && !homeQuery.isLoading;
   const pendingTasks = home?.pendingTasks ?? [];
-  const pendingTaskCount = home?.pendingTaskCount ?? 0;
   const gateway = home?.gateway ?? homeDefaults.gateway;
-  const attentionWorkflow = home?.workflowRuns.attention[0];
+  const attentionWorkflows = home?.workflowRuns.attention ?? [];
   const showEmptyContinue = !homeQuery.isLoading && !homeNotesLoading && continueItems.length === 0;
   const nextTask = pendingTasks[0];
 
@@ -494,12 +526,9 @@ export function WorkspaceHomeScreen() {
               inboxCount={inboxCount}
               inboxTodayCount={inboxTodayCount}
               inboxPreviewItems={inboxPreviewItems}
-              pendingTaskCount={pendingTaskCount}
-              workflowAttentionCount={home?.workflowRuns.attention.length ?? 0}
+              attentionWorkflows={attentionWorkflows}
               nextTask={nextTask}
-              attentionWorkflow={attentionWorkflow}
               onInboxPress={() => router.push('/inbox')}
-              onTasksPress={() => router.push('/notes?kind=task')}
               onTaskPress={(note) => handleNotePress(note)}
               onWorkflowPress={(run) => {
                 if (run.sessionKey) handleSessionPress(run.sessionKey);
@@ -697,39 +726,52 @@ function AttentionSection({
   inboxCount,
   inboxTodayCount,
   inboxPreviewItems,
-  pendingTaskCount,
-  workflowAttentionCount,
+  attentionWorkflows,
   nextTask,
-  attentionWorkflow,
   onInboxPress,
-  onTasksPress,
   onTaskPress,
   onWorkflowPress,
 }: {
   inboxCount: number;
   inboxTodayCount: number;
   inboxPreviewItems: NoteIndexEntry[];
-  pendingTaskCount: number;
-  workflowAttentionCount: number;
+  attentionWorkflows: HomeWorkflowRun[];
   nextTask?: NoteIndexEntry;
-  attentionWorkflow?: HomeWorkflowRun;
   onInboxPress: () => void;
-  onTasksPress: () => void;
   onTaskPress: (note: NoteIndexEntry) => void;
   onWorkflowPress: (run: HomeWorkflowRun) => void;
 }) {
   const { colors } = useTheme();
   const { homePage: hm } = useMessages();
   const nextTaskTitle = nextTask ? resolveNoteListTitle(nextTask, hm.untitled, readLocalNote(nextTask.id)) : null;
-  const metrics = [
-    pendingTaskCount > 0
-      ? { key: 'tasks', icon: 'checkbox-marked-circle-outline', label: hm.tasksMetric, value: pendingTaskCount, onPress: onTasksPress }
-      : null,
-    workflowAttentionCount > 0
-      ? { key: 'workflows', icon: 'alert-circle-outline', label: hm.workflowMetric, value: workflowAttentionCount, onPress: () => attentionWorkflow ? onWorkflowPress(attentionWorkflow) : undefined }
-      : null,
-  ].filter((metric): metric is NonNullable<typeof metric> => metric != null);
-  const hasNextItem = Boolean(attentionWorkflow || nextTask);
+  const workflowItems = [...attentionWorkflows]
+    .sort((a, b) => {
+      const rank = workflowAttentionRank(a) - workflowAttentionRank(b);
+      if (rank !== 0) return rank;
+      return b.createdAtMs - a.createdAtMs;
+    })
+    .slice(0, HOME_ATTENTION_WORKFLOW_LIMIT)
+    .map((workflow) => ({
+      key: `workflow:${workflow.id}`,
+      icon: 'source-branch-sync',
+      title: workflow.title,
+      meta: workflowAttentionMeta(workflow, hm),
+      badge: workflowStatusLabel(workflow, hm),
+      badgeTone: workflowAttentionBadgeTone(workflow),
+      onPress: () => onWorkflowPress(workflow),
+    }));
+  const taskItem = nextTask && nextTaskTitle
+    ? [{
+      key: `task:${nextTask.id}`,
+      icon: 'flag-outline',
+      title: nextTaskTitle,
+      meta: hm.nextTaskHint,
+      badge: hm.taskBadge,
+      badgeTone: 'info' as const,
+      onPress: () => onTaskPress(nextTask),
+    }]
+    : [];
+  const attentionItems = [...workflowItems, ...taskItem].slice(0, HOME_ATTENTION_ITEM_LIMIT);
 
   return (
     <Section title={hm.sectionAttention}>
@@ -739,39 +781,65 @@ function AttentionSection({
         items={inboxPreviewItems}
         onPress={onInboxPress}
       />
-      {metrics.length > 0 ? (
-        <View style={styles.metricsGrid}>
-          {metrics.map((metric) => (
-            <MetricTile
-              key={metric.key}
-              icon={metric.icon}
-              label={metric.label}
-              value={metric.value}
-              onPress={metric.onPress}
+      {attentionItems.length > 0 ? (
+        <View style={[styles.attentionList, { backgroundColor: colors.surface.panel, borderColor: colors.border.default }]}>
+          {attentionItems.map((item, index) => (
+            <AttentionItemRow
+              key={item.key}
+              icon={item.icon}
+              title={item.title}
+              meta={item.meta}
+              badge={item.badge}
+              badgeTone={item.badgeTone}
+              showDivider={index < attentionItems.length - 1}
+              onPress={item.onPress}
             />
           ))}
         </View>
       ) : null}
-      {hasNextItem ? (
-        <Pressable
-          style={[styles.panelRow, { backgroundColor: colors.surface.panel, borderColor: colors.border.default }]}
-          onPress={attentionWorkflow ? () => onWorkflowPress(attentionWorkflow) : nextTask ? () => onTaskPress(nextTask) : onTasksPress}
-        >
-          <View style={[styles.iconBubble, { backgroundColor: colors.accent.selectionBg }]}>
-            <Icon source={attentionWorkflow ? 'source-branch-sync' : 'flag-outline'} size={18} color={colors.accent.primary} />
-          </View>
-          <View style={styles.rowCopy}>
-            <Text numberOfLines={1} style={[styles.rowTitle, { color: colors.text.primary }]}>
-              {attentionWorkflow?.title ?? nextTaskTitle}
-            </Text>
-            <Text numberOfLines={1} style={[styles.rowSubtitle, { color: colors.text.tertiary }]}>
-              {attentionWorkflow ? hm.workflowNeedsAttention : hm.nextTaskHint}
-            </Text>
-          </View>
-          <Icon source="chevron-right" size={18} color={colors.text.tertiary} />
-        </Pressable>
-      ) : null}
     </Section>
+  );
+}
+
+function AttentionItemRow({
+  icon,
+  title,
+  meta,
+  badge,
+  badgeTone,
+  showDivider,
+  onPress,
+}: {
+  icon: string;
+  title: string;
+  meta: string;
+  badge: string;
+  badgeTone: 'error' | 'warning' | 'info';
+  showDivider: boolean;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  const badgeColor = badgeTone === 'error'
+    ? colors.semantic.errorBold
+    : badgeTone === 'warning'
+      ? colors.semantic.warning
+      : colors.accent.primary;
+
+  return (
+    <Pressable style={styles.attentionRow} onPress={onPress}>
+      <View style={[styles.iconBubbleSmall, { backgroundColor: colors.surface.input }]}>
+        <Icon source={icon} size={16} color={colors.text.secondary} />
+      </View>
+      <View style={styles.rowCopy}>
+        <Text numberOfLines={1} style={[styles.rowTitle, { color: colors.text.primary }]}>{title}</Text>
+        <Text numberOfLines={1} style={[styles.rowSubtitle, { color: colors.text.tertiary }]}>{meta}</Text>
+      </View>
+      <View style={[styles.attentionBadge, { backgroundColor: colors.surface.input }]}>
+        <Text numberOfLines={1} style={[styles.attentionBadgeText, { color: badgeColor }]}>{badge}</Text>
+      </View>
+      <Icon source="chevron-right" size={18} color={colors.text.tertiary} />
+      {showDivider ? <View style={[styles.attentionDivider, { backgroundColor: colors.border.subtle }]} /> : null}
+    </Pressable>
   );
 }
 
@@ -788,6 +856,7 @@ function InboxPreviewPanel({
 }) {
   const { colors } = useTheme();
   const { homePage: hm } = useMessages();
+  const visibleItems = items.slice(0, HOME_INBOX_VISIBLE_PREVIEW_LIMIT);
   const statusText = inboxCount > 0
     ? todayCount > 0
       ? t(hm.inboxPendingTodayCount, { count: inboxCount, today: todayCount })
@@ -819,19 +888,15 @@ function InboxPreviewPanel({
 
       {inboxCount > 0 ? (
         <View style={styles.inboxPreviewList}>
-          {items.length > 0 ? items.map((item, index) => (
-            <InboxPreviewItem key={item.id} item={item} showDivider={index < items.length - 1} />
+          {visibleItems.length > 0 ? visibleItems.map((item, index) => (
+            <InboxPreviewItem key={item.id} item={item} showDivider={index < visibleItems.length - 1} />
           )) : (
             <Text style={[styles.inboxEmptyHint, { color: colors.text.tertiary }]}>
               {hm.inboxPreviewLoading}
             </Text>
           )}
         </View>
-      ) : (
-        <Text style={[styles.inboxEmptyHint, { color: colors.text.tertiary }]}>
-          {hm.inboxNewCaptureHint}
-        </Text>
-      )}
+      ) : null}
     </Pressable>
   );
 }
@@ -908,30 +973,6 @@ function Section({
       </View>
       {children}
     </View>
-  );
-}
-
-function MetricTile({
-  icon,
-  label,
-  value,
-  onPress,
-}: {
-  icon: string;
-  label: string;
-  value: number;
-  onPress: () => void;
-}) {
-  const { colors } = useTheme();
-  return (
-    <Pressable
-      style={[styles.metricTile, { backgroundColor: colors.accent.soft, borderColor: colors.border.default }]}
-      onPress={onPress}
-    >
-      <Icon source={icon} size={18} color={colors.accent.primary} />
-      <Text style={[styles.metricValue, { color: colors.text.primary }]}>{value}</Text>
-      <Text style={[styles.metricLabel, { color: colors.text.tertiary }]}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -1203,17 +1244,34 @@ const styles = StyleSheet.create({
   rowSubtitle: { ...typography.caption },
   emptyRow: { minHeight: 72, alignItems: 'center', justifyContent: 'center', padding: spacing.md },
   emptyInlineText: { ...typography.label, fontWeight: '500', textAlign: 'center' },
-  metricsGrid: { flexDirection: 'row', gap: spacing.md },
-  metricTile: {
-    flex: 1,
-    minHeight: 92,
+  attentionList: {
     borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: spacing.md,
-    gap: spacing.xs,
+    overflow: 'hidden',
   },
-  metricValue: { fontSize: 24, lineHeight: 30, fontWeight: '600' },
-  metricLabel: { ...typography.caption, fontWeight: '500' },
+  attentionRow: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  attentionBadge: {
+    minHeight: 24,
+    maxWidth: 96,
+    borderRadius: radii.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+  },
+  attentionBadgeText: { ...typography.micro, fontWeight: '600' },
+  attentionDivider: {
+    position: 'absolute',
+    left: 56,
+    right: 0,
+    bottom: 0,
+    height: StyleSheet.hairlineWidth,
+  },
   inboxPanel: {
     borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
