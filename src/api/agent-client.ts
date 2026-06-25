@@ -263,6 +263,7 @@ export class AgentMessageSender {
         terminal.sawTerminal,
         this._localDetach,
       );
+      if (this._localDetach) return;
       throw e;
     } finally {
       const localDetach = this._localDetach;
@@ -439,6 +440,7 @@ export class AgentMessageSender {
         terminal.sawTerminal,
         this._localDetach,
       );
+      if (this._localDetach) return;
       throw e;
     } finally {
       const localDetach = this._localDetach;

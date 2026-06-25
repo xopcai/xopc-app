@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createSession, fetchSessionsList } from '../sessions';
+import { createSession, fetchSessionActiveRun, fetchSessionsList } from '../sessions';
 import { sessionDisplayName } from '../../lib/session-helpers';
 import { apiFetch } from '../../api/client';
 
@@ -149,5 +149,46 @@ describe('fetchSessionsList', () => {
     expect(page.hasMore).toBe(true);
     expect(page.items).toHaveLength(1);
     expect(page.items[0].key).toBe('agent:main:webchat:default:direct:chat_a');
+  });
+});
+
+describe('fetchSessionActiveRun', () => {
+  beforeEach(() => {
+    mockedApiFetch.mockReset();
+  });
+
+  it('returns active run id from the gateway source of truth', async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ payload: { active: true, runId: ' run-123 ' } }),
+    } as Response);
+
+    await expect(fetchSessionActiveRun('agent:main:webchat:default:direct:chat_a')).resolves.toEqual({
+      active: true,
+      runId: 'run-123',
+    });
+
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      '/api/sessions/agent%3Amain%3Awebchat%3Adefault%3Adirect%3Achat_a/run',
+    );
+  });
+
+  it('treats missing or inactive runs as inactive', async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ payload: { active: false } }),
+    } as Response);
+
+    await expect(fetchSessionActiveRun('session-a')).resolves.toEqual({ active: false });
+  });
+
+  it('returns inactive when the session is missing', async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({}),
+    } as Response);
+
+    await expect(fetchSessionActiveRun('missing')).resolves.toEqual({ active: false });
   });
 });

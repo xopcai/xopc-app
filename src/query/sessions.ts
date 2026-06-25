@@ -62,6 +62,11 @@ export type SessionMessagePage = {
   };
 };
 
+export type SessionActiveRunPayload = {
+  active: boolean;
+  runId?: string;
+};
+
 export function emptySessionMessagePage(key: string): SessionMessagePage {
   return {
     session: { key, messages: [] },
@@ -163,6 +168,21 @@ export async function fetchSession(key: string): Promise<SessionDetail | null> {
   if (!res.ok) throwApiError(res, await parseErrorBody(res));
   const data = (await res.json()) as { session?: SessionDetail };
   return data.session ?? null;
+}
+
+export async function fetchSessionActiveRun(key: string): Promise<SessionActiveRunPayload> {
+  const normalizedKey = key.trim();
+  if (!normalizedKey) return { active: false };
+
+  const res = await apiFetch(`/api/sessions/${encKey(normalizedKey)}/run`);
+  if (res.status === 404) return { active: false };
+  if (!res.ok) throwApiError(res, await parseErrorBody(res));
+
+  const data = (await res.json()) as { payload?: SessionActiveRunPayload };
+  const payload = data.payload;
+  const runId = typeof payload?.runId === 'string' ? payload.runId.trim() : '';
+  if (!payload?.active || !runId) return { active: false };
+  return { active: true, runId };
 }
 
 export async function fetchSessionMessagePage(

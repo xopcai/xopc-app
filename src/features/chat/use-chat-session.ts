@@ -57,6 +57,7 @@ import {
   mergeLatestSessionHistoryPage,
 } from './session-message-parser';
 import { useGatewayHealth } from '../gateway/use-gateway-health';
+import { resolveResumeRunId } from './resolve-resume-run-id';
 
 const STREAMING_RENDER_THROTTLE_MS = 100;
 const FOLLOW_UP_AUTO_SEND_IDLE_MS = 5000;
@@ -123,6 +124,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
   const runBusyRef = useRef(false);
   const streamActiveRef = useRef(false);
   const clarifyActiveRef = useRef(false);
+  const resumeInFlightRef = useRef(false);
   const streamingMsgRef = useRef<Message | null>(null);
   const streamingFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoResumeFailedRef = useRef(false);
@@ -668,57 +670,63 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
   // ── Resume ───────────────────────────────────────────────
   const resume = useCallback(async (opts?: AgentStreamResumeOptions) => {
     const background = opts?.background === true;
-    const runId = pendingRunId ?? (sessionKey ? readPendingAgentRunId(sessionKey) : null);
-    if (!sessionKey || !runId) return;
-    if (senderRef.current.isStreamingFor(sessionKey)) {
-      senderRef.current.detachLocalStream();
-    }
-    if (senderRef.current.isStreamingFor(sessionKey)) return;
-    if (!background && (streaming || awaitingSessionRefresh)) return;
-
-    if (background) {
-      setAwaitingSessionRefresh(false);
-    } else {
-      clearStreamingMessage();
-      setAwaitingSessionRefresh(false);
-    }
-    setProgress(null);
-    setStreaming(true);
-    streamingRef.current = true;
-    lastStreamActivityAtRef.current = Date.now();
+    if (resumeInFlightRef.current) return;
+    resumeInFlightRef.current = true;
     try {
-      await senderRef.current.resume(runId, sessionKey, buildCallbacks(sessionKey));
-      autoResumeFailedRef.current = false;
-      setResumePromptVisible(false);
-      streamRecoveryRef.current.markRecoverySucceeded();
-    } catch (e) {
-      if (activeSessionKeyRef.current !== sessionKey) {
-        invalidateSessionByKey(sessionKey);
-        return;
+      const runId = sessionKey ? await resolveResumeRunId(sessionKey) : null;
+      if (activeSessionKeyRef.current !== sessionKey) return;
+      if (!sessionKey || !runId) return;
+      if (senderRef.current.isStreamingFor(sessionKey)) {
+        senderRef.current.detachLocalStream();
       }
-      const message = e instanceof Error ? e.message : String(e);
-      if (background && isTransientNetworkError(message)) {
-        throw e;
+      if (senderRef.current.isStreamingFor(sessionKey)) return;
+      if (!background && (streaming || awaitingSessionRefresh)) return;
+
+      if (background) {
+        setAwaitingSessionRefresh(false);
+      } else {
+        clearStreamingMessage();
+        setAwaitingSessionRefresh(false);
       }
-      if (/404|not found/i.test(message)) {
-        clearPendingAgentRun(sessionKey);
-      }
-      if (!background && streamRecoveryRef.current.handleRecoverableFailure(e)) {
+      setProgress(null);
+      setStreaming(true);
+      streamingRef.current = true;
+      lastStreamActivityAtRef.current = Date.now();
+      try {
+        await senderRef.current.resume(runId, sessionKey, buildCallbacks(sessionKey));
+        autoResumeFailedRef.current = false;
+        setResumePromptVisible(false);
+        streamRecoveryRef.current.markRecoverySucceeded();
+      } catch (e) {
+        if (activeSessionKeyRef.current !== sessionKey) {
+          invalidateSessionByKey(sessionKey);
+          return;
+        }
+        const message = e instanceof Error ? e.message : String(e);
+        if (background && isTransientNetworkError(message)) {
+          throw e;
+        }
+        if (/404|not found/i.test(message)) {
+          clearPendingAgentRun(sessionKey);
+        }
+        if (!background && streamRecoveryRef.current.handleRecoverableFailure(e)) {
+          setStreaming(false);
+          streamingRef.current = false;
+          return;
+        }
+        autoResumeFailedRef.current = true;
+        setResumePromptVisible(true);
         setStreaming(false);
         streamingRef.current = false;
-        return;
+        if (!background) {
+          setSnackMsg(message);
+        }
       }
-      autoResumeFailedRef.current = true;
-      setResumePromptVisible(true);
-      setStreaming(false);
-      streamingRef.current = false;
-      if (!background) {
-        setSnackMsg(message);
-      }
+    } finally {
+      resumeInFlightRef.current = false;
     }
   }, [
     sessionKey,
-    pendingRunId,
     streaming,
     awaitingSessionRefresh,
     invalidateSessionByKey,
@@ -743,6 +751,9 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
     autoResumeFailedRef,
     onReconnectingChange: setStreamReconnecting,
     onRecoveryExhausted: () => {
+      sendingRef.current = false;
+      streamActiveRef.current = false;
+      runBusyRef.current = awaitingSessionRefresh;
       setStreaming(false);
       streamingRef.current = false;
       setResumePromptVisible(true);
@@ -758,10 +769,27 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
     if (senderRef.current.isStreamingFor(sessionKey)) {
       senderRef.current.detachLocalStream();
     }
+    sendingRef.current = false;
+    streamActiveRef.current = streamingRef.current;
+    runBusyRef.current = streamingRef.current || awaitingSessionRefresh;
     autoResumeFailedRef.current = false;
     setResumePromptVisible(false);
     lastStreamActivityAtRef.current = Date.now();
     streamRecoveryRef.current.handleRecoverableFailure(new Error('Network request failed'));
+  }, [awaitingSessionRefresh, sessionKey]);
+
+  // Resolve server-side active runs on session entry. Local pending run storage is
+  // only a cache; the gateway is the source of truth when the screen remounts.
+  useEffect(() => {
+    if (!sessionKey) return undefined;
+    let cancelled = false;
+    void resolveResumeRunId(sessionKey).then((runId) => {
+      if (cancelled || !runId || activeSessionKeyRef.current !== sessionKey) return;
+      setPendingRunTick((n) => n + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [sessionKey]);
 
   // ── Auto-resume pending run ──────────────────────────────
@@ -787,7 +815,7 @@ export function useChatSession(options: UseChatSessionOptions): UseChatSessionRe
   // ── Cleanup on unmount ───────────────────────────────────
   useEffect(() => {
     return () => {
-      senderRef.current.abort();
+      senderRef.current.detachLocalStream();
       clearStreamingFlushTimer();
     };
   }, [clearStreamingFlushTimer]);
