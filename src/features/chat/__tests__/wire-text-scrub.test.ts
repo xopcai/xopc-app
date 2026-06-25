@@ -221,6 +221,48 @@ describe('parseSessionMessages startup context', () => {
         name: 'reply.mp3',
       }),
     );
+    expect(ui[0]?.attachments).toBeUndefined();
+  });
+
+  it('keeps non-audio assistant attachments after promoting audio media refs', () => {
+    const ui = parseSessionMessages([
+      {
+        id: 'msg_run_1',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'hello' }],
+        media: [
+          {
+            type: 'voice',
+            uri: 'media://tts/reply.mp3',
+            mimeType: 'audio/mpeg',
+            name: 'reply.mp3',
+          },
+          {
+            type: 'file',
+            uri: 'media://files/report.pdf',
+            mimeType: 'application/pdf',
+            name: 'report.pdf',
+          },
+        ],
+        timestamp: 1,
+      },
+    ]);
+
+    expect(ui).toHaveLength(1);
+    expect(ui[0]?.content).toContainEqual(
+      expect.objectContaining({
+        type: 'audio',
+        uri: 'media://tts/reply.mp3',
+      }),
+    );
+    expect(ui[0]?.attachments).toEqual([
+      expect.objectContaining({
+        type: 'file',
+        uri: 'media://files/report.pdf',
+        mimeType: 'application/pdf',
+        name: 'report.pdf',
+      }),
+    ]);
   });
 
   it('keeps the latest duplicate session row when media is added after the first page copy', () => {

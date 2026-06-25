@@ -515,6 +515,12 @@ function isAudioAttachment(att: MessageAttachment): boolean {
   return att.type === 'voice' || att.type === 'audio' || att.mimeType?.startsWith('audio/') === true;
 }
 
+function stripAudioAttachments(attachments: MessageAttachment[] | undefined): MessageAttachment[] | undefined {
+  if (!attachments?.length) return attachments;
+  const nonAudio = attachments.filter((att) => !isAudioAttachment(att));
+  return nonAudio.length ? nonAudio : undefined;
+}
+
 function audioAttachmentToContent(att: MessageAttachment): MessageContent | null {
   if (!isAudioAttachment(att)) return null;
   const payload = att.preview || att.content || att.data;
@@ -589,11 +595,12 @@ export function parseSessionMessages(raw: Array<Record<string, unknown>>): Messa
 
     if (role === 'assistant') {
       const attachments = normalizeAttachments(m.attachments ?? m.media);
+      const content = appendAudioAttachments(buildAssistantContent(m), attachments);
       out.push({
         id: wireMessageId(m),
         role: 'assistant',
-        content: appendAudioAttachments(buildAssistantContent(m), attachments),
-        attachments,
+        content,
+        attachments: stripAudioAttachments(attachments),
         usage: normalizeWireUsage(m.usage),
         timestamp: parseTimestamp(m.timestamp),
       });
