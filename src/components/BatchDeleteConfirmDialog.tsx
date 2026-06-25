@@ -4,6 +4,7 @@ import { Button, Dialog, Paragraph, Portal } from 'react-native-paper';
 
 import { t, useMessages } from '../i18n/messages';
 import { useTheme } from '../theme';
+import { spacing } from '../theme/tokens';
 
 type BatchDeleteConfirmDialogProps = {
   visible: boolean;
@@ -11,6 +12,7 @@ type BatchDeleteConfirmDialogProps = {
   onDismiss: () => void;
   onConfirm: () => void;
   loading?: boolean;
+  placement?: 'center' | 'bottom';
 };
 
 export const BatchDeleteConfirmDialog = memo(function BatchDeleteConfirmDialog({
@@ -19,6 +21,7 @@ export const BatchDeleteConfirmDialog = memo(function BatchDeleteConfirmDialog({
   onDismiss,
   onConfirm,
   loading = false,
+  placement = 'center',
 }: BatchDeleteConfirmDialogProps) {
   const m = useMessages();
   const { colors } = useTheme();
@@ -28,7 +31,15 @@ export const BatchDeleteConfirmDialog = memo(function BatchDeleteConfirmDialog({
 
   return (
     <Portal>
-      <Dialog visible={visible} onDismiss={onDismiss} style={[styles.dialog, { width: dialogWidth }]}>
+      <Dialog
+        visible={visible}
+        onDismiss={onDismiss}
+        style={[
+          styles.dialog,
+          placement === 'bottom' && styles.bottomDialog,
+          { width: dialogWidth },
+        ]}
+      >
         <Dialog.Title>{li.batchDeleteTitle}</Dialog.Title>
         <Dialog.Content>
           <Paragraph>{t(li.batchDeleteMessage, { count })}</Paragraph>
@@ -54,5 +65,10 @@ export const BatchDeleteConfirmDialog = memo(function BatchDeleteConfirmDialog({
 const styles = StyleSheet.create({
   dialog: {
     alignSelf: 'center',
+  },
+  bottomDialog: {
+    bottom: spacing.lg,
+    marginVertical: 0,
+    position: 'absolute',
   },
 });

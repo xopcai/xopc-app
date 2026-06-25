@@ -9,7 +9,6 @@ import { useGatewayStore } from '../../stores/gateway-store';
 import { useTheme } from '../../theme';
 import { setAppClipboardStringAsync } from '../clipboard-intake/write-app-clipboard';
 import { ShareSheet } from '../share/ShareSheet';
-import { prefetchShare } from '../share/share-prefetch';
 import { mapManageRouteToAppPath } from './file-reference-routes';
 import { FilePreviewModal, type PreviewableFile } from './FilePreviewModal';
 import type { ExtractedFilePath } from './tool-result-file-paths';
@@ -215,14 +214,6 @@ export function WorkspaceArtifactStrip({
     [visible],
   );
 
-  // Warm the share cache for every workspace artifact rendered. Cheap: each
-  // call is idempotent and only fires once per (path, sessionKey) within 5
-  // minutes — see share-prefetch.ts.
-  useEffect(() => {
-    for (const p of workspacePaths) {
-      prefetchShare(buildShareRequest(p.rel, sessionKey));
-    }
-  }, [workspacePaths, sessionKey]);
   const imagePaths = useMemo(() => workspacePaths.filter((p) => isImageMimeType(p.mimeType)), [workspacePaths]);
   const otherPaths = useMemo(() => workspacePaths.filter((p) => !isImageMimeType(p.mimeType)), [workspacePaths]);
   const nonWorkspacePaths = useMemo(() => visible.filter((p) => p.refInfo.scope !== 'workspace'), [visible]);

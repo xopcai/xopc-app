@@ -318,6 +318,7 @@ export const zh: MessageBundle = {
     openSessionFiles: '打开会话文件',
     filePreviewClose: '关闭预览',
     filePreviewDownload: '下载文件',
+    filePreviewDownloadFailed: '无法打开下载：{{message}}',
     filePreviewLoading: '正在加载预览…',
     filePreviewLoadFailed: '预览加载失败：{{message}}',
     filePreviewUnsupportedWithText: '移动端暂不支持该文件类型的内嵌预览，以下为可提取文本。',

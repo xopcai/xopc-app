@@ -73,12 +73,14 @@ export const ToolUseBlock = memo(function ToolUseBlock({
   inline,
   sessionKey,
   labels,
+  showWorkspaceArtifacts = true,
 }: {
   block: ToolUseContent;
   /** When true, renders as a compact row inside AssistantStepsBlock. */
   inline?: boolean;
   sessionKey?: string | null;
   labels?: ToolUseBlockLabels;
+  showWorkspaceArtifacts?: boolean;
 }) {
   const { colors, isDark } = useTheme();
   const [expanded, setExpanded] = useState(false);
@@ -152,7 +154,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
   }, [block.name, block.status, resultText]);
 
   const fileLinks =
-    extractedFilePaths.length > 0 ? (
+    showWorkspaceArtifacts && extractedFilePaths.length > 0 ? (
       <View style={styles.fileLinks}>
         <WorkspaceArtifactStrip paths={extractedFilePaths} sessionKey={sessionKey} />
       </View>

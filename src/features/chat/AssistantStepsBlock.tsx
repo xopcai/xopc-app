@@ -280,6 +280,7 @@ export const AssistantStepsBlock = memo(function AssistantStepsBlock({
                   inline
                   sessionKey={sessionKey}
                   labels={stepLabels}
+                  showWorkspaceArtifacts={!isMessageStreaming}
                 />
               );
             })}

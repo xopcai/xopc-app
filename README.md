@@ -198,8 +198,28 @@ EAS profiles:
 | `pnpm run build:android:preview` | Internal Android APK |
 | `pnpm run build:android:production` | Android App Bundle |
 | `pnpm run build:ios:preview` | Internal iOS build |
-| `pnpm run build:ios` | Production iOS build |
+| `pnpm run build:ios` | Local production iOS IPA, output to `dist/xopc.ipa` by default |
+| `pnpm run build:ios:eas` | EAS production iOS build |
 | `pnpm run submit:ios` | Submit latest production iOS build |
+| `pnpm run submit:ios:direct` | Upload local `dist/xopc.ipa` directly, or pass an IPA URL/local path |
+
+Local iOS build example:
+
+```bash
+DEVELOPMENT_TEAM="TEAMID1234" pnpm run build:ios
+pnpm run submit:ios:direct
+```
+
+`build:ios` uses the current timestamp as the iOS build number by default; pass `IOS_BUILD_NUMBER=123` when you need a fixed value.
+
+To let Xcode fetch signing assets automatically, reuse the App Store Connect API key environment variables from the direct submit script:
+
+```bash
+APP_STORE_CONNECT_API_KEY="KEY_ID" \
+APP_STORE_CONNECT_API_ISSUER="ISSUER_ID" \
+DEVELOPMENT_TEAM="TEAMID1234" \
+pnpm run build:ios
+```
 
 The current package ID is `ai.xopc.xopc`. If you previously installed a build under `com.anonymous.xopcapp`, uninstall it separately; Android treats it as a different app.
 

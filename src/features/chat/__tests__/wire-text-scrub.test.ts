@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { applyStripToUserContent } from '../inbound-message-text';
-import { parseSessionMessages } from '../session-message-parser';
+import { dedupeWireMessages, parseSessionMessages } from '../session-message-parser';
 import { extractUserMessageText } from '../composer-send-helpers';
 import {
   collapseExpandedSkillBlockForDisplay,
@@ -117,6 +117,175 @@ describe('parseSessionMessages startup context', () => {
         uri: 'media://tts/reply.mp3',
         mimeType: 'audio/mpeg',
         name: 'reply.mp3',
+      }),
+    );
+  });
+
+  it('converts persisted top-level assistant TTS metadata into audio blocks', () => {
+    const ui = parseSessionMessages([
+      {
+        id: 'msg_run_1',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'hello' }],
+        ttsAudio: {
+          uri: 'media://tts/reply.mp3',
+          mimeType: 'audio/mpeg',
+          name: 'reply.mp3',
+        },
+        timestamp: 1,
+      },
+    ]);
+
+    expect(ui).toHaveLength(1);
+    expect(ui[0]?.content).toContainEqual(
+      expect.objectContaining({
+        type: 'audio',
+        uri: 'media://tts/reply.mp3',
+        mimeType: 'audio/mpeg',
+        name: 'reply.mp3',
+      }),
+    );
+  });
+
+  it('wraps persisted top-level assistant TTS base64 data into a playable data uri', () => {
+    const ui = parseSessionMessages([
+      {
+        id: 'msg_run_1',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'hello' }],
+        ttsAudio: {
+          data: 'QU JD\nRA==',
+          mimeType: 'audio/mp4',
+          name: 'reply.m4a',
+        },
+        timestamp: 1,
+      },
+    ]);
+
+    expect(ui).toHaveLength(1);
+    expect(ui[0]?.content).toContainEqual(
+      expect.objectContaining({
+        type: 'audio',
+        uri: 'data:audio/mp4;base64,QUJDRA==',
+        mimeType: 'audio/mp4',
+        name: 'reply.m4a',
+      }),
+    );
+  });
+
+  it('converts persisted top-level assistant TTS uri into an audio block', () => {
+    const ui = parseSessionMessages([
+      {
+        id: 'msg_run_1',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'hello' }],
+        audioUri: 'media://tts/reply.mp3',
+        timestamp: 1,
+      },
+    ]);
+
+    expect(ui).toHaveLength(1);
+    expect(ui[0]?.content).toContainEqual(
+      expect.objectContaining({
+        type: 'audio',
+        uri: 'media://tts/reply.mp3',
+        mimeType: 'audio/mpeg',
+      }),
+    );
+  });
+
+  it('converts persisted assistant media refs into audio blocks', () => {
+    const ui = parseSessionMessages([
+      {
+        id: 'msg_run_1',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'hello' }],
+        media: [
+          {
+            type: 'voice',
+            uri: 'media://tts/reply.mp3',
+            mimeType: 'audio/mpeg',
+            name: 'reply.mp3',
+          },
+        ],
+        timestamp: 1,
+      },
+    ]);
+
+    expect(ui).toHaveLength(1);
+    expect(ui[0]?.content).toContainEqual(
+      expect.objectContaining({
+        type: 'audio',
+        uri: 'media://tts/reply.mp3',
+        mimeType: 'audio/mpeg',
+        name: 'reply.mp3',
+      }),
+    );
+  });
+
+  it('keeps the latest duplicate session row when media is added after the first page copy', () => {
+    const raw = [
+      {
+        id: 'msg_run_1',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'hello' }],
+        timestamp: 1,
+      },
+      {
+        id: 'msg_run_1',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'hello' }],
+        media: [
+          {
+            type: 'voice',
+            uri: 'media://tts/reply.mp3',
+            mimeType: 'audio/mpeg',
+            name: 'reply.mp3',
+          },
+        ],
+        timestamp: 1,
+      },
+    ];
+
+    const ui = parseSessionMessages(dedupeWireMessages(raw));
+
+    expect(ui).toHaveLength(1);
+    expect(ui[0]?.content.filter((block) => block.type === 'text')).toHaveLength(1);
+    expect(ui[0]?.content).toContainEqual(
+      expect.objectContaining({
+        type: 'audio',
+        uri: 'media://tts/reply.mp3',
+      }),
+    );
+  });
+
+  it('converts snake_case persisted TTS content blocks into audio blocks', () => {
+    const ui = parseSessionMessages([
+      {
+        id: 'msg_run_1',
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'hello' },
+          {
+            type: 'tts_audio',
+            audio_url: 'media://tts/reply.mp3',
+            mime_type: 'audio/mpeg',
+            name: 'reply.mp3',
+            duration_seconds: 2,
+          },
+        ],
+        timestamp: 1,
+      },
+    ]);
+
+    expect(ui).toHaveLength(1);
+    expect(ui[0]?.content).toContainEqual(
+      expect.objectContaining({
+        type: 'audio',
+        uri: 'media://tts/reply.mp3',
+        mimeType: 'audio/mpeg',
+        name: 'reply.mp3',
+        durationSeconds: 2,
       }),
     );
   });

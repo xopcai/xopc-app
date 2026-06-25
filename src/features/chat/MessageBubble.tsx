@@ -161,7 +161,9 @@ function renderAssistantContent(
       // Assistant images are shown in the dedicated artifact strip below the answer.
       i++;
     } else if (block.type === 'audio') {
-      nodes.push(<AudioMessageBlock key={`audio-${i}`} audio={block} sessionKey={sessionKey} />);
+      if (!isStreaming) {
+        nodes.push(<AudioMessageBlock key={`audio-${i}`} audio={block} sessionKey={sessionKey} />);
+      }
       i++;
     } else {
       i++;
@@ -239,7 +241,7 @@ export const MessageBubble = memo(function MessageBubble({
   );
 
   const showAssistantArtifacts =
-    isAssistant && (assistantWorkspacePaths.length > 0 || assistantImageAttachments.length > 0);
+    isAssistant && !isStreaming && (assistantWorkspacePaths.length > 0 || assistantImageAttachments.length > 0);
 
   const stepsActive = useMemo(() => {
     if (!isAssistant || !isStreaming) return false;

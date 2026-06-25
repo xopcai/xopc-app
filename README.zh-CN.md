@@ -198,8 +198,28 @@ EAS profile：
 | `pnpm run build:android:preview` | 内部分发 Android APK |
 | `pnpm run build:android:production` | Android App Bundle |
 | `pnpm run build:ios:preview` | 内部分发 iOS build |
-| `pnpm run build:ios` | 生产 iOS build |
+| `pnpm run build:ios` | 本地生产 iOS IPA，默认输出 `dist/xopc.ipa` |
+| `pnpm run build:ios:eas` | EAS 生产 iOS build |
 | `pnpm run submit:ios` | 提交最新生产 iOS build |
+| `pnpm run submit:ios:direct` | 直接上传本地 `dist/xopc.ipa`，也可传 IPA URL 或本地路径 |
+
+本地 iOS 构建示例：
+
+```bash
+DEVELOPMENT_TEAM="TEAMID1234" pnpm run build:ios
+pnpm run submit:ios:direct
+```
+
+`build:ios` 默认用当前时间生成 iOS build number；需要固定值时可传 `IOS_BUILD_NUMBER=123`。
+
+如需让 Xcode 自动拉取签名配置，可复用提交脚本的 App Store Connect API Key 环境变量：
+
+```bash
+APP_STORE_CONNECT_API_KEY="KEY_ID" \
+APP_STORE_CONNECT_API_ISSUER="ISSUER_ID" \
+DEVELOPMENT_TEAM="TEAMID1234" \
+pnpm run build:ios
+```
 
 当前 package ID 是 `ai.xopc.xopc`。如果之前安装过 `com.anonymous.xopcapp` 的构建，需要单独卸载；Android 会把它当作另一个 App。
 

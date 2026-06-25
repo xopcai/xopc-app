@@ -11,13 +11,13 @@ import {
 import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { TOAST_DURATION_SHORT } from '../../constants/toast';
 import type { ShareAutoRequest } from '../../api/share';
 import { t, useMessages } from '../../i18n/messages';
+import { useCreateShare } from '../../query/shares';
 import { useGatewayStore } from '../../stores/gateway-store';
 import { useTheme } from '../../theme';
 import { ShareSheet } from '../share/ShareSheet';
-import { prefetchShare } from '../share/share-prefetch';
-import { useCreateShare } from '../../query/shares';
 import { HtmlPreviewPane } from './HtmlPreviewPane';
 import { isHtmlFile } from './html-preview-source';
 import { MarkdownView } from './MarkdownView';
@@ -211,6 +211,10 @@ function buildDownloadUrlForFile(
   return file.remoteUri ?? null;
 }
 
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 export function FilePreviewModal({ visible, file, sessionKey, agentId, onClose }: FilePreviewModalProps) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -220,6 +224,8 @@ export function FilePreviewModal({ visible, file, sessionKey, agentId, onClose }
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<LoadedPreview | null>(null);
   const [shareTarget, setShareTarget] = useState<ShareAutoRequest | null>(null);
+  const [downloadPending, setDownloadPending] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
   const createDownloadShare = useCreateShare();
 
   const title = useMemo(() => (file ? file.name || fileName(file.workspaceRelativePath ?? 'Preview') : ''), [file]);
@@ -228,16 +234,10 @@ export function FilePreviewModal({ visible, file, sessionKey, agentId, onClose }
     [agentId, file, sessionKey],
   );
 
-  // Warm the share cache the moment the preview opens — by the time the user
-  // taps the share button, the link is likely already created.
-  useEffect(() => {
-    if (!visible || !shareRequest) return;
-    prefetchShare(shareRequest);
-  }, [visible, shareRequest]);
-
   useEffect(() => {
     let cancelled = false;
     setError(null);
+    setDownloadError('');
     setLoaded(null);
     if (!visible || !file) return;
     setLoading(true);
@@ -256,18 +256,30 @@ export function FilePreviewModal({ visible, file, sessionKey, agentId, onClose }
     };
   }, [agentId, file, sessionKey, visible]);
 
+  useEffect(() => {
+    if (!downloadError) return;
+    const timer = setTimeout(() => setDownloadError(''), TOAST_DURATION_SHORT);
+    return () => clearTimeout(timer);
+  }, [downloadError]);
+
   const canDownload = Boolean(file?.workspaceRelativePath || file?.remoteUri);
-  const downloadFile = () => {
+  const downloadFile = async () => {
     if (!file) return;
-    const remoteUrl = buildDownloadUrlForFile(file);
-    if (remoteUrl) {
-      void Linking.openURL(remoteUrl);
-      return;
-    }
-    if (shareRequest) {
-      void createDownloadShare.mutateAsync(shareRequest)
-        .then((payload) => Linking.openURL(payload.share.lanUrl ?? payload.share.shareUrl))
-        .catch(() => undefined);
+    setDownloadError('');
+    setDownloadPending(true);
+    try {
+      const remoteUrl = buildDownloadUrlForFile(file);
+      if (remoteUrl) {
+        await Linking.openURL(remoteUrl);
+        return;
+      }
+      if (!shareRequest) return;
+      const payload = await createDownloadShare.mutateAsync(shareRequest);
+      await Linking.openURL(payload.share.lanUrl ?? payload.share.shareUrl);
+    } catch (e) {
+      setDownloadError(t(cm.filePreviewDownloadFailed, { message: errorMessage(e) }));
+    } finally {
+      setDownloadPending(false);
     }
   };
 
@@ -290,7 +302,7 @@ export function FilePreviewModal({ visible, file, sessionKey, agentId, onClose }
               iconColor={textColor}
               onPress={downloadFile}
               accessibilityLabel={m.chat.filePreviewDownload}
-              disabled={createDownloadShare.isPending}
+              disabled={downloadPending || createDownloadShare.isPending}
             />
           ) : null}
           {shareRequest ? (
@@ -304,6 +316,19 @@ export function FilePreviewModal({ visible, file, sessionKey, agentId, onClose }
           ) : null}
           <IconButton icon="close" size={22} iconColor={textColor} onPress={onClose} accessibilityLabel={cm.filePreviewClose} />
         </View>
+
+        {downloadError ? (
+          <View
+            style={[
+              styles.downloadErrorBanner,
+              { borderBottomColor: colors.border.default, backgroundColor: colors.surface.panel },
+            ]}
+          >
+            <Text style={[styles.downloadErrorText, { color: colors.semantic.errorBold }]} numberOfLines={3}>
+              {downloadError}
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.body}>
           {loading ? (
@@ -387,6 +412,15 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
+  },
+  downloadErrorBanner: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  downloadErrorText: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   center: {
     flex: 1,

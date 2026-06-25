@@ -320,6 +320,7 @@ export const en = {
     openSessionFiles: 'Open session files',
     filePreviewClose: 'Close preview',
     filePreviewDownload: 'Download file',
+    filePreviewDownloadFailed: 'Could not open download: {{message}}',
     filePreviewLoading: 'Loading preview…',
     filePreviewLoadFailed: 'Could not load preview: {{message}}',
     filePreviewUnsupportedWithText: 'Inline preview is not supported for this file type on mobile. Extracted text is shown below.',

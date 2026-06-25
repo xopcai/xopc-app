@@ -25,9 +25,15 @@ export type WireContentBlock = {
   source?: { data?: string; media_type?: string };
   data?: string;
   mimeType?: string;
+  mime_type?: string;
   workspaceRelativePath?: string;
+  workspace_relative_path?: string;
   uri?: string;
+  url?: string;
+  audioUri?: string;
+  audio_url?: string;
   durationSeconds?: number;
+  duration_seconds?: number;
   id?: string;
   messageId?: string;
   name?: string;
@@ -46,12 +52,21 @@ export type WireMessage = {
   content?: unknown;
   timestamp?: string | number;
   attachments?: unknown;
+  media?: unknown;
   usage?: unknown;
   tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
   toolCalls?: Array<{ id?: string; name: string; args?: Record<string, unknown> }>;
   tool_call_id?: string;
   toolCallId?: string;
   isError?: boolean;
+  ttsAudio?: unknown;
+  tts_audio?: unknown;
+  tts?: unknown;
+  audio?: unknown;
+  ttsAudioUri?: string;
+  tts_audio_uri?: string;
+  audioUri?: string;
+  audio_url?: string;
 };
 
 // ── Stable key helpers ─────────────────────────────────────
@@ -84,12 +99,16 @@ export function wireMessageStableKey(raw: Record<string, unknown>, index: number
 }
 
 export function dedupeWireMessages(raw: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
-  const seen = new Set<string>();
+  const indexByKey = new Map<string, number>();
   const dedupedMessages: Array<Record<string, unknown>> = [];
   raw.forEach((message, index) => {
     const key = wireMessageStableKey(message, index);
-    if (seen.has(key)) return;
-    seen.add(key);
+    const existingIndex = indexByKey.get(key);
+    if (existingIndex != null) {
+      dedupedMessages[existingIndex] = message;
+      return;
+    }
+    indexByKey.set(key, dedupedMessages.length);
     dedupedMessages.push(message);
   });
   return dedupedMessages;
@@ -193,14 +212,17 @@ export function parseContentBlock(b: Record<string, unknown>): MessageContent | 
   const t = block.type;
   if (t === 'text') return { type: 'text', text: String(block.text ?? '') };
   if (t === 'thinking') return { type: 'thinking', text: String(block.text ?? block.thinking ?? ''), streaming: false };
-  if (t === 'audio' || t === 'tts_audio' || block.mimeType?.startsWith('audio/')) {
+  const mimeType = firstString(block.mimeType, block.mime_type);
+  if (t === 'audio' || t === 'tts_audio' || mimeType?.startsWith('audio/')) {
+    const parsed = parseTtsAudioBlock(block);
+    if (parsed) return parsed;
     return {
       type: 'audio',
-      workspaceRelativePath: block.workspaceRelativePath,
-      uri: block.uri ?? (typeof block.data === 'string' && block.data.startsWith('data:') ? block.data : undefined),
-      mimeType: block.mimeType ?? (t === 'tts_audio' ? 'audio/mpeg' : undefined),
+      workspaceRelativePath: firstString(block.workspaceRelativePath, block.workspace_relative_path),
+      uri: firstString(block.uri, block.url, block.audioUri, block.audio_url),
+      mimeType: mimeType ?? (t === 'tts_audio' ? 'audio/mpeg' : undefined),
       name: block.name,
-      durationSeconds: block.durationSeconds,
+      durationSeconds: finiteNumber(block.durationSeconds ?? block.duration_seconds),
     };
   }
   if (t === 'image' || (typeof block.data === 'string' && typeof block.mimeType === 'string')) {
@@ -255,7 +277,83 @@ function buildAssistantContent(m: WireMessage): MessageContent[] {
     }
   }
 
+  appendTopLevelTtsAudio(blocks, m);
+
   return blocks;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function parseTtsAudioBlock(raw: unknown): MessageContent | null {
+  if (typeof raw === 'string') {
+    const uri = raw.trim();
+    return uri ? { type: 'audio', uri, mimeType: 'audio/mpeg', name: 'voice.mp3' } : null;
+  }
+  if (!raw || typeof raw !== 'object') return null;
+  const item = raw as Record<string, unknown>;
+  const uri = firstString(item.uri, item.url, item.audioUri, item.audio_url);
+  const workspaceRelativePath = firstString(
+    item.workspaceRelativePath,
+    item.workspace_relative_path,
+    item.path,
+  );
+  const data = typeof item.data === 'string' && item.data.trim() ? item.data.trim() : undefined;
+  if (!uri && !workspaceRelativePath && !data) return null;
+  const mimeType = firstString(item.mimeType, item.mime_type) ?? 'audio/mpeg';
+  const dataUri = data
+    ? (data.startsWith('data:') ? data : `data:${mimeType};base64,${data.replace(/\s/g, '')}`)
+    : undefined;
+  return {
+    type: 'audio',
+    workspaceRelativePath,
+    uri: uri ?? dataUri,
+    mimeType,
+    name: firstString(item.name) ?? 'voice.mp3',
+    durationSeconds: finiteNumber(item.durationSeconds ?? item.duration_seconds),
+  };
+}
+
+function audioContentKey(block: MessageContent): string {
+  return block.type === 'audio'
+    ? block.workspaceRelativePath || block.uri || block.name || ''
+    : '';
+}
+
+function appendTopLevelTtsAudio(content: MessageContent[], m: WireMessage): void {
+  const raw = m as Record<string, unknown>;
+  const candidates = [m.ttsAudio, m.tts_audio, m.tts, m.audio];
+  const topLevelUri = firstString(m.ttsAudioUri, m.tts_audio_uri, m.audioUri, m.audio_url);
+  if (topLevelUri) {
+    candidates.push({
+      uri: topLevelUri,
+      mimeType: raw.mimeType,
+      mime_type: raw.mime_type,
+      name: raw.name,
+      durationSeconds: raw.durationSeconds,
+      duration_seconds: raw.duration_seconds,
+    });
+  }
+
+  const existingKeys = new Set(content.map(audioContentKey).filter(Boolean));
+  for (const candidate of candidates) {
+    const items = Array.isArray(candidate) ? candidate : [candidate];
+    for (const item of items) {
+      const block = parseTtsAudioBlock(item);
+      const key = block ? audioContentKey(block) : '';
+      if (!block || !key || existingKeys.has(key)) continue;
+      existingKeys.add(key);
+      content.push(block);
+    }
+  }
 }
 
 /** Extract plain-text from toolResult content. */
@@ -478,7 +576,7 @@ export function parseSessionMessages(raw: Array<Record<string, unknown>>): Messa
     if (role === 'user' || role === 'user-with-attachments') {
       const roleTyped = role as Message['role'];
       const fromContent = extractAttachmentsFromUserContent(m.content);
-      const attachments = mergeUserAttachments(normalizeAttachments(m.attachments), fromContent);
+      const attachments = mergeUserAttachments(normalizeAttachments(m.attachments ?? m.media), fromContent);
       out.push({
         id: wireMessageId(m),
         role: roleTyped,
@@ -490,7 +588,7 @@ export function parseSessionMessages(raw: Array<Record<string, unknown>>): Messa
     }
 
     if (role === 'assistant') {
-      const attachments = normalizeAttachments(m.attachments);
+      const attachments = normalizeAttachments(m.attachments ?? m.media);
       out.push({
         id: wireMessageId(m),
         role: 'assistant',
