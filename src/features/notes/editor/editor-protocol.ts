@@ -84,3 +84,39 @@ export type EditorWikiLinkCandidate = {
   title: string;
   subtitle?: string;
 };
+
+export type EditorCommand =
+  | { id: number; type: 'focus'; position?: 'start' | 'end' | number }
+  | { id: number; type: 'toggleBold' }
+  | { id: number; type: 'toggleItalic' }
+  | { id: number; type: 'toggleTaskList' }
+  | { id: number; type: 'toggleBulletList' }
+  | { id: number; type: 'toggleOrderedList' }
+  | { id: number; type: 'toggleBlockquote' }
+  | { id: number; type: 'toggleCodeBlock' }
+  | { id: number; type: 'toggleHeading'; level: 1 | 2 | 3 }
+  | { id: number; type: 'openWikiLink' }
+  | { id: number; type: 'toggleAi' }
+  | { id: number; type: 'insertImage' }
+  | { id: number; type: 'setLink'; title: string; url: string }
+  | { id: number; type: 'removeLink' }
+  | { id: number; type: 'undo' }
+  | { id: number; type: 'redo' };
+
+export type EditorRuntimeState = {
+  ready: boolean;
+  focused: boolean;
+  selection: { from: number; to: number };
+  canUndo: boolean;
+  canRedo: boolean;
+  bold: boolean;
+  italic: boolean;
+  todo: boolean;
+  bullet: boolean;
+  ordered: boolean;
+  quote: boolean;
+  code: boolean;
+  headingLevel: 0 | 1 | 2 | 3;
+  link: boolean;
+  image: boolean;
+};

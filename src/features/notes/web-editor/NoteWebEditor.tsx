@@ -15,7 +15,9 @@ import type {
   EditorAiRequest,
   EditorAiResponse,
   EditorAiMetadata,
+  EditorCommand,
   EditorImagePickResult,
+  EditorRuntimeState,
   EditorSelectionContext,
   EditorWikiLinkCandidate,
   NoteEditorLabels,
@@ -30,9 +32,11 @@ export interface NoteWebEditorProps {
   attachmentSrcMap?: Record<string, string>;
   theme: NoteEditorTheme;
   labels: NoteEditorLabels;
+  command?: EditorCommand | null;
   dom?: DomProps;
   onChangeMarkdown: (markdown: string) => Promise<void>;
   onSelectionChange: (context: EditorSelectionContext) => Promise<void>;
+  onStateChange?: (state: EditorRuntimeState) => Promise<void> | void;
   onRequestImage: () => Promise<EditorImagePickResult>;
   onRequestAi: (request: EditorAiRequest) => Promise<EditorAiResponse | null>;
   onApplyAiMetadata: (metadata: EditorAiMetadata) => Promise<void>;
@@ -80,14 +84,57 @@ function selectionContext(markdown: string, from: number, to: number): EditorSel
   };
 }
 
+function editorRuntimeState(editor: NonNullable<ReturnType<typeof useEditor>>): EditorRuntimeState {
+  const { from, to } = editor.state.selection;
+  return {
+    ready: true,
+    focused: editor.isFocused,
+    selection: { from, to },
+    canUndo: editor.can().undo(),
+    canRedo: editor.can().redo(),
+    bold: editor.isActive('bold'),
+    italic: editor.isActive('italic'),
+    todo: editor.isActive('taskList'),
+    bullet: editor.isActive('bulletList'),
+    ordered: editor.isActive('orderedList'),
+    quote: editor.isActive('blockquote'),
+    code: editor.isActive('codeBlock'),
+    headingLevel: editor.isActive('heading', { level: 1 })
+      ? 1
+      : editor.isActive('heading', { level: 2 })
+        ? 2
+        : editor.isActive('heading', { level: 3 })
+          ? 3
+          : 0,
+    link: editor.isActive('link'),
+    image: editor.isActive('image'),
+  };
+}
+
+function sanitizeLinkText(value: string): string {
+  return value.replace(/[<>&]/g, '');
+}
+
+function isLikelyUrl(value: string): boolean {
+  return /^(https?:\/\/|www\.)\S+\.\S+$/i.test(value) || /^[a-z0-9-]+(\.[a-z0-9-]+)+\/?\S*$/i.test(value);
+}
+
+function normalizedUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed.replace(/^www\./i, 'www.')}`;
+}
+
 export default function NoteWebEditor({
   noteId,
   initialMarkdown,
   attachmentSrcMap,
   theme,
   labels,
+  command,
   onChangeMarkdown,
   onSelectionChange,
+  onStateChange,
   onRequestImage,
   onRequestAi,
   onApplyAiMetadata,
@@ -107,6 +154,7 @@ export default function NoteWebEditor({
   const [wikiQuery, setWikiQuery] = useState('');
   const [wikiLoading, setWikiLoading] = useState(false);
   const [wikiCandidates, setWikiCandidates] = useState<EditorWikiLinkCandidate[]>([]);
+  const handledCommandIdRef = useRef<number | null>(null);
 
   attachmentSrcMapRef.current = attachmentSrcMap ?? {};
 
@@ -161,6 +209,7 @@ export default function NoteWebEditor({
     onUpdate: ({ editor: nextEditor }) => {
       const markdown = markdownFromEditor(nextEditor);
       latestMarkdownRef.current = markdown;
+      void onStateChange?.(editorRuntimeState(nextEditor));
       if (changeTimerRef.current) clearTimeout(changeTimerRef.current);
       changeTimerRef.current = setTimeout(() => {
         if (lastSentMarkdownRef.current === latestMarkdownRef.current) return;
@@ -172,9 +221,19 @@ export default function NoteWebEditor({
       const markdown = markdownFromEditor(nextEditor);
       latestMarkdownRef.current = markdown;
       const { from, to } = nextEditor.state.selection;
+      void onStateChange?.(editorRuntimeState(nextEditor));
       void onSelectionChange(selectionContext(markdown, from, to));
     },
-  }, [XopcImage, labels.placeholder]);
+    onFocus: ({ editor: nextEditor }) => {
+      void onStateChange?.(editorRuntimeState(nextEditor));
+    },
+    onBlur: ({ editor: nextEditor }) => {
+      void onStateChange?.(editorRuntimeState(nextEditor));
+    },
+    onCreate: ({ editor: nextEditor }) => {
+      void onStateChange?.(editorRuntimeState(nextEditor));
+    },
+  }, [XopcImage, labels.placeholder, onSelectionChange, onStateChange]);
 
   useEffect(() => {
     if (!editor) return;
@@ -201,7 +260,8 @@ export default function NoteWebEditor({
     latestMarkdownRef.current = initialMarkdown;
     lastSentMarkdownRef.current = initialMarkdown;
     setEditorMarkdown(editor, initialMarkdown);
-  }, [editor, initialMarkdown, noteId]);
+    void onStateChange?.(editorRuntimeState(editor));
+  }, [editor, initialMarkdown, noteId, onStateChange]);
 
   useEffect(() => () => {
     if (changeTimerRef.current) clearTimeout(changeTimerRef.current);
@@ -261,6 +321,36 @@ export default function NoteWebEditor({
     editor.chain().focus().setImage({ src: picked.src, alt: picked.alt }).run();
   }, [editor, onRequestImage]);
 
+  const applyLink = useCallback((title: string, url: string) => {
+    if (!editor) return;
+    const href = normalizedUrl(url);
+    if (!href || !isLikelyUrl(href)) return;
+    const { from, to } = editor.state.selection;
+    const selected = editor.state.doc.textBetween(from, to, ' ').trim();
+    const label = (title.trim() || selected || href).trim();
+    editor
+      .chain()
+      .focus()
+      .insertContent({
+        type: 'text',
+        text: sanitizeLinkText(label),
+        marks: [{ type: 'link', attrs: { href } }],
+      })
+      .run();
+  }, [editor]);
+
+  const removeLink = useCallback(() => {
+    if (!editor) return;
+    editor.chain().focus().extendMarkRange('link').unsetLink().run();
+  }, [editor]);
+
+  const focusEditorFromSurface = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    if (!editor) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('button, input, textarea, a, [contenteditable="true"]')) return;
+    editor.commands.focus();
+  }, [editor]);
+
   const openWikiLink = useCallback(() => {
     if (!editor) return;
     const { from, to } = editor.state.selection;
@@ -303,23 +393,63 @@ export default function NoteWebEditor({
     };
   }, [onRequestWikiLink, wikiOpen, wikiQuery]);
 
-  const toolbar = useMemo(() => {
-    if (!editor) return null;
-    return (
-      <div className="xopc-editor-toolbar" aria-label="Editor toolbar">
-        <button type="button" onClick={() => editor.chain().focus().toggleBold().run()} aria-label={labels.bold}>B</button>
-        <button type="button" onClick={() => editor.chain().focus().toggleItalic().run()} aria-label={labels.italic}>I</button>
-        <button type="button" onClick={() => editor.chain().focus().toggleTaskList().run()} aria-label={labels.todo}>☑</button>
-        <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()} aria-label={labels.bullet}>•</button>
-        <button type="button" onClick={() => editor.chain().focus().toggleOrderedList().run()} aria-label={labels.ordered}>1.</button>
-        <button type="button" onClick={() => editor.chain().focus().toggleBlockquote().run()} aria-label={labels.quote}>“</button>
-        <button type="button" onClick={() => editor.chain().focus().toggleCodeBlock().run()} aria-label={labels.code}>{'</>'}</button>
-        <button type="button" onClick={insertImage} aria-label={labels.image}>▧</button>
-        <button type="button" onClick={openWikiLink} aria-label={labels.wikiLink}>[[</button>
-        <button type="button" className="xopc-editor-ai-button" onClick={() => setAiOpen((value) => !value)} aria-label={labels.aiPlaceholder}>AI</button>
-      </div>
-    );
-  }, [editor, insertImage, labels, openWikiLink]);
+  useEffect(() => {
+    if (!editor || !command || handledCommandIdRef.current === command.id) return;
+    handledCommandIdRef.current = command.id;
+
+    switch (command.type) {
+      case 'focus':
+        editor.commands.focus(command.position ?? undefined);
+        break;
+      case 'toggleBold':
+        editor.chain().focus().toggleBold().run();
+        break;
+      case 'toggleItalic':
+        editor.chain().focus().toggleItalic().run();
+        break;
+      case 'toggleTaskList':
+        editor.chain().focus().toggleTaskList().run();
+        break;
+      case 'toggleBulletList':
+        editor.chain().focus().toggleBulletList().run();
+        break;
+      case 'toggleOrderedList':
+        editor.chain().focus().toggleOrderedList().run();
+        break;
+      case 'toggleBlockquote':
+        editor.chain().focus().toggleBlockquote().run();
+        break;
+      case 'toggleCodeBlock':
+        editor.chain().focus().toggleCodeBlock().run();
+        break;
+      case 'toggleHeading':
+        editor.chain().focus().toggleHeading({ level: command.level }).run();
+        break;
+      case 'openWikiLink':
+        openWikiLink();
+        break;
+      case 'toggleAi':
+        setAiOpen((value) => !value);
+        break;
+      case 'insertImage':
+        void insertImage();
+        break;
+      case 'setLink':
+        applyLink(command.title, command.url);
+        break;
+      case 'removeLink':
+        removeLink();
+        break;
+      case 'undo':
+        editor.chain().focus().undo().run();
+        break;
+      case 'redo':
+        editor.chain().focus().redo().run();
+        break;
+    }
+
+    void onStateChange?.(editorRuntimeState(editor));
+  }, [applyLink, command, editor, insertImage, onStateChange, openWikiLink, removeLink]);
 
   return (
     <main
@@ -338,7 +468,7 @@ export default function NoteWebEditor({
       } as React.CSSProperties}
     >
       <style>{EDITOR_CSS}</style>
-      <section className="xopc-editor-scroll">
+      <section className="xopc-editor-scroll" onPointerDown={focusEditorFromSurface}>
         <EditorContent editor={editor} />
       </section>
       {pendingAi ? (
@@ -413,7 +543,6 @@ export default function NoteWebEditor({
           </div>
         </section>
       ) : null}
-      {toolbar}
     </main>
   );
 }
@@ -536,19 +665,6 @@ button, input {
   pointer-events: none;
   color: var(--xopc-text-tertiary);
 }
-.xopc-editor-toolbar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--xopc-border);
-  background: color-mix(in srgb, var(--xopc-panel) 94%, transparent);
-}
-.xopc-editor-toolbar button,
 .xopc-editor-ai-bar button,
 .xopc-editor-ai-preview button {
   min-width: 38px;

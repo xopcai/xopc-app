@@ -331,7 +331,6 @@ export function PageScreen() {
     });
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
       setKeyboardVisible(false);
-      setEditorFocused(false);
     });
     return () => {
       showSub.remove();
