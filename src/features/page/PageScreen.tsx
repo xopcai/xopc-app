@@ -588,11 +588,8 @@ export function PageScreen() {
     ordered: pm.editorBlockNumberedList,
     quote: pm.editorBlockQuote,
     code: pm.editorBlockCode,
-    imageReplace: pm.editorReplaceImage,
-    imageRemove: pm.editorImageRemove,
-    imageCopyLink: pm.editorCopyImageLink,
-    imageCaption: pm.editorCaption,
     linkUrlPlaceholder: pm.editorLinkUrlPlaceholder,
+    removeLink: pm.editorRemoveLink,
   }), [pm]);
 
   const showLoading = noteQuery.isLoading && !note;

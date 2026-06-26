@@ -37,11 +37,8 @@ export type NoteEditorLabels = {
   ordered: string;
   quote: string;
   code: string;
-  imageReplace: string;
-  imageRemove: string;
-  imageCopyLink: string;
-  imageCaption: string;
   linkUrlPlaceholder: string;
+  removeLink: string;
 };
 
 export type EditorSelectionContext = {
@@ -51,7 +48,6 @@ export type EditorSelectionContext = {
   currentBlockMarkdown: string;
   beforeMarkdown: string;
   afterMarkdown: string;
-  contextType?: 'selection' | 'block' | 'note';
 };
 
 export type EditorAiRequest = {

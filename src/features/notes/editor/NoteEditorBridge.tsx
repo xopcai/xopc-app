@@ -331,9 +331,9 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
                 style={[styles.sheetButton, { backgroundColor: colors.surface.input }]}
                 onPress={removeLink}
                 accessibilityRole="button"
-                accessibilityLabel={labels.imageRemove}
+                accessibilityLabel={labels.removeLink}
               >
-                <Text style={[styles.sheetButtonText, { color: colors.semantic.error }]}>{labels.imageRemove}</Text>
+                <Text style={[styles.sheetButtonText, { color: colors.semantic.error }]}>{labels.removeLink}</Text>
               </Pressable>
             ) : null}
             <Pressable
