@@ -5,49 +5,25 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding, useTheme } from '../../theme';
 
-interface NoteViewActionBarProps {
-  labels: {
-    catalyst: string;
-    openChat: string;
-    more: string;
-  };
-  loading?: {
-    catalyst?: boolean;
-    openChat?: boolean;
-  };
-  onCatalyst: () => void;
-  onOpenChat: () => void;
-  onMore: () => void;
+export interface NoteViewActionBarItem {
+  key: string;
+  icon: string;
+  label: string;
+  active?: boolean;
+  loading?: boolean;
+  onPress: () => void;
 }
 
-export function NoteViewActionBar({
-  labels,
-  loading,
-  onCatalyst,
-  onOpenChat,
-  onMore,
-}: NoteViewActionBarProps) {
+interface NoteViewActionBarProps {
+  items: readonly NoteViewActionBarItem[];
+}
+
+export function NoteViewActionBar({ items }: NoteViewActionBarProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const barBg = isDark ? colors.surface.panel : colors.surface.base;
   const iconColor = colors.text.secondary;
   const labelColor = colors.text.tertiary;
-
-  const items = [
-    {
-      key: 'catalyst',
-      icon: loading?.catalyst ? 'loading' : 'creation-outline',
-      label: labels.catalyst,
-      onPress: onCatalyst,
-    },
-    {
-      key: 'chat',
-      icon: loading?.openChat ? 'loading' : 'chat-processing-outline',
-      label: labels.openChat,
-      onPress: onOpenChat,
-    },
-    { key: 'more', icon: 'dots-grid', label: labels.more, onPress: onMore },
-  ] as const;
 
   return (
     <KeyboardStickyView
@@ -72,9 +48,10 @@ export function NoteViewActionBar({
               onPress={item.onPress}
               accessibilityRole="button"
               accessibilityLabel={item.label}
+              accessibilityState={{ selected: Boolean(item.active), busy: Boolean(item.loading) }}
             >
-              <Icon source={item.icon} size={18} color={iconColor} />
-              <Text numberOfLines={1} style={[styles.label, { color: labelColor }]}>{item.label}</Text>
+              <Icon source={item.loading ? 'loading' : item.icon} size={18} color={item.active ? colors.accent.primary : iconColor} />
+              <Text numberOfLines={1} style={[styles.label, { color: item.active ? colors.accent.primary : labelColor }]}>{item.label}</Text>
             </Pressable>
           ))}
         </View>

@@ -27,11 +27,24 @@ export type NoteEditorLabels = {
   wikiLinkInsertTyped: string;
   wikiLinkNoResults: string;
   heading: string;
+  headingOne: string;
+  headingTwo: string;
+  headingThree: string;
   link: string;
   undo: string;
   redo: string;
+  style: string;
+  normalText: string;
   bold: string;
   italic: string;
+  underline: string;
+  alignLeft: string;
+  alignCenter: string;
+  alignRight: string;
+  alignment: string;
+  lists: string;
+  indent: string;
+  outdent: string;
   todo: string;
   bullet: string;
   ordered: string;
@@ -39,6 +52,11 @@ export type NoteEditorLabels = {
   code: string;
   linkUrlPlaceholder: string;
   removeLink: string;
+  imageFromLibrary: string;
+  imageCamera: string;
+  imageScan: string;
+  imageDocument: string;
+  unavailable: string;
 };
 
 export type EditorSelectionContext = {
@@ -67,12 +85,15 @@ export type EditorAiResponse = {
 
 export type EditorAiMetadata = Pick<EditorAiResponse, 'title' | 'tags' | 'status'>;
 
-export type EditorImagePickResult = {
+export type EditorAttachmentPickSource = 'photos' | 'camera' | 'document';
+
+export type EditorAttachmentPickResult = {
   /** Canonical markdown src persisted in the note. */
   src: string;
   /** Display-only browser src used by the DOM editor. */
   displaySrc?: string;
   alt?: string;
+  kind: 'image' | 'document';
 } | null;
 
 export type EditorWikiLinkCandidate = {
@@ -85,19 +106,30 @@ export type EditorCommand =
   | { id: number; type: 'focus'; position?: 'start' | 'end' | number }
   | { id: number; type: 'toggleBold' }
   | { id: number; type: 'toggleItalic' }
+  | { id: number; type: 'toggleUnderline' }
   | { id: number; type: 'toggleTaskList' }
   | { id: number; type: 'toggleBulletList' }
   | { id: number; type: 'toggleOrderedList' }
   | { id: number; type: 'toggleBlockquote' }
   | { id: number; type: 'toggleCodeBlock' }
+  | { id: number; type: 'setParagraph' }
   | { id: number; type: 'toggleHeading'; level: 1 | 2 | 3 }
+  | { id: number; type: 'setTextAlign'; align: 'left' | 'center' | 'right' }
+  | { id: number; type: 'indent' }
+  | { id: number; type: 'outdent' }
   | { id: number; type: 'openWikiLink' }
   | { id: number; type: 'toggleAi' }
-  | { id: number; type: 'insertImage' }
+  | { id: number; type: 'insertAttachment'; source: EditorAttachmentPickSource }
   | { id: number; type: 'setLink'; title: string; url: string }
   | { id: number; type: 'removeLink' }
   | { id: number; type: 'undo' }
   | { id: number; type: 'redo' };
+
+export type EditorCommandInput = EditorCommand extends infer Command
+  ? Command extends { id: number }
+    ? Omit<Command, 'id'>
+    : never
+  : never;
 
 export type EditorRuntimeState = {
   ready: boolean;
@@ -107,12 +139,14 @@ export type EditorRuntimeState = {
   canRedo: boolean;
   bold: boolean;
   italic: boolean;
+  underline: boolean;
   todo: boolean;
   bullet: boolean;
   ordered: boolean;
   quote: boolean;
   code: boolean;
   headingLevel: 0 | 1 | 2 | 3;
+  textAlign: 'left' | 'center' | 'right';
   link: boolean;
   image: boolean;
 };

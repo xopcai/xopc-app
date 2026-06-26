@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
@@ -12,8 +12,10 @@ import type {
   EditorAiRequest,
   EditorAiResponse,
   EditorAiMetadata,
+  EditorAttachmentPickSource,
   EditorCommand,
-  EditorImagePickResult,
+  EditorCommandInput,
+  EditorAttachmentPickResult,
   EditorRuntimeState,
   EditorSelectionContext,
   EditorWikiLinkCandidate,
@@ -31,12 +33,6 @@ type ToolbarAction = {
   onPress: () => void;
 };
 
-type EditorCommandInput = EditorCommand extends infer Command
-  ? Command extends { id: number }
-    ? Omit<Command, 'id'>
-    : never
-  : never;
-
 const EMPTY_EDITOR_STATE: EditorRuntimeState = {
   ready: false,
   focused: false,
@@ -45,12 +41,14 @@ const EMPTY_EDITOR_STATE: EditorRuntimeState = {
   canRedo: false,
   bold: false,
   italic: false,
+  underline: false,
   todo: false,
   bullet: false,
   ordered: false,
   quote: false,
   code: false,
   headingLevel: 0,
+  textAlign: 'left',
   link: false,
   image: false,
 };
@@ -64,12 +62,14 @@ function sameEditorState(a: EditorRuntimeState, b: EditorRuntimeState): boolean 
     && a.canRedo === b.canRedo
     && a.bold === b.bold
     && a.italic === b.italic
+    && a.underline === b.underline
     && a.todo === b.todo
     && a.bullet === b.bullet
     && a.ordered === b.ordered
     && a.quote === b.quote
     && a.code === b.code
     && a.headingLevel === b.headingLevel
+    && a.textAlign === b.textAlign
     && a.link === b.link
     && a.image === b.image;
 }
@@ -78,28 +78,36 @@ export interface NoteEditorBridgeProps {
   noteId: string;
   markdown: string;
   attachmentSrcMap?: Record<string, string>;
+  editing: boolean;
+  topCommand?: EditorCommand | null;
   labels: NoteEditorLabels;
   onChangeMarkdown: (markdown: string) => void;
   onSelectionChange: (context: EditorSelectionContext) => void;
-  onRequestImage: () => Promise<EditorImagePickResult>;
+  onBeginEditing?: () => void;
+  onRequestAttachment: (source: EditorAttachmentPickSource) => Promise<EditorAttachmentPickResult>;
   onRequestAi: (request: EditorAiRequest) => Promise<EditorAiResponse | null>;
   onApplyAiMetadata: (metadata: EditorAiMetadata) => Promise<void>;
   onRequestWikiLink: (query: string) => Promise<EditorWikiLinkCandidate[]>;
   onFocusChange?: (focused: boolean) => void;
+  onRuntimeStateChange?: (state: EditorRuntimeState) => void;
 }
 
 export const NoteEditorBridge = memo(function NoteEditorBridge({
   noteId,
   markdown,
   attachmentSrcMap,
+  editing,
+  topCommand,
   labels,
   onChangeMarkdown,
   onSelectionChange,
-  onRequestImage,
+  onBeginEditing,
+  onRequestAttachment,
   onRequestAi,
   onApplyAiMetadata,
   onRequestWikiLink,
   onFocusChange,
+  onRuntimeStateChange,
 }: NoteEditorBridgeProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -107,6 +115,8 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
   const [command, setCommand] = useState<EditorCommand | null>(null);
   const [editorState, setEditorState] = useState<EditorRuntimeState>(EMPTY_EDITOR_STATE);
   const [linkSheet, setLinkSheet] = useState({ visible: false, title: '', url: '' });
+  const [styleSheetVisible, setStyleSheetVisible] = useState(false);
+  const [imageSheetVisible, setImageSheetVisible] = useState(false);
   const editorTheme = useMemo<NoteEditorTheme>(() => ({
     background: colors.surface.base,
     panel: colors.surface.panel,
@@ -135,11 +145,19 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
 
   const handleStateChange = useCallback((state: EditorRuntimeState) => {
     setEditorState((current) => (sameEditorState(current, state) ? current : state));
-  }, []);
+    onRuntimeStateChange?.(state);
+  }, [onRuntimeStateChange]);
 
   useEffect(() => {
     onFocusChange?.(editorState.focused);
   }, [editorState.focused, onFocusChange]);
+
+  useEffect(() => {
+    if (editing) return;
+    setStyleSheetVisible(false);
+    setImageSheetVisible(false);
+    setLinkSheet({ visible: false, title: '', url: '' });
+  }, [editing]);
 
   const dispatch = useCallback((next: EditorCommandInput) => {
     commandIdRef.current += 1;
@@ -167,32 +185,38 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
     setLinkSheet({ visible: false, title: '', url: '' });
   }, [dispatch]);
 
+  const dispatchStyleCommand = useCallback((next: EditorCommandInput) => {
+    dispatch(next);
+  }, [dispatch]);
+
+  const handleInsertImageFromLibrary = useCallback(() => {
+    setImageSheetVisible(false);
+    dispatch({ type: 'insertAttachment', source: 'photos' });
+  }, [dispatch]);
+
+  const handleInsertImageFromCamera = useCallback(() => {
+    setImageSheetVisible(false);
+    dispatch({ type: 'insertAttachment', source: 'camera' });
+  }, [dispatch]);
+
+  const handleInsertDocument = useCallback(() => {
+    setImageSheetVisible(false);
+    dispatch({ type: 'insertAttachment', source: 'document' });
+  }, [dispatch]);
+
   const actions = useMemo<ToolbarAction[]>(() => [
-    ...(editorState.canUndo ? [{
-      key: 'undo',
-      label: labels.undo,
-      icon: 'undo',
-      onPress: () => dispatch({ type: 'undo' }),
-    }] : []),
-    ...(editorState.canRedo ? [{
-      key: 'redo',
-      label: labels.redo,
-      icon: 'redo',
-      onPress: () => dispatch({ type: 'redo' }),
-    }] : []),
     {
-      key: 'bold',
-      label: labels.bold,
-      icon: 'format-bold',
-      active: editorState.bold,
-      onPress: () => dispatch({ type: 'toggleBold' }),
-    },
-    {
-      key: 'italic',
-      label: labels.italic,
-      icon: 'format-italic',
-      active: editorState.italic,
-      onPress: () => dispatch({ type: 'toggleItalic' }),
+      key: 'style',
+      label: labels.style,
+      icon: 'format-size',
+      active: editorState.bold
+        || editorState.italic
+        || editorState.underline
+        || editorState.headingLevel > 0
+        || editorState.textAlign !== 'left'
+        || editorState.quote
+        || editorState.code,
+      onPress: () => setStyleSheetVisible(true),
     },
     {
       key: 'todo',
@@ -202,39 +226,11 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
       onPress: () => dispatch({ type: 'toggleTaskList' }),
     },
     {
-      key: 'bullet',
-      label: labels.bullet,
-      icon: 'format-list-bulleted',
-      active: editorState.bullet,
-      onPress: () => dispatch({ type: 'toggleBulletList' }),
-    },
-    {
-      key: 'ordered',
-      label: labels.ordered,
-      icon: 'format-list-numbered',
-      active: editorState.ordered,
-      onPress: () => dispatch({ type: 'toggleOrderedList' }),
-    },
-    {
-      key: 'heading',
-      label: labels.heading,
-      icon: 'format-header-2',
-      active: editorState.headingLevel === 2,
-      onPress: () => dispatch({ type: 'toggleHeading', level: 2 }),
-    },
-    {
-      key: 'quote',
-      label: labels.quote,
-      icon: 'format-quote-close',
-      active: editorState.quote,
-      onPress: () => dispatch({ type: 'toggleBlockquote' }),
-    },
-    {
-      key: 'code',
-      label: labels.code,
-      icon: 'code-tags',
-      active: editorState.code,
-      onPress: () => dispatch({ type: 'toggleCodeBlock' }),
+      key: 'image',
+      label: labels.image,
+      icon: 'image-outline',
+      active: editorState.image,
+      onPress: () => setImageSheetVisible(true),
     },
     {
       key: 'link',
@@ -242,13 +238,6 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
       icon: 'link-variant',
       active: editorState.link,
       onPress: openLinkSheet,
-    },
-    {
-      key: 'image',
-      label: labels.image,
-      icon: 'image-outline',
-      active: editorState.image,
-      onPress: () => dispatch({ type: 'insertImage' }),
     },
     {
       key: 'wiki',
@@ -265,7 +254,8 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
     },
   ], [dispatch, editorState, labels, openLinkSheet]);
 
-  const toolbarVisible = editorState.focused || linkSheet.visible;
+  const activeCommand = topCommand ?? command;
+  const toolbarVisible = editing;
 
   return (
     <View style={styles.container}>
@@ -273,13 +263,15 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
         noteId={noteId}
         initialMarkdown={markdown}
         attachmentSrcMap={attachmentSrcMap}
+        editable={editing}
         theme={editorTheme}
         labels={labels}
-        command={command}
+        command={activeCommand}
         onChangeMarkdown={handleChange}
         onSelectionChange={handleSelectionChange}
         onStateChange={handleStateChange}
-        onRequestImage={onRequestImage}
+        onRequestEdit={onBeginEditing}
+        onRequestAttachment={onRequestAttachment}
         onRequestAi={onRequestAi}
         onApplyAiMetadata={onApplyAiMetadata}
         onRequestWikiLink={onRequestWikiLink}
@@ -304,6 +296,143 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
           />
         </KeyboardStickyView>
       ) : null}
+      <BottomSheetModal
+        visible={styleSheetVisible}
+        onDismiss={() => setStyleSheetVisible(false)}
+        title={labels.style}
+        maxHeight="62%"
+        scroll
+      >
+        <View style={styles.sheetBody}>
+          <SheetSection label={labels.heading}>
+            <StyleActionButton
+              label={labels.normalText}
+              icon="format-paragraph"
+              active={editorState.headingLevel === 0}
+              onPress={() => dispatchStyleCommand({ type: 'setParagraph' })}
+            />
+            <StyleActionButton
+              label={labels.headingOne}
+              icon="format-header-1"
+              active={editorState.headingLevel === 1}
+              onPress={() => dispatchStyleCommand({ type: 'toggleHeading', level: 1 })}
+            />
+            <StyleActionButton
+              label={labels.headingTwo}
+              icon="format-header-2"
+              active={editorState.headingLevel === 2}
+              onPress={() => dispatchStyleCommand({ type: 'toggleHeading', level: 2 })}
+            />
+            <StyleActionButton
+              label={labels.headingThree}
+              icon="format-header-3"
+              active={editorState.headingLevel === 3}
+              onPress={() => dispatchStyleCommand({ type: 'toggleHeading', level: 3 })}
+            />
+          </SheetSection>
+
+          <SheetSection label={labels.style}>
+            <StyleActionButton
+              label={labels.bold}
+              icon="format-bold"
+              active={editorState.bold}
+              onPress={() => dispatchStyleCommand({ type: 'toggleBold' })}
+            />
+            <StyleActionButton
+              label={labels.italic}
+              icon="format-italic"
+              active={editorState.italic}
+              onPress={() => dispatchStyleCommand({ type: 'toggleItalic' })}
+            />
+            <StyleActionButton
+              label={labels.underline}
+              icon="format-underline"
+              active={editorState.underline}
+              onPress={() => dispatchStyleCommand({ type: 'toggleUnderline' })}
+            />
+          </SheetSection>
+
+          <SheetSection label={labels.alignment}>
+            <StyleActionButton
+              label={labels.alignLeft}
+              icon="format-align-left"
+              active={editorState.textAlign === 'left'}
+              onPress={() => dispatchStyleCommand({ type: 'setTextAlign', align: 'left' })}
+            />
+            <StyleActionButton
+              label={labels.alignCenter}
+              icon="format-align-center"
+              active={editorState.textAlign === 'center'}
+              onPress={() => dispatchStyleCommand({ type: 'setTextAlign', align: 'center' })}
+            />
+            <StyleActionButton
+              label={labels.alignRight}
+              icon="format-align-right"
+              active={editorState.textAlign === 'right'}
+              onPress={() => dispatchStyleCommand({ type: 'setTextAlign', align: 'right' })}
+            />
+          </SheetSection>
+
+          <SheetSection label={labels.lists}>
+            <StyleActionButton
+              label={labels.bullet}
+              icon="format-list-bulleted"
+              active={editorState.bullet}
+              onPress={() => dispatchStyleCommand({ type: 'toggleBulletList' })}
+            />
+            <StyleActionButton
+              label={labels.ordered}
+              icon="format-list-numbered"
+              active={editorState.ordered}
+              onPress={() => dispatchStyleCommand({ type: 'toggleOrderedList' })}
+            />
+            <StyleActionButton
+              label={labels.indent}
+              icon="format-indent-increase"
+              onPress={() => dispatchStyleCommand({ type: 'indent' })}
+            />
+            <StyleActionButton
+              label={labels.outdent}
+              icon="format-indent-decrease"
+              onPress={() => dispatchStyleCommand({ type: 'outdent' })}
+            />
+          </SheetSection>
+
+          <SheetSection label={labels.quote}>
+            <StyleActionButton
+              label={labels.quote}
+              icon="format-quote-close"
+              active={editorState.quote}
+              onPress={() => dispatchStyleCommand({ type: 'toggleBlockquote' })}
+            />
+            <StyleActionButton
+              label={labels.code}
+              icon="code-tags"
+              active={editorState.code}
+              onPress={() => dispatchStyleCommand({ type: 'toggleCodeBlock' })}
+            />
+          </SheetSection>
+        </View>
+      </BottomSheetModal>
+
+      <BottomSheetModal
+        visible={imageSheetVisible}
+        onDismiss={() => setImageSheetVisible(false)}
+        title={labels.image}
+        maxHeight="44%"
+      >
+        <View style={styles.imageMenu}>
+          <ImageSourceRow
+            label={labels.imageFromLibrary}
+            icon="image-multiple-outline"
+            onPress={handleInsertImageFromLibrary}
+          />
+          <ImageSourceRow label={labels.imageCamera} icon="camera-outline" onPress={handleInsertImageFromCamera} />
+          <ImageSourceRow label={labels.imageScan} icon="line-scan" disabled suffix={labels.unavailable} />
+          <ImageSourceRow label={labels.imageDocument} icon="file-document-outline" onPress={handleInsertDocument} />
+        </View>
+      </BottomSheetModal>
+
       <BottomSheetModal
         visible={linkSheet.visible}
         onDismiss={() => setLinkSheet({ visible: false, title: '', url: '' })}
@@ -410,6 +539,93 @@ function EditorToolbar({
   );
 }
 
+function SheetSection({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={styles.sheetSection}>
+      <Text style={[styles.sheetLabel, { color: colors.text.secondary }]}>{label}</Text>
+      <View style={styles.sheetGrid}>{children}</View>
+    </View>
+  );
+}
+
+function StyleActionButton({
+  label,
+  icon,
+  active,
+  onPress,
+}: {
+  label: string;
+  icon: string;
+  active?: boolean;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.styleButton,
+        {
+          backgroundColor: active ? colors.accent.selectionBg : colors.surface.input,
+          borderColor: active ? colors.accent.primary : colors.border.default,
+          opacity: pressed ? 0.68 : 1,
+        },
+      ]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: Boolean(active) }}
+    >
+      <Icon source={icon} size={19} color={active ? colors.accent.primary : colors.text.secondary} />
+      <Text numberOfLines={1} style={[styles.styleButtonText, { color: active ? colors.accent.primary : colors.text.secondary }]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function ImageSourceRow({
+  label,
+  icon,
+  disabled,
+  suffix,
+  onPress,
+}: {
+  label: string;
+  icon: string;
+  disabled?: boolean;
+  suffix?: string;
+  onPress?: () => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.imageMenuRow,
+        {
+          backgroundColor: pressed && !disabled ? colors.surface.hover : 'transparent',
+          opacity: disabled ? 0.42 : 1,
+        },
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: Boolean(disabled) }}
+    >
+      <Icon source={icon} size={22} color={colors.text.secondary} />
+      <Text style={[styles.imageMenuLabel, { color: colors.text.primary }]}>{label}</Text>
+      {suffix ? <Text style={[styles.imageMenuSuffix, { color: colors.text.tertiary }]}>{suffix}</Text> : null}
+    </Pressable>
+  );
+}
+
 function TextInputShim({
   value,
   onChangeText,
@@ -492,9 +708,59 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     gap: spacing.sm,
   },
+  sheetSection: {
+    gap: spacing.xs,
+  },
+  sheetGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
   sheetLabel: {
     fontSize: 13,
     lineHeight: 18,
+    fontWeight: '500',
+  },
+  styleButton: {
+    minHeight: 48,
+    minWidth: 74,
+    maxWidth: 104,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.lg,
+    paddingHorizontal: spacing.sm,
+  },
+  styleButtonText: {
+    flexShrink: 1,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+  },
+  imageMenu: {
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
+  },
+  imageMenuRow: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderRadius: radii.lg,
+    paddingHorizontal: spacing.sm,
+  },
+  imageMenuLabel: {
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '500',
+  },
+  imageMenuSuffix: {
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: '500',
   },
   sheetInput: {

@@ -1,4 +1,3 @@
-import * as ImagePicker from 'expo-image-picker';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -18,6 +17,7 @@ import {
   fetchNotes,
   recordNoteOpen,
   requestNoteAiEdit,
+  updateNote,
   uploadNoteMedia,
   type ApiError,
   type Note,
@@ -27,7 +27,8 @@ import { createSession } from '../../query/sessions';
 import { useTheme } from '../../theme';
 
 import { NoteDetailHeader } from '../notes/NoteDetailHeader';
-import { NoteViewActionBar } from '../notes/NoteViewActionBar';
+import { NoteViewActionBar, type NoteViewActionBarItem } from '../notes/NoteViewActionBar';
+import { NoteTagPickerSheet } from '../notes/NoteTagPickerSheet';
 import { discardLocalNoteState, flushPendingNoteOperations, readLocalNote, saveLocalMarkdownNoteEdit } from '../notes/notes-local';
 import { applyMarkdownPatchResult } from '../notes/markdown/markdown-patch';
 import {
@@ -36,21 +37,48 @@ import {
   extractVoiceTranscripts,
 } from '../notes/note-to-chat-payload';
 import { setAppClipboardStringAsync } from '../clipboard-intake/write-app-clipboard';
+import { AttachmentFileError, pickAttachmentFromSource, type AttachmentPickSource } from '../chat/attachment-file-io';
 import { writeNoteChatPrefill } from '../chat/note-chat-prefill-storage';
 import { NoteEditorBridge } from '../notes/editor/NoteEditorBridge';
+import { countNoteCharacters } from '../notes/note-title';
+import { getNotePrimaryTag, getTagColors } from '../notes/note-tag-utils';
 import type {
+  EditorCommand,
+  EditorCommandInput,
+  EditorAttachmentPickResult,
   EditorAiRequest,
   EditorAiResponse,
   EditorAiMetadata,
-  EditorImagePickResult,
+  EditorRuntimeState,
   EditorSelectionContext,
   EditorWikiLinkCandidate,
   NoteEditorLabels,
 } from '../notes/editor/editor-protocol';
+import { useNoteTagsStore } from '../../stores/note-tags-store';
 
 const SAVE_DEBOUNCE_MS = 600;
 
 type SaveState = 'saved' | 'dirty' | 'saving' | 'pending' | 'failed';
+
+const EMPTY_EDITOR_RUNTIME_STATE: EditorRuntimeState = {
+  ready: false,
+  focused: false,
+  selection: { from: 0, to: 0 },
+  canUndo: false,
+  canRedo: false,
+  bold: false,
+  italic: false,
+  underline: false,
+  todo: false,
+  bullet: false,
+  ordered: false,
+  quote: false,
+  code: false,
+  headingLevel: 0,
+  textAlign: 'left',
+  link: false,
+  image: false,
+};
 
 function noteAttachmentRef(noteId: string, attachmentId: string): string {
   return `xopc-attachment://notes/${encodeURIComponent(noteId)}/${encodeURIComponent(attachmentId)}`;
@@ -101,6 +129,10 @@ export function PageScreen() {
   const { colors } = useTheme();
   const m = useMessages();
   const pm = m.notesPage;
+  const noteTags = useNoteTagsStore((s) => s.tags);
+  const addNoteTag = useNoteTagsStore((s) => s.addTag);
+  const ensureNoteTags = useNoteTagsStore((s) => s.ensureTags);
+  const hydrateNoteTags = useNoteTagsStore((s) => s.hydrate);
 
   const [markdown, setMarkdown] = useState('');
   const [editorMarkdown, setEditorMarkdown] = useState('');
@@ -108,14 +140,20 @@ export function PageScreen() {
   const [title, setTitle] = useState('');
   const [tags, setTags] = useState<string[] | undefined>(undefined);
   const [noteStatus, setNoteStatus] = useState<Note['status']>('processed');
+  const [editing, setEditing] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [snackMsg, setSnackMsg] = useState('');
   const [moreVisible, setMoreVisible] = useState(false);
+  const [tagPickerVisible, setTagPickerVisible] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [editorFocused, setEditorFocused] = useState(false);
-  const [actionLoading, setActionLoading] = useState<'catalyst' | 'openChat' | null>(null);
+  const [actionLoading, setActionLoading] = useState<'pin' | 'catalyst' | 'openChat' | null>(null);
+  const [editorRuntimeState, setEditorRuntimeState] = useState<EditorRuntimeState>(EMPTY_EDITOR_RUNTIME_STATE);
+  const [editorCommand, setEditorCommand] = useState<EditorCommand | null>(null);
   const [, setSelection] = useState<EditorSelectionContext | null>(null);
 
+  const editorCommandIdRef = useRef(0);
+  const titleInputRef = useRef<TextInput | null>(null);
   const markdownRef = useRef(markdown);
   const titleRef = useRef(title);
   const tagsRef = useRef(tags);
@@ -135,6 +173,10 @@ export function PageScreen() {
   titleRef.current = title;
   tagsRef.current = tags;
   statusRef.current = noteStatus;
+
+  useEffect(() => {
+    hydrateNoteTags();
+  }, [hydrateNoteTags]);
 
   const resolveAttachmentRefsForDisplay = useCallback(async (
     currentNoteId: string,
@@ -226,6 +268,7 @@ export function PageScreen() {
     if (isNewNote || !dirtyRef.current) {
       seededNoteIdRef.current = note.id;
       dirtyRef.current = false;
+      if (isNewNote) setEditing(true);
       setMarkdown(nextMarkdown);
       setEditorMarkdown(nextMarkdown);
       setAttachmentSrcMap({});
@@ -236,12 +279,13 @@ export function PageScreen() {
       });
       setTitle(nextTitle ?? deriveTitle(note, pm.untitledNote));
       setTags(nextTags);
+      ensureNoteTags(nextTags ?? []);
       setNoteStatus(nextStatus);
       setSaveState(shouldUseLocal && localNote?.syncState === 'failed' ? 'failed' : shouldUseLocal && localNote?.syncState === 'pending' ? 'pending' : 'saved');
     }
 
     upsertNoteInListCaches(queryClient, noteToIndexEntry(note));
-  }, [note?.id, note?.localVersion, note?.markdown, note?.status, note?.tags, note?.text, note?.title, pm.untitledNote, queryClient, resolveAttachmentRefsForDisplay]);
+  }, [ensureNoteTags, note?.id, note?.localVersion, note?.markdown, note?.status, note?.tags, note?.text, note?.title, pm.untitledNote, queryClient, resolveAttachmentRefsForDisplay]);
 
   useEffect(() => {
     if (!id || openedNoteIdRef.current === id) return;
@@ -360,17 +404,43 @@ export function PageScreen() {
     scheduleSave();
   }, [scheduleSave]);
 
+  const beginEditing = useCallback((focusBody = false) => {
+    setEditing(true);
+    if (!focusBody) return;
+    setTimeout(() => {
+      editorCommandIdRef.current += 1;
+      setEditorCommand({ id: editorCommandIdRef.current, type: 'focus', position: 'end' });
+    }, 0);
+  }, []);
+
+  const beginTitleEditing = useCallback(() => {
+    setEditing(true);
+    setTimeout(() => {
+      titleInputRef.current?.focus();
+    }, 0);
+  }, []);
+
+  const sendEditorCommand = useCallback((next: EditorCommandInput) => {
+    editorCommandIdRef.current += 1;
+    setEditorCommand({ id: editorCommandIdRef.current, ...next } as EditorCommand);
+  }, []);
+
   const handleBack = useCallback(() => {
     Keyboard.dismiss();
     void flushSave();
+    if (editing) {
+      setEditing(false);
+      return;
+    }
     dismissOrHome(router);
-  }, [flushSave, router]);
+  }, [editing, flushSave, router]);
 
   useDismissOnHardwareBack(router, { onBack: handleBack });
 
   const handleDone = useCallback(() => {
     Keyboard.dismiss();
     void flushSave();
+    setEditing(false);
   }, [flushSave]);
 
   const buildChatPrefill = useCallback((instruction: string): string => {
@@ -446,21 +516,46 @@ export function PageScreen() {
     }
   }, [flushSave, id, pm.actionFailed, pm.saved, pm.updated, queryClient]);
 
-  const handleRequestImage = useCallback(async (): Promise<EditorImagePickResult> => {
-    if (!id) return null;
-    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9, base64: true });
-    if (picked.canceled || !picked.assets[0]?.uri) return null;
+  const handleCreateTag = useCallback((raw: string) => addNoteTag(raw), [addNoteTag]);
+
+  const handleSelectPrimaryTag = useCallback((tag: string | null) => {
+    const nextTags = tag ? [tag] : [];
+    setTags(nextTags);
+    tagsRef.current = nextTags;
+    dirtyRef.current = true;
+    setSaveState('dirty');
+    scheduleSave();
+    setTagPickerVisible(false);
+  }, [scheduleSave]);
+
+  const handleTogglePinned = useCallback(async () => {
+    if (!id || !note) return;
+    setActionLoading('pin');
     try {
       await flushSave();
-      const asset = picked.assets[0];
-      const name = asset.fileName ?? `image-${Date.now()}.jpg`;
-      const mimeType = asset.mimeType ?? 'image/jpeg';
+      const updated = await updateNote(id, { pinned: !note.pinned });
+      queryClient.setQueryData(queryKeys.note(id), updated);
+      upsertNoteInListCaches(queryClient, noteToIndexEntry(updated));
+      void invalidateNoteLists(queryClient);
+      setSnackMsg(updated.pinned ? pm.pin : pm.unpin);
+    } catch (error) {
+      setSnackMsg(error instanceof Error ? error.message : pm.actionFailed);
+    } finally {
+      setActionLoading(null);
+    }
+  }, [flushSave, id, note, pm.actionFailed, pm.pin, pm.unpin, queryClient]);
+
+  const handleRequestAttachment = useCallback(async (source: AttachmentPickSource): Promise<EditorAttachmentPickResult> => {
+    if (!id) return null;
+    try {
+      const picked = await pickAttachmentFromSource(source);
+      if (!picked) return null;
+      await flushSave();
       const attachment = await uploadNoteMedia(id, {
-        file: asset.file,
-        localUri: asset.uri,
-        name,
-        mimeType,
-        content: asset.base64 ?? undefined,
+        localUri: picked.localUri,
+        name: picked.name,
+        mimeType: picked.mimeType,
+        content: picked.content,
       });
       queryClient.setQueryData<Note>(queryKeys.note(id), (current) => {
         if (!current) return current;
@@ -470,24 +565,34 @@ export function PageScreen() {
         return { ...current, attachments };
       });
       const canonical = noteAttachmentRef(id, attachment.id);
-      const res = await apiFetch(attachmentApiPath(id, attachment.id));
-      const contentType = res.headers.get('Content-Type') || mimeType;
-      const dataUri = res.ok
-        ? `data:${contentType};base64,${arrayBufferToBase64(await res.arrayBuffer())}`
-        : canonical;
-      displayAttachmentSrcMapRef.current.set(dataUri, canonical);
-      setAttachmentSrcMap((current) => ({ ...current, [canonical]: dataUri }));
+      const isImage = attachment.type === 'image' || attachment.mimeType.startsWith('image/');
+      let dataUri: string | undefined;
+      if (isImage) {
+        const res = await apiFetch(attachmentApiPath(id, attachment.id));
+        const contentType = res.headers.get('Content-Type') || picked.mimeType;
+        const displaySrc = res.ok
+          ? `data:${contentType};base64,${arrayBufferToBase64(await res.arrayBuffer())}`
+          : canonical;
+        dataUri = displaySrc;
+        displayAttachmentSrcMapRef.current.set(dataUri, canonical);
+        setAttachmentSrcMap((current) => ({ ...current, [canonical]: displaySrc }));
+      }
       setSnackMsg(pm.editorAttachmentAdded);
       return {
         src: canonical,
         displaySrc: dataUri,
-        alt: name,
+        alt: attachment.fileName || picked.name,
+        kind: isImage ? 'image' : 'document',
       };
     } catch (error) {
+      if (error instanceof AttachmentFileError && error.code === 'permission_denied') {
+        setSnackMsg(source === 'camera' ? pm.editorCameraDenied : pm.editorAttachmentPermissionDenied);
+        return null;
+      }
       setSnackMsg(error instanceof Error ? error.message : pm.actionFailed);
       return null;
     }
-  }, [flushSave, id, pm.actionFailed, pm.editorAttachmentAdded, queryClient]);
+  }, [flushSave, id, pm.actionFailed, pm.editorAttachmentAdded, pm.editorAttachmentPermissionDenied, pm.editorCameraDenied, queryClient]);
 
   const handleRequestAi = useCallback(async (request: EditorAiRequest): Promise<EditorAiResponse | null> => {
     if (!id) return null;
@@ -578,11 +683,24 @@ export function PageScreen() {
     wikiLinkInsertTyped: pm.wikiLinkInsertTyped,
     wikiLinkNoResults: pm.wikiLinkNoResults,
     heading: pm.editorBlockHeading,
+    headingOne: pm.editorHeadingOne,
+    headingTwo: pm.editorHeadingTwo,
+    headingThree: pm.editorHeadingThree,
     link: pm.editorInsertLink,
     undo: pm.editorUndo,
     redo: pm.editorRedo,
+    style: pm.editorStyle,
+    normalText: pm.editorNormalText,
     bold: pm.editorFormatBold,
     italic: pm.editorFormatItalic,
+    underline: pm.editorFormatUnderline,
+    alignLeft: pm.editorAlignLeft,
+    alignCenter: pm.editorAlignCenter,
+    alignRight: pm.editorAlignRight,
+    alignment: pm.editorAlignment,
+    lists: pm.editorLists,
+    indent: pm.editorIndent,
+    outdent: pm.editorOutdent,
     todo: pm.editorBlockTodo,
     bullet: pm.editorBlockBulletList,
     ordered: pm.editorBlockNumberedList,
@@ -590,15 +708,68 @@ export function PageScreen() {
     code: pm.editorBlockCode,
     linkUrlPlaceholder: pm.editorLinkUrlPlaceholder,
     removeLink: pm.editorRemoveLink,
+    imageFromLibrary: pm.editorImageLibrary,
+    imageCamera: pm.editorImageCamera,
+    imageScan: pm.editorImageScan,
+    imageDocument: pm.editorImageDocument,
+    unavailable: pm.editorUnavailable,
   }), [pm]);
 
   const showLoading = noteQuery.isLoading && !note;
   const showError = noteQuery.isError && !note;
-  const showViewActions = Boolean(note && id && !keyboardVisible && !editorFocused);
+  const showViewActions = Boolean(note && id && !editing && !keyboardVisible && !editorFocused);
+  const primaryTag = useMemo(() => getNotePrimaryTag({ tags }), [tags]);
+  const primaryTagPalette = useMemo(() => getTagColors(primaryTag, noteTags, colors), [colors, noteTags, primaryTag]);
+  const wordCount = useMemo(() => countNoteCharacters(markdown), [markdown]);
 
-  const rightActions = useMemo(() => [
-    { icon: 'check', label: pm.done, onPress: handleDone },
-  ], [handleDone, pm.done]);
+  const rightActions = useMemo(() => {
+    if (!editing) return [];
+    return [
+      {
+        icon: 'undo',
+        label: pm.editorUndo,
+        disabled: !editorRuntimeState.canUndo,
+        onPress: () => sendEditorCommand({ type: 'undo' }),
+      },
+      {
+        icon: 'redo',
+        label: pm.editorRedo,
+        disabled: !editorRuntimeState.canRedo,
+        onPress: () => sendEditorCommand({ type: 'redo' }),
+      },
+      { icon: 'check', label: pm.done, onPress: handleDone },
+    ];
+  }, [editing, editorRuntimeState.canRedo, editorRuntimeState.canUndo, handleDone, pm.done, pm.editorRedo, pm.editorUndo, sendEditorCommand]);
+
+  const viewActionItems = useMemo<NoteViewActionBarItem[]>(() => [
+    {
+      key: 'share',
+      icon: 'share-variant-outline',
+      label: pm.viewShare,
+      onPress: () => void handleShare(),
+    },
+    {
+      key: 'pin',
+      icon: note?.pinned ? 'star' : 'star-outline',
+      label: note?.pinned ? pm.unpin : pm.pin,
+      active: Boolean(note?.pinned),
+      loading: actionLoading === 'pin',
+      onPress: () => void handleTogglePinned(),
+    },
+    {
+      key: 'chat',
+      icon: 'chat-processing-outline',
+      label: pm.catalystOpenChat,
+      loading: actionLoading === 'openChat',
+      onPress: () => void handleOpenNoteChat('openChat'),
+    },
+    {
+      key: 'more',
+      icon: 'dots-grid',
+      label: pm.viewMore,
+      onPress: () => setMoreVisible(true),
+    },
+  ], [actionLoading, handleOpenNoteChat, handleShare, handleTogglePinned, note?.pinned, pm.catalystOpenChat, pm.pin, pm.unpin, pm.viewMore, pm.viewShare]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
@@ -624,29 +795,76 @@ export function PageScreen() {
       ) : note && id ? (
         <View style={styles.editorWrap}>
           <View style={[styles.titleWrap, styles.titleWrapCompact, { borderBottomColor: colors.border.subtle }]}>
-            <TextInput
-              value={title}
-              onChangeText={updateTitle}
-              onFocus={() => setEditorFocused(false)}
-              placeholder={pm.untitledNote}
-              placeholderTextColor={colors.text.tertiary}
-              accessibilityLabel={pm.aiMetadataNoteTitle}
-              style={[styles.titleInput, { color: colors.text.primary }]}
-            />
+            <View style={styles.titleInputFrame}>
+              <TextInput
+                ref={titleInputRef}
+                value={title}
+                onChangeText={updateTitle}
+                onFocus={() => {
+                  setEditorFocused(false);
+                  beginEditing(false);
+                }}
+                editable={editing}
+                placeholder={pm.untitledNote}
+                placeholderTextColor={colors.text.tertiary}
+                accessibilityLabel={pm.aiMetadataNoteTitle}
+                style={[styles.titleInput, { color: colors.text.primary }]}
+              />
+              {!editing ? (
+                <Pressable
+                  style={StyleSheet.absoluteFill}
+                  onPress={beginTitleEditing}
+                  accessibilityRole="button"
+                  accessibilityLabel={pm.edit}
+                />
+              ) : null}
+            </View>
+            <View style={styles.metaRow}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.categoryChip,
+                  { backgroundColor: primaryTagPalette.bg, opacity: pressed ? 0.72 : 1 },
+                ]}
+                onPress={() => {
+                  beginEditing(false);
+                  setTagPickerVisible(true);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={pm.tagPickerTitle}
+              >
+                <Icon source="folder-outline" size={14} color={primaryTagPalette.fg} />
+                <Text numberOfLines={1} style={[styles.categoryChipText, { color: primaryTagPalette.fg }]}>
+                  {primaryTag ?? pm.defaultTag}
+                </Text>
+                <Icon source="chevron-down" size={14} color={primaryTagPalette.fg} />
+              </Pressable>
+            </View>
           </View>
           <NoteEditorBridge
             noteId={id}
             markdown={editorMarkdown}
             attachmentSrcMap={attachmentSrcMap}
+            editing={editing}
+            topCommand={editorCommand}
             labels={labels}
             onChangeMarkdown={updateMarkdown}
             onSelectionChange={setSelection}
-            onRequestImage={handleRequestImage}
+            onBeginEditing={() => beginEditing(true)}
+            onRequestAttachment={handleRequestAttachment}
             onRequestAi={handleRequestAi}
             onApplyAiMetadata={handleApplyAiMetadata}
             onRequestWikiLink={handleRequestWikiLink}
             onFocusChange={setEditorFocused}
+            onRuntimeStateChange={setEditorRuntimeState}
           />
+        </View>
+      ) : null}
+
+      {showViewActions ? (
+        <View style={styles.wordCountWrap} pointerEvents="none">
+          <Text style={[styles.wordCountText, { color: colors.text.tertiary }]}>
+            {t(pm.charCount, { count: wordCount })}
+          </Text>
         </View>
       ) : null}
 
@@ -668,18 +886,7 @@ export function PageScreen() {
 
       {showViewActions ? (
         <NoteViewActionBar
-          labels={{
-            catalyst: pm.catalystTitle,
-            openChat: pm.catalystOpenChat,
-            more: pm.viewMore,
-          }}
-          loading={{
-            catalyst: actionLoading === 'catalyst',
-            openChat: actionLoading === 'openChat',
-          }}
-          onCatalyst={() => void handleOpenNoteChat('catalyst')}
-          onOpenChat={() => void handleOpenNoteChat('openChat')}
-          onMore={() => setMoreVisible(true)}
+          items={viewActionItems}
         />
       ) : null}
 
@@ -710,6 +917,15 @@ export function PageScreen() {
           </Pressable>
         </View>
       </BottomSheetModal>
+
+      <NoteTagPickerSheet
+        visible={tagPickerVisible}
+        tags={noteTags}
+        selectedTag={primaryTag}
+        onSelect={handleSelectPrimaryTag}
+        onCreateTag={handleCreateTag}
+        onDismiss={() => setTagPickerVisible(false)}
+      />
 
       <Snackbar
         visible={Boolean(snackMsg)}
@@ -751,11 +967,51 @@ const styles = StyleSheet.create({
   titleWrapCompact: {
     paddingBottom: 4,
   },
+  titleInputFrame: {
+    position: 'relative',
+  },
   titleInput: {
     fontSize: 25,
     lineHeight: 31,
     fontWeight: '700',
     paddingVertical: 4,
+  },
+  titleText: {
+    fontSize: 25,
+    lineHeight: 31,
+    fontWeight: '700',
+    paddingVertical: 4,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 8,
+  },
+  categoryChip: {
+    minHeight: 30,
+    maxWidth: '76%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 15,
+    paddingHorizontal: 10,
+  },
+  categoryChipText: {
+    flexShrink: 1,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+  },
+  wordCountWrap: {
+    position: 'absolute',
+    right: 22,
+    bottom: 94,
+    zIndex: 12,
+  },
+  wordCountText: {
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '500',
   },
   retryBar: {
     position: 'absolute',

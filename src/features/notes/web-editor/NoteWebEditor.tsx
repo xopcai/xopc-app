@@ -1,7 +1,7 @@
 'use dom';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { mergeAttributes } from '@tiptap/core';
+import { Extension, Mark, mergeAttributes } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
@@ -15,8 +15,9 @@ import type {
   EditorAiRequest,
   EditorAiResponse,
   EditorAiMetadata,
+  EditorAttachmentPickSource,
+  EditorAttachmentPickResult,
   EditorCommand,
-  EditorImagePickResult,
   EditorRuntimeState,
   EditorSelectionContext,
   EditorWikiLinkCandidate,
@@ -30,6 +31,7 @@ export interface NoteWebEditorProps {
   noteId: string;
   initialMarkdown: string;
   attachmentSrcMap?: Record<string, string>;
+  editable?: boolean;
   theme: NoteEditorTheme;
   labels: NoteEditorLabels;
   command?: EditorCommand | null;
@@ -37,7 +39,8 @@ export interface NoteWebEditorProps {
   onChangeMarkdown: (markdown: string) => Promise<void>;
   onSelectionChange: (context: EditorSelectionContext) => Promise<void>;
   onStateChange?: (state: EditorRuntimeState) => Promise<void> | void;
-  onRequestImage: () => Promise<EditorImagePickResult>;
+  onRequestEdit?: () => Promise<void> | void;
+  onRequestAttachment: (source: EditorAttachmentPickSource) => Promise<EditorAttachmentPickResult>;
   onRequestAi: (request: EditorAiRequest) => Promise<EditorAiResponse | null>;
   onApplyAiMetadata: (metadata: EditorAiMetadata) => Promise<void>;
   onRequestWikiLink: (query: string) => Promise<EditorWikiLinkCandidate[]>;
@@ -50,6 +53,44 @@ type PendingAiPreview = EditorAiResponse & {
 };
 
 const EMPTY_IMAGE_SRC = 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%221%22%20height%3D%221%22/%3E';
+
+const UnderlineMark = Mark.create({
+  name: 'underline',
+  parseHTML() {
+    return [
+      { tag: 'u' },
+      {
+        style: 'text-decoration',
+        consuming: false,
+        getAttrs: (value) => (typeof value === 'string' && value.includes('underline') ? {} : false),
+      },
+    ];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['u', mergeAttributes(HTMLAttributes), 0];
+  },
+});
+
+const TextAlignAttribute = Extension.create({
+  name: 'xopcTextAlign',
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['heading', 'paragraph'],
+        attributes: {
+          textAlign: {
+            default: null,
+            parseHTML: (element) => element.style.textAlign || null,
+            renderHTML: (attributes) => {
+              const align = attributes.textAlign;
+              return align === 'center' || align === 'right' ? { style: `text-align: ${align}` } : {};
+            },
+          },
+        },
+      },
+    ];
+  },
+});
 
 function isXopcAttachmentSrc(src: string): boolean {
   return src.startsWith('xopc-attachment://');
@@ -86,6 +127,7 @@ function selectionContext(markdown: string, from: number, to: number): EditorSel
 
 function editorRuntimeState(editor: NonNullable<ReturnType<typeof useEditor>>): EditorRuntimeState {
   const { from, to } = editor.state.selection;
+  const textAlign = getActiveTextAlign(editor);
   return {
     ready: true,
     focused: editor.isFocused,
@@ -94,6 +136,7 @@ function editorRuntimeState(editor: NonNullable<ReturnType<typeof useEditor>>): 
     canRedo: editor.can().redo(),
     bold: editor.isActive('bold'),
     italic: editor.isActive('italic'),
+    underline: editor.isActive('underline'),
     todo: editor.isActive('taskList'),
     bullet: editor.isActive('bulletList'),
     ordered: editor.isActive('orderedList'),
@@ -106,9 +149,46 @@ function editorRuntimeState(editor: NonNullable<ReturnType<typeof useEditor>>): 
         : editor.isActive('heading', { level: 3 })
           ? 3
           : 0,
+    textAlign,
     link: editor.isActive('link'),
     image: editor.isActive('image'),
   };
+}
+
+function getActiveTextAlign(editor: NonNullable<ReturnType<typeof useEditor>>): EditorRuntimeState['textAlign'] {
+  const raw = editor.getAttributes('heading').textAlign || editor.getAttributes('paragraph').textAlign;
+  return raw === 'center' || raw === 'right' ? raw : 'left';
+}
+
+function setTextAlign(editor: NonNullable<ReturnType<typeof useEditor>>, align: EditorRuntimeState['textAlign']): void {
+  const chain = editor.chain().focus();
+  if (editor.isActive('heading')) {
+    chain.updateAttributes('heading', { textAlign: align === 'left' ? null : align }).run();
+    return;
+  }
+  chain.updateAttributes('paragraph', { textAlign: align === 'left' ? null : align }).run();
+}
+
+function adjustListIndent(editor: NonNullable<ReturnType<typeof useEditor>>, direction: 'in' | 'out'): void {
+  const chain = editor.chain().focus();
+  if (direction === 'in') {
+    if (editor.can().sinkListItem('listItem')) {
+      chain.sinkListItem('listItem').run();
+      return;
+    }
+    if (editor.can().sinkListItem('taskItem')) {
+      chain.sinkListItem('taskItem').run();
+    }
+    return;
+  }
+
+  if (editor.can().liftListItem('listItem')) {
+    chain.liftListItem('listItem').run();
+    return;
+  }
+  if (editor.can().liftListItem('taskItem')) {
+    chain.liftListItem('taskItem').run();
+  }
 }
 
 function sanitizeLinkText(value: string): string {
@@ -129,13 +209,15 @@ export default function NoteWebEditor({
   noteId,
   initialMarkdown,
   attachmentSrcMap,
+  editable = true,
   theme,
   labels,
   command,
   onChangeMarkdown,
   onSelectionChange,
   onStateChange,
-  onRequestImage,
+  onRequestEdit,
+  onRequestAttachment,
   onRequestAi,
   onApplyAiMetadata,
   onRequestWikiLink,
@@ -172,10 +254,13 @@ export default function NoteWebEditor({
   }), []);
 
   const editor = useEditor({
+    editable,
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
       }),
+      UnderlineMark,
+      TextAlignAttribute,
       TaskList,
       TaskItem.configure({ nested: true }),
       Link.configure({
@@ -237,6 +322,19 @@ export default function NoteWebEditor({
 
   useEffect(() => {
     if (!editor) return;
+    editor.setEditable(editable);
+    void onStateChange?.(editorRuntimeState(editor));
+  }, [editable, editor, onStateChange]);
+
+  useEffect(() => {
+    if (editable) return;
+    setAiOpen(false);
+    setPendingAi(null);
+    setWikiOpen(false);
+  }, [editable]);
+
+  useEffect(() => {
+    if (!editor) return;
     const root = editor.view.dom;
     root.querySelectorAll<HTMLImageElement>('img[data-xopc-src]').forEach((img) => {
       const canonicalSrc = img.getAttribute('data-xopc-src') ?? '';
@@ -268,7 +366,7 @@ export default function NoteWebEditor({
   }, []);
 
   const runAi = useCallback(async (instruction: string) => {
-    if (!editor || aiLoading) return;
+    if (!editor || !editable || aiLoading) return;
     const trimmed = instruction.trim();
     if (!trimmed) return;
     const markdown = markdownFromEditor(editor);
@@ -291,10 +389,10 @@ export default function NoteWebEditor({
     } finally {
       setAiLoading(false);
     }
-  }, [aiLoading, editor, onRequestAi]);
+  }, [aiLoading, editable, editor, onRequestAi]);
 
   const applyPendingAi = useCallback(() => {
-    if (!editor || !pendingAi) return;
+    if (!editor || !editable || !pendingAi) return;
     setEditorMarkdown(editor, pendingAi.markdown);
     latestMarkdownRef.current = pendingAi.markdown;
     lastSentMarkdownRef.current = pendingAi.markdown;
@@ -306,12 +404,25 @@ export default function NoteWebEditor({
     });
     setPendingAi(null);
     setAiOpen(false);
-  }, [editor, onApplyAiMetadata, onChangeMarkdown, pendingAi]);
+  }, [editable, editor, onApplyAiMetadata, onChangeMarkdown, pendingAi]);
 
-  const insertImage = useCallback(async () => {
-    if (!editor) return;
-    const picked = await onRequestImage();
+  const insertAttachment = useCallback(async (source: EditorAttachmentPickSource) => {
+    if (!editor || !editable) return;
+    const picked = await onRequestAttachment(source);
     if (!picked) return;
+    const label = sanitizeLinkText(picked.alt?.trim() || 'attachment');
+    if (picked.kind === 'document') {
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: 'text',
+          text: label,
+          marks: [{ type: 'link', attrs: { href: picked.src } }],
+        })
+        .run();
+      return;
+    }
     if (picked.displaySrc) {
       attachmentSrcMapRef.current = {
         ...attachmentSrcMapRef.current,
@@ -319,10 +430,10 @@ export default function NoteWebEditor({
       };
     }
     editor.chain().focus().setImage({ src: picked.src, alt: picked.alt }).run();
-  }, [editor, onRequestImage]);
+  }, [editable, editor, onRequestAttachment]);
 
   const applyLink = useCallback((title: string, url: string) => {
-    if (!editor) return;
+    if (!editor || !editable) return;
     const href = normalizedUrl(url);
     if (!href || !isLikelyUrl(href)) return;
     const { from, to } = editor.state.selection;
@@ -337,22 +448,31 @@ export default function NoteWebEditor({
         marks: [{ type: 'link', attrs: { href } }],
       })
       .run();
-  }, [editor]);
+  }, [editable, editor]);
 
   const removeLink = useCallback(() => {
-    if (!editor) return;
+    if (!editor || !editable) return;
     editor.chain().focus().extendMarkRange('link').unsetLink().run();
-  }, [editor]);
+  }, [editable, editor]);
 
   const focusEditorFromSurface = useCallback((event: React.PointerEvent<HTMLElement>) => {
     if (!editor) return;
     const target = event.target as HTMLElement | null;
-    if (target?.closest('button, input, textarea, a, [contenteditable="true"]')) return;
+    if (target?.closest('button, input, textarea, a')) return;
+    if (!editable) {
+      void onRequestEdit?.();
+      return;
+    }
+    const content = editor.view.dom;
+    if (target && !content.contains(target)) {
+      editor.commands.focus('end');
+      return;
+    }
     editor.commands.focus();
-  }, [editor]);
+  }, [editable, editor, onRequestEdit]);
 
   const openWikiLink = useCallback(() => {
-    if (!editor) return;
+    if (!editor || !editable) return;
     const { from, to } = editor.state.selection;
     const selected = editor.state.doc.textBetween(from, to, ' ').trim();
     setWikiQuery(selected);
@@ -362,17 +482,17 @@ export default function NoteWebEditor({
       const input = document.querySelector<HTMLInputElement>('.xopc-editor-wiki-bar input');
       input?.focus();
     }, 0);
-  }, [editor]);
+  }, [editable, editor]);
 
   const insertWikiLink = useCallback((title: string) => {
-    if (!editor) return;
+    if (!editor || !editable) return;
     const trimmed = title.trim();
     if (!trimmed) return;
     editor.chain().focus().insertContent(`[[${trimmed}]]`).run();
     setWikiOpen(false);
     setWikiQuery('');
     setWikiCandidates([]);
-  }, [editor]);
+  }, [editable, editor]);
 
   useEffect(() => {
     if (!wikiOpen) return;
@@ -394,7 +514,7 @@ export default function NoteWebEditor({
   }, [onRequestWikiLink, wikiOpen, wikiQuery]);
 
   useEffect(() => {
-    if (!editor || !command || handledCommandIdRef.current === command.id) return;
+    if (!editor || !editable || !command || handledCommandIdRef.current === command.id) return;
     handledCommandIdRef.current = command.id;
 
     switch (command.type) {
@@ -406,6 +526,9 @@ export default function NoteWebEditor({
         break;
       case 'toggleItalic':
         editor.chain().focus().toggleItalic().run();
+        break;
+      case 'toggleUnderline':
+        editor.chain().focus().toggleMark('underline').run();
         break;
       case 'toggleTaskList':
         editor.chain().focus().toggleTaskList().run();
@@ -422,8 +545,20 @@ export default function NoteWebEditor({
       case 'toggleCodeBlock':
         editor.chain().focus().toggleCodeBlock().run();
         break;
+      case 'setParagraph':
+        editor.chain().focus().setParagraph().run();
+        break;
       case 'toggleHeading':
         editor.chain().focus().toggleHeading({ level: command.level }).run();
+        break;
+      case 'setTextAlign':
+        setTextAlign(editor, command.align);
+        break;
+      case 'indent':
+        adjustListIndent(editor, 'in');
+        break;
+      case 'outdent':
+        adjustListIndent(editor, 'out');
         break;
       case 'openWikiLink':
         openWikiLink();
@@ -431,8 +566,8 @@ export default function NoteWebEditor({
       case 'toggleAi':
         setAiOpen((value) => !value);
         break;
-      case 'insertImage':
-        void insertImage();
+      case 'insertAttachment':
+        void insertAttachment(command.source);
         break;
       case 'setLink':
         applyLink(command.title, command.url);
@@ -449,7 +584,7 @@ export default function NoteWebEditor({
     }
 
     void onStateChange?.(editorRuntimeState(editor));
-  }, [applyLink, command, editor, insertImage, onStateChange, openWikiLink, removeLink]);
+  }, [applyLink, command, editable, editor, insertAttachment, onStateChange, openWikiLink, removeLink]);
 
   return (
     <main
@@ -468,7 +603,7 @@ export default function NoteWebEditor({
       } as React.CSSProperties}
     >
       <style>{EDITOR_CSS}</style>
-      <section className="xopc-editor-scroll" onPointerDown={focusEditorFromSurface}>
+      <section className="xopc-editor-scroll" data-editable={editable ? 'true' : 'false'} onPointerDown={focusEditorFromSurface}>
         <EditorContent editor={editor} />
       </section>
       {pendingAi ? (
@@ -601,12 +736,18 @@ button, input {
   padding: 14px 20px 120px;
 }
 .xopc-editor-content {
+  display: block;
   min-height: calc(100vh - 160px);
   outline: none;
   font-size: 17px;
   line-height: 1.58;
   letter-spacing: 0;
   color: var(--xopc-text);
+  padding-bottom: 80px;
+}
+.xopc-editor-scroll[data-editable="false"] .xopc-editor-content {
+  cursor: default;
+  caret-color: transparent;
 }
 .xopc-editor-content p {
   margin: 0.55em 0;
@@ -651,6 +792,23 @@ button, input {
 }
 .xopc-editor-link {
   color: var(--xopc-accent);
+}
+.xopc-editor-content a[href^="xopc-attachment://"] {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  min-height: 32px;
+  margin: 2px 0;
+  padding: 5px 9px;
+  border: 1px solid var(--xopc-border);
+  border-radius: 8px;
+  background: var(--xopc-input);
+  text-decoration: none;
+  vertical-align: middle;
+}
+.xopc-editor-content u {
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.16em;
 }
 .xopc-editor-image {
   display: block;
