@@ -41,7 +41,6 @@ export interface NoteWebEditorProps {
   onChangeMarkdown: (markdown: string) => Promise<void>;
   onSelectionChange: (context: EditorSelectionContext) => Promise<void>;
   onStateChange?: (state: EditorRuntimeState) => Promise<void> | void;
-  onRequestEdit?: () => Promise<void> | void;
   onRequestAttachment: (source: EditorAttachmentPickSource) => Promise<EditorAttachmentPickResult>;
   onRequestAi: (request: EditorAiRequest) => Promise<EditorAiResponse | null>;
   onApplyAiMetadata: (metadata: EditorAiMetadata) => Promise<void>;
@@ -349,7 +348,6 @@ export default function NoteWebEditor({
   onChangeMarkdown,
   onSelectionChange,
   onStateChange,
-  onRequestEdit,
   onRequestAttachment,
   onRequestAi,
   onApplyAiMetadata,
@@ -593,17 +591,13 @@ export default function NoteWebEditor({
     if (!editor) return;
     const target = event.target as HTMLElement | null;
     if (target?.closest('button, input, textarea, a')) return;
-    if (!editable) {
-      void onRequestEdit?.();
-      return;
-    }
     const content = editor.view.dom;
     if (target && !content.contains(target)) {
       editor.commands.focus('end');
       return;
     }
     editor.commands.focus();
-  }, [editable, editor, onRequestEdit]);
+  }, [editor]);
 
   const openWikiLink = useCallback(() => {
     if (!editor || !editable) return;

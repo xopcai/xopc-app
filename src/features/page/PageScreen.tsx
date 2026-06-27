@@ -140,7 +140,6 @@ export function PageScreen() {
   const [title, setTitle] = useState('');
   const [tags, setTags] = useState<string[] | undefined>(undefined);
   const [noteStatus, setNoteStatus] = useState<Note['status']>('processed');
-  const [editing, setEditing] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [snackMsg, setSnackMsg] = useState('');
   const [moreVisible, setMoreVisible] = useState(false);
@@ -153,7 +152,6 @@ export function PageScreen() {
   const [, setSelection] = useState<EditorSelectionContext | null>(null);
 
   const editorCommandIdRef = useRef(0);
-  const titleInputRef = useRef<TextInput | null>(null);
   const markdownRef = useRef(markdown);
   const titleRef = useRef(title);
   const tagsRef = useRef(tags);
@@ -268,7 +266,6 @@ export function PageScreen() {
     if (isNewNote || !dirtyRef.current) {
       seededNoteIdRef.current = note.id;
       dirtyRef.current = false;
-      if (isNewNote) setEditing(true);
       setMarkdown(nextMarkdown);
       setEditorMarkdown(nextMarkdown);
       setAttachmentSrcMap({});
@@ -404,22 +401,6 @@ export function PageScreen() {
     scheduleSave();
   }, [scheduleSave]);
 
-  const beginEditing = useCallback((focusBody = false) => {
-    setEditing(true);
-    if (!focusBody) return;
-    setTimeout(() => {
-      editorCommandIdRef.current += 1;
-      setEditorCommand({ id: editorCommandIdRef.current, type: 'focus', position: 'end' });
-    }, 0);
-  }, []);
-
-  const beginTitleEditing = useCallback(() => {
-    setEditing(true);
-    setTimeout(() => {
-      titleInputRef.current?.focus();
-    }, 0);
-  }, []);
-
   const sendEditorCommand = useCallback((next: EditorCommandInput) => {
     editorCommandIdRef.current += 1;
     setEditorCommand({ id: editorCommandIdRef.current, ...next } as EditorCommand);
@@ -428,20 +409,10 @@ export function PageScreen() {
   const handleBack = useCallback(() => {
     Keyboard.dismiss();
     void flushSave();
-    if (editing) {
-      setEditing(false);
-      return;
-    }
     dismissOrHome(router);
-  }, [editing, flushSave, router]);
+  }, [flushSave, router]);
 
   useDismissOnHardwareBack(router, { onBack: handleBack });
-
-  const handleDone = useCallback(() => {
-    Keyboard.dismiss();
-    void flushSave();
-    setEditing(false);
-  }, [flushSave]);
 
   const buildChatPrefill = useCallback((instruction: string): string => {
     const context = buildNoteChatContextText(
@@ -717,13 +688,12 @@ export function PageScreen() {
 
   const showLoading = noteQuery.isLoading && !note;
   const showError = noteQuery.isError && !note;
-  const showViewActions = Boolean(note && id && !editing && !keyboardVisible && !editorFocused);
+  const showViewActions = Boolean(note && id && !keyboardVisible && !editorFocused);
   const primaryTag = useMemo(() => getNotePrimaryTag({ tags }), [tags]);
   const primaryTagPalette = useMemo(() => getTagColors(primaryTag, noteTags, colors), [colors, noteTags, primaryTag]);
   const wordCount = useMemo(() => countNoteCharacters(markdown), [markdown]);
 
   const rightActions = useMemo(() => {
-    if (!editing) return [];
     return [
       {
         icon: 'undo',
@@ -737,9 +707,8 @@ export function PageScreen() {
         disabled: !editorRuntimeState.canRedo,
         onPress: () => sendEditorCommand({ type: 'redo' }),
       },
-      { icon: 'check', label: pm.done, onPress: handleDone },
     ];
-  }, [editing, editorRuntimeState.canRedo, editorRuntimeState.canUndo, handleDone, pm.done, pm.editorRedo, pm.editorUndo, sendEditorCommand]);
+  }, [editorRuntimeState.canRedo, editorRuntimeState.canUndo, pm.editorRedo, pm.editorUndo, sendEditorCommand]);
 
   const viewActionItems = useMemo<NoteViewActionBarItem[]>(() => [
     {
@@ -797,27 +766,17 @@ export function PageScreen() {
           <View style={[styles.titleWrap, styles.titleWrapCompact, { borderBottomColor: colors.border.subtle }]}>
             <View style={styles.titleInputFrame}>
               <TextInput
-                ref={titleInputRef}
                 value={title}
                 onChangeText={updateTitle}
                 onFocus={() => {
                   setEditorFocused(false);
-                  beginEditing(false);
                 }}
-                editable={editing}
+                editable
                 placeholder={pm.untitledNote}
                 placeholderTextColor={colors.text.tertiary}
                 accessibilityLabel={pm.aiMetadataNoteTitle}
                 style={[styles.titleInput, { color: colors.text.primary }]}
               />
-              {!editing ? (
-                <Pressable
-                  style={StyleSheet.absoluteFill}
-                  onPress={beginTitleEditing}
-                  accessibilityRole="button"
-                  accessibilityLabel={pm.edit}
-                />
-              ) : null}
             </View>
             <View style={styles.metaRow}>
               <Pressable
@@ -826,7 +785,6 @@ export function PageScreen() {
                   { backgroundColor: primaryTagPalette.bg, opacity: pressed ? 0.72 : 1 },
                 ]}
                 onPress={() => {
-                  beginEditing(false);
                   setTagPickerVisible(true);
                 }}
                 accessibilityRole="button"
@@ -844,12 +802,10 @@ export function PageScreen() {
             noteId={id}
             markdown={editorMarkdown}
             attachmentSrcMap={attachmentSrcMap}
-            editing={editing}
             topCommand={editorCommand}
             labels={labels}
             onChangeMarkdown={updateMarkdown}
             onSelectionChange={setSelection}
-            onBeginEditing={() => beginEditing(true)}
             onRequestAttachment={handleRequestAttachment}
             onRequestAi={handleRequestAi}
             onApplyAiMetadata={handleApplyAiMetadata}

@@ -78,12 +78,10 @@ export interface NoteEditorBridgeProps {
   noteId: string;
   markdown: string;
   attachmentSrcMap?: Record<string, string>;
-  editing: boolean;
   topCommand?: EditorCommand | null;
   labels: NoteEditorLabels;
   onChangeMarkdown: (markdown: string) => void;
   onSelectionChange: (context: EditorSelectionContext) => void;
-  onBeginEditing?: () => void;
   onRequestAttachment: (source: EditorAttachmentPickSource) => Promise<EditorAttachmentPickResult>;
   onRequestAi: (request: EditorAiRequest) => Promise<EditorAiResponse | null>;
   onApplyAiMetadata: (metadata: EditorAiMetadata) => Promise<void>;
@@ -96,12 +94,10 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
   noteId,
   markdown,
   attachmentSrcMap,
-  editing,
   topCommand,
   labels,
   onChangeMarkdown,
   onSelectionChange,
-  onBeginEditing,
   onRequestAttachment,
   onRequestAi,
   onApplyAiMetadata,
@@ -151,13 +147,6 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
   useEffect(() => {
     onFocusChange?.(editorState.focused);
   }, [editorState.focused, onFocusChange]);
-
-  useEffect(() => {
-    if (editing) return;
-    setStyleSheetVisible(false);
-    setImageSheetVisible(false);
-    setLinkSheet({ visible: false, title: '', url: '' });
-  }, [editing]);
 
   const dispatch = useCallback((next: EditorCommandInput) => {
     commandIdRef.current += 1;
@@ -255,7 +244,6 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
   ], [dispatch, editorState, labels, openLinkSheet]);
 
   const activeCommand = topCommand ?? command;
-  const toolbarVisible = editing;
 
   return (
     <View style={styles.container}>
@@ -263,39 +251,36 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
         noteId={noteId}
         initialMarkdown={markdown}
         attachmentSrcMap={attachmentSrcMap}
-        editable={editing}
+        editable
         theme={editorTheme}
         labels={labels}
         command={activeCommand}
         onChangeMarkdown={handleChange}
         onSelectionChange={handleSelectionChange}
         onStateChange={handleStateChange}
-        onRequestEdit={onBeginEditing}
         onRequestAttachment={onRequestAttachment}
         onRequestAi={onRequestAi}
         onApplyAiMetadata={onApplyAiMetadata}
         onRequestWikiLink={onRequestWikiLink}
         dom={domProps}
       />
-      {toolbarVisible ? (
-        <KeyboardStickyView
-          offset={{ closed: 0, opened: 0 }}
-          style={[
-            styles.sticky,
-            {
-              backgroundColor: colors.surface.base,
-              marginBottom: FLOATING_BOTTOM_OFFSET,
-              paddingBottom: floatingBottomPadding(insets.bottom),
-            },
-          ]}
-        >
-          <EditorToolbar
-            actions={actions}
-            isDark={isDark}
-            colors={colors}
-          />
-        </KeyboardStickyView>
-      ) : null}
+      <KeyboardStickyView
+        offset={{ closed: 0, opened: 0 }}
+        style={[
+          styles.sticky,
+          {
+            backgroundColor: colors.surface.base,
+            marginBottom: FLOATING_BOTTOM_OFFSET,
+            paddingBottom: floatingBottomPadding(insets.bottom),
+          },
+        ]}
+      >
+        <EditorToolbar
+          actions={actions}
+          isDark={isDark}
+          colors={colors}
+        />
+      </KeyboardStickyView>
       <BottomSheetModal
         visible={styleSheetVisible}
         onDismiss={() => setStyleSheetVisible(false)}
