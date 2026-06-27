@@ -1,7 +1,7 @@
 'use dom';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Extension, Mark, mergeAttributes } from '@tiptap/core';
+import { Extension, Mark, mergeAttributes, Node as TiptapNode, nodeInputRule } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
@@ -10,6 +10,8 @@ import Placeholder from '@tiptap/extension-placeholder';
 import TaskItem from '@tiptap/extension-task-item';
 import TaskList from '@tiptap/extension-task-list';
 import { Markdown } from 'tiptap-markdown';
+import type { MarkdownSerializerState } from 'prosemirror-markdown';
+import type { Node as ProseMirrorNode } from 'prosemirror-model';
 
 import type {
   EditorAiRequest,
@@ -89,6 +91,137 @@ const TextAlignAttribute = Extension.create({
         },
       },
     ];
+  },
+});
+
+type WikiLinkParts = {
+  target: string;
+  label: string;
+};
+
+const WIKI_LINK_PATTERN = /\[\[([^\]\n]+)\]\]/g;
+const WIKI_LINK_INPUT_PATTERN = /\[\[([^\]\n]+)\]\]$/;
+
+function wikiLinkParts(raw: string): WikiLinkParts {
+  const [targetPart, labelPart] = raw.split('|');
+  const target = targetPart.trim();
+  const label = (labelPart?.trim() || target.split('#')[0]?.trim() || target).trim();
+  return { target, label };
+}
+
+function escapeWikiLinkValue(value: string): string {
+  return value.replace(/\]/g, '').trim();
+}
+
+function replaceWikiLinkTextNodes(root: HTMLElement): void {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (!parent || parent.closest('pre, code, a, button, input, textarea, [data-xopc-note-link]')) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      WIKI_LINK_PATTERN.lastIndex = 0;
+      return WIKI_LINK_PATTERN.test(node.textContent ?? '') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+    },
+  });
+  const nodes: Text[] = [];
+  while (walker.nextNode()) {
+    nodes.push(walker.currentNode as Text);
+  }
+
+  for (const node of nodes) {
+    const text = node.textContent ?? '';
+    const fragment = document.createDocumentFragment();
+    let cursor = 0;
+    WIKI_LINK_PATTERN.lastIndex = 0;
+    for (const match of text.matchAll(WIKI_LINK_PATTERN)) {
+      const index = match.index ?? 0;
+      if (index > cursor) {
+        fragment.append(document.createTextNode(text.slice(cursor, index)));
+      }
+      const { target, label } = wikiLinkParts(match[1] ?? '');
+      if (target) {
+        const chip = document.createElement('span');
+        chip.setAttribute('data-xopc-note-link', target);
+        chip.setAttribute('data-label', label);
+        chip.textContent = label;
+        fragment.append(chip);
+      } else {
+        fragment.append(document.createTextNode(match[0]));
+      }
+      cursor = index + match[0].length;
+    }
+    if (cursor < text.length) {
+      fragment.append(document.createTextNode(text.slice(cursor)));
+    }
+    node.replaceWith(fragment);
+  }
+}
+
+const NoteLink = TiptapNode.create({
+  name: 'noteLink',
+  inline: true,
+  group: 'inline',
+  atom: true,
+  selectable: true,
+
+  addAttributes() {
+    return {
+      target: {
+        default: '',
+        parseHTML: (element) => element.getAttribute('data-xopc-note-link') ?? '',
+        renderHTML: (attributes) => ({ 'data-xopc-note-link': attributes.target }),
+      },
+      label: {
+        default: '',
+        parseHTML: (element) => element.getAttribute('data-label') ?? element.textContent ?? '',
+        renderHTML: (attributes) => ({ 'data-label': attributes.label }),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'span[data-xopc-note-link]' }];
+  },
+
+  renderHTML({ HTMLAttributes, node }) {
+    const label = String(node.attrs.label || node.attrs.target || '').trim();
+    return [
+      'span',
+      mergeAttributes(HTMLAttributes, {
+        class: 'xopc-note-link-chip',
+        contenteditable: 'false',
+      }),
+      label,
+    ];
+  },
+
+  addInputRules() {
+    return [
+      nodeInputRule({
+        find: WIKI_LINK_INPUT_PATTERN,
+        type: this.type,
+        getAttributes: (match) => wikiLinkParts(match[1] ?? ''),
+      }),
+    ];
+  },
+
+  addStorage() {
+    return {
+      markdown: {
+        serialize(state: MarkdownSerializerState, node: ProseMirrorNode) {
+          const target = escapeWikiLinkValue(String(node.attrs.target || ''));
+          const label = escapeWikiLinkValue(String(node.attrs.label || ''));
+          if (!target) return;
+          state.write(label && label !== target ? `[[${target}|${label}]]` : `[[${target}]]`);
+        },
+        parse: {
+          updateDOM(element: HTMLElement) {
+            replaceWikiLinkTextNodes(element);
+          },
+        },
+      },
+    };
   },
 });
 
@@ -261,6 +394,7 @@ export default function NoteWebEditor({
       }),
       UnderlineMark,
       TextAlignAttribute,
+      NoteLink,
       TaskList,
       TaskItem.configure({ nested: true }),
       Link.configure({
@@ -488,7 +622,10 @@ export default function NoteWebEditor({
     if (!editor || !editable) return;
     const trimmed = title.trim();
     if (!trimmed) return;
-    editor.chain().focus().insertContent(`[[${trimmed}]]`).run();
+    editor.chain().focus().insertContent({
+      type: 'noteLink',
+      attrs: { target: trimmed, label: trimmed },
+    }).run();
     setWikiOpen(false);
     setWikiQuery('');
     setWikiCandidates([]);
@@ -792,6 +929,28 @@ button, input {
 }
 .xopc-editor-link {
   color: var(--xopc-accent);
+}
+.xopc-note-link-chip {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  min-height: 30px;
+  margin: 0 2px;
+  padding: 3px 9px;
+  border: 1px solid var(--xopc-border);
+  border-radius: 8px;
+  background: var(--xopc-accent-soft);
+  color: var(--xopc-accent);
+  font-size: 0.92em;
+  font-weight: 600;
+  line-height: 1.25;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+.xopc-note-link-chip::before {
+  content: "↗";
+  margin-right: 5px;
+  font-size: 0.82em;
 }
 .xopc-editor-content a[href^="xopc-attachment://"] {
   display: inline-flex;

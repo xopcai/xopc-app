@@ -254,7 +254,7 @@ export function PageScreen() {
       || localNote?.syncState === 'failed'
       || (localNote?.localVersion ?? 0) > (note.localVersion ?? 0);
     const displayNote = shouldUseLocal && localNote ? localNote : note;
-    const nextMarkdown = displayNote.markdown ?? displayNote.text ?? '';
+    const nextMarkdown = displayNote.markdown ?? '';
     const nextTitle = displayNote.title;
     const nextTags = displayNote.tags;
     const nextStatus = displayNote.status;
@@ -285,7 +285,7 @@ export function PageScreen() {
     }
 
     upsertNoteInListCaches(queryClient, noteToIndexEntry(note));
-  }, [ensureNoteTags, note?.id, note?.localVersion, note?.markdown, note?.status, note?.tags, note?.text, note?.title, pm.untitledNote, queryClient, resolveAttachmentRefsForDisplay]);
+  }, [ensureNoteTags, note?.id, note?.localVersion, note?.markdown, note?.status, note?.tags, note?.title, pm.untitledNote, queryClient, resolveAttachmentRefsForDisplay]);
 
   useEffect(() => {
     if (!id || openedNoteIdRef.current === id) return;
