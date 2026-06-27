@@ -1,17 +1,13 @@
 'use dom';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Extension, Mark, mergeAttributes, Node as TiptapNode, nodeInputRule } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskItem from '@tiptap/extension-task-item';
 import TaskList from '@tiptap/extension-task-list';
 import { Markdown } from 'tiptap-markdown';
-import type { MarkdownSerializerState } from 'prosemirror-markdown';
-import type { Node as ProseMirrorNode } from 'prosemirror-model';
 
 import type {
   EditorAiRequest,
@@ -26,6 +22,14 @@ import type {
   NoteEditorLabels,
   NoteEditorTheme,
 } from '../editor/editor-protocol';
+import {
+  EMPTY_IMAGE_SRC,
+  NoteLink,
+  TextAlignAttribute,
+  UnderlineMark,
+  createXopcImage,
+  isXopcAttachmentSrc,
+} from './NoteEditorExtensions';
 
 type DomProps = import('expo/dom').DOMProps;
 
@@ -53,180 +57,7 @@ type PendingAiPreview = EditorAiResponse & {
   afterSnippet: string;
 };
 
-const EMPTY_IMAGE_SRC = 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%221%22%20height%3D%221%22/%3E';
-
-const UnderlineMark = Mark.create({
-  name: 'underline',
-  parseHTML() {
-    return [
-      { tag: 'u' },
-      {
-        style: 'text-decoration',
-        consuming: false,
-        getAttrs: (value) => (typeof value === 'string' && value.includes('underline') ? {} : false),
-      },
-    ];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ['u', mergeAttributes(HTMLAttributes), 0];
-  },
-});
-
-const TextAlignAttribute = Extension.create({
-  name: 'xopcTextAlign',
-  addGlobalAttributes() {
-    return [
-      {
-        types: ['heading', 'paragraph'],
-        attributes: {
-          textAlign: {
-            default: null,
-            parseHTML: (element) => element.style.textAlign || null,
-            renderHTML: (attributes) => {
-              const align = attributes.textAlign;
-              return align === 'center' || align === 'right' ? { style: `text-align: ${align}` } : {};
-            },
-          },
-        },
-      },
-    ];
-  },
-});
-
-type WikiLinkParts = {
-  target: string;
-  label: string;
-};
-
-const WIKI_LINK_PATTERN = /\[\[([^\]\n]+)\]\]/g;
-const WIKI_LINK_INPUT_PATTERN = /\[\[([^\]\n]+)\]\]$/;
-
-function wikiLinkParts(raw: string): WikiLinkParts {
-  const [targetPart, labelPart] = raw.split('|');
-  const target = targetPart.trim();
-  const label = (labelPart?.trim() || target.split('#')[0]?.trim() || target).trim();
-  return { target, label };
-}
-
-function escapeWikiLinkValue(value: string): string {
-  return value.replace(/\]/g, '').trim();
-}
-
-function replaceWikiLinkTextNodes(root: HTMLElement): void {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      const parent = node.parentElement;
-      if (!parent || parent.closest('pre, code, a, button, input, textarea, [data-xopc-note-link]')) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      WIKI_LINK_PATTERN.lastIndex = 0;
-      return WIKI_LINK_PATTERN.test(node.textContent ?? '') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
-    },
-  });
-  const nodes: Text[] = [];
-  while (walker.nextNode()) {
-    nodes.push(walker.currentNode as Text);
-  }
-
-  for (const node of nodes) {
-    const text = node.textContent ?? '';
-    const fragment = document.createDocumentFragment();
-    let cursor = 0;
-    WIKI_LINK_PATTERN.lastIndex = 0;
-    for (const match of text.matchAll(WIKI_LINK_PATTERN)) {
-      const index = match.index ?? 0;
-      if (index > cursor) {
-        fragment.append(document.createTextNode(text.slice(cursor, index)));
-      }
-      const { target, label } = wikiLinkParts(match[1] ?? '');
-      if (target) {
-        const chip = document.createElement('span');
-        chip.setAttribute('data-xopc-note-link', target);
-        chip.setAttribute('data-label', label);
-        chip.textContent = label;
-        fragment.append(chip);
-      } else {
-        fragment.append(document.createTextNode(match[0]));
-      }
-      cursor = index + match[0].length;
-    }
-    if (cursor < text.length) {
-      fragment.append(document.createTextNode(text.slice(cursor)));
-    }
-    node.replaceWith(fragment);
-  }
-}
-
-const NoteLink = TiptapNode.create({
-  name: 'noteLink',
-  inline: true,
-  group: 'inline',
-  atom: true,
-  selectable: true,
-
-  addAttributes() {
-    return {
-      target: {
-        default: '',
-        parseHTML: (element) => element.getAttribute('data-xopc-note-link') ?? '',
-        renderHTML: (attributes) => ({ 'data-xopc-note-link': attributes.target }),
-      },
-      label: {
-        default: '',
-        parseHTML: (element) => element.getAttribute('data-label') ?? element.textContent ?? '',
-        renderHTML: (attributes) => ({ 'data-label': attributes.label }),
-      },
-    };
-  },
-
-  parseHTML() {
-    return [{ tag: 'span[data-xopc-note-link]' }];
-  },
-
-  renderHTML({ HTMLAttributes, node }) {
-    const label = String(node.attrs.label || node.attrs.target || '').trim();
-    return [
-      'span',
-      mergeAttributes(HTMLAttributes, {
-        class: 'xopc-note-link-chip',
-        contenteditable: 'false',
-      }),
-      label,
-    ];
-  },
-
-  addInputRules() {
-    return [
-      nodeInputRule({
-        find: WIKI_LINK_INPUT_PATTERN,
-        type: this.type,
-        getAttributes: (match) => wikiLinkParts(match[1] ?? ''),
-      }),
-    ];
-  },
-
-  addStorage() {
-    return {
-      markdown: {
-        serialize(state: MarkdownSerializerState, node: ProseMirrorNode) {
-          const target = escapeWikiLinkValue(String(node.attrs.target || ''));
-          const label = escapeWikiLinkValue(String(node.attrs.label || ''));
-          if (!target) return;
-          state.write(label && label !== target ? `[[${target}|${label}]]` : `[[${target}]]`);
-        },
-        parse: {
-          updateDOM(element: HTMLElement) {
-            replaceWikiLinkTextNodes(element);
-          },
-        },
-      },
-    };
-  },
-});
-
-function isXopcAttachmentSrc(src: string): boolean {
-  return src.startsWith('xopc-attachment://');
-}
+const MARKDOWN_SYNC_DELAY_MS = 1000;
 
 function markdownFromEditor(editor: NonNullable<ReturnType<typeof useEditor>>): string {
   const storage = editor.storage as unknown as { markdown?: { getMarkdown?: () => string } };
@@ -240,20 +71,20 @@ function setEditorMarkdown(
   editor.commands.setContent(markdown, { emitUpdate: false });
 }
 
-function selectionContext(markdown: string, from: number, to: number): EditorSelectionContext {
-  const start = Math.max(0, Math.min(from, to, markdown.length));
-  const end = Math.max(0, Math.min(Math.max(from, to), markdown.length));
-  const beforeBreak = markdown.lastIndexOf('\n\n', start - 1);
-  const afterBreak = markdown.indexOf('\n\n', end);
-  const blockStart = beforeBreak < 0 ? 0 : beforeBreak + 2;
-  const blockEnd = afterBreak < 0 ? markdown.length : afterBreak;
+function selectionContextFromEditor(editor: NonNullable<ReturnType<typeof useEditor>>): EditorSelectionContext {
+  const { from, to } = editor.state.selection;
+  const start = Math.min(from, to);
+  const end = Math.max(from, to);
+  const selectedText = editor.state.doc.textBetween(start, end, '\n').trim();
+  const currentBlockText = editor.state.selection.$from.parent.textContent.trim();
+  const documentText = editor.state.doc.textBetween(0, editor.state.doc.content.size, '\n').trim();
   return {
     from: start,
     to: end,
-    markdown: markdown.slice(start, end),
-    currentBlockMarkdown: markdown.slice(blockStart, blockEnd),
-    beforeMarkdown: markdown.slice(Math.max(0, blockStart - 1200), blockStart),
-    afterMarkdown: markdown.slice(blockEnd, Math.min(markdown.length, blockEnd + 1200)),
+    markdown: selectedText,
+    currentBlockMarkdown: currentBlockText,
+    beforeMarkdown: documentText.slice(0, 1200),
+    afterMarkdown: documentText.slice(Math.max(0, documentText.length - 1200)),
   };
 }
 
@@ -359,6 +190,7 @@ export default function NoteWebEditor({
   const lastSentMarkdownRef = useRef(initialMarkdown);
   const noteIdRef = useRef(noteId);
   const contentSeededRef = useRef(false);
+  const editorDirtyRef = useRef(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiInstruction, setAiInstruction] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
@@ -371,18 +203,28 @@ export default function NoteWebEditor({
 
   attachmentSrcMapRef.current = attachmentSrcMap ?? {};
 
-  const XopcImage = useMemo(() => Image.extend({
-    renderHTML({ HTMLAttributes }) {
-      const canonicalSrc = typeof HTMLAttributes.src === 'string' ? HTMLAttributes.src : '';
-      const displaySrc = canonicalSrc ? attachmentSrcMapRef.current[canonicalSrc] : undefined;
-      const attrs = displaySrc
-        ? { ...HTMLAttributes, src: displaySrc, 'data-xopc-src': canonicalSrc }
-        : isXopcAttachmentSrc(canonicalSrc)
-          ? { ...HTMLAttributes, src: EMPTY_IMAGE_SRC, 'data-xopc-src': canonicalSrc }
-          : HTMLAttributes;
-      return ['img', mergeAttributes(this.options.HTMLAttributes, attrs)];
-    },
-  }), []);
+  const XopcImage = useMemo(() => createXopcImage((canonicalSrc) => attachmentSrcMapRef.current[canonicalSrc]), []);
+
+  const emitMarkdown = useCallback((nextEditor: NonNullable<ReturnType<typeof useEditor>>) => {
+    const markdown = markdownFromEditor(nextEditor);
+    latestMarkdownRef.current = markdown;
+    if (lastSentMarkdownRef.current === markdown) {
+      editorDirtyRef.current = false;
+      return;
+    }
+    lastSentMarkdownRef.current = markdown;
+    editorDirtyRef.current = false;
+    void onChangeMarkdown(markdown);
+  }, [onChangeMarkdown]);
+
+  const scheduleMarkdownEmit = useCallback((nextEditor: NonNullable<ReturnType<typeof useEditor>>) => {
+    editorDirtyRef.current = true;
+    if (changeTimerRef.current) clearTimeout(changeTimerRef.current);
+    changeTimerRef.current = setTimeout(() => {
+      changeTimerRef.current = null;
+      emitMarkdown(nextEditor);
+    }, MARKDOWN_SYNC_DELAY_MS);
+  }, [emitMarkdown]);
 
   const editor = useEditor({
     editable,
@@ -424,33 +266,28 @@ export default function NoteWebEditor({
       },
     },
     onUpdate: ({ editor: nextEditor }) => {
-      const markdown = markdownFromEditor(nextEditor);
-      latestMarkdownRef.current = markdown;
       void onStateChange?.(editorRuntimeState(nextEditor));
-      if (changeTimerRef.current) clearTimeout(changeTimerRef.current);
-      changeTimerRef.current = setTimeout(() => {
-        if (lastSentMarkdownRef.current === latestMarkdownRef.current) return;
-        lastSentMarkdownRef.current = latestMarkdownRef.current;
-        void onChangeMarkdown(latestMarkdownRef.current);
-      }, 240);
+      scheduleMarkdownEmit(nextEditor);
     },
     onSelectionUpdate: ({ editor: nextEditor }) => {
-      const markdown = markdownFromEditor(nextEditor);
-      latestMarkdownRef.current = markdown;
-      const { from, to } = nextEditor.state.selection;
       void onStateChange?.(editorRuntimeState(nextEditor));
-      void onSelectionChange(selectionContext(markdown, from, to));
+      void onSelectionChange(selectionContextFromEditor(nextEditor));
     },
     onFocus: ({ editor: nextEditor }) => {
       void onStateChange?.(editorRuntimeState(nextEditor));
     },
     onBlur: ({ editor: nextEditor }) => {
+      if (changeTimerRef.current) {
+        clearTimeout(changeTimerRef.current);
+        changeTimerRef.current = null;
+      }
+      if (editorDirtyRef.current) emitMarkdown(nextEditor);
       void onStateChange?.(editorRuntimeState(nextEditor));
     },
     onCreate: ({ editor: nextEditor }) => {
       void onStateChange?.(editorRuntimeState(nextEditor));
     },
-  }, [XopcImage, labels.placeholder, onSelectionChange, onStateChange]);
+  }, [XopcImage, emitMarkdown, labels.placeholder, onSelectionChange, onStateChange, scheduleMarkdownEmit]);
 
   useEffect(() => {
     if (!editor) return;
@@ -483,32 +320,44 @@ export default function NoteWebEditor({
     if (!editor) return;
     const noteChanged = noteIdRef.current !== noteId;
     const externalChanged = initialMarkdown !== latestMarkdownRef.current;
-    const localClean = latestMarkdownRef.current === lastSentMarkdownRef.current;
+    const localClean = !editorDirtyRef.current && latestMarkdownRef.current === lastSentMarkdownRef.current;
     if (contentSeededRef.current && !noteChanged && (!externalChanged || !localClean)) return;
     contentSeededRef.current = true;
     noteIdRef.current = noteId;
     latestMarkdownRef.current = initialMarkdown;
     lastSentMarkdownRef.current = initialMarkdown;
+    editorDirtyRef.current = false;
     setEditorMarkdown(editor, initialMarkdown);
     void onStateChange?.(editorRuntimeState(editor));
   }, [editor, initialMarkdown, noteId, onStateChange]);
 
   useEffect(() => () => {
-    if (changeTimerRef.current) clearTimeout(changeTimerRef.current);
-  }, []);
+    if (changeTimerRef.current) {
+      clearTimeout(changeTimerRef.current);
+      changeTimerRef.current = null;
+    }
+    if (editor && editorDirtyRef.current) emitMarkdown(editor);
+  }, [editor, emitMarkdown]);
 
   const runAi = useCallback(async (instruction: string) => {
     if (!editor || !editable || aiLoading) return;
     const trimmed = instruction.trim();
     if (!trimmed) return;
+    if (changeTimerRef.current) {
+      clearTimeout(changeTimerRef.current);
+      changeTimerRef.current = null;
+    }
     const markdown = markdownFromEditor(editor);
-    const { from, to } = editor.state.selection;
+    latestMarkdownRef.current = markdown;
+    lastSentMarkdownRef.current = markdown;
+    editorDirtyRef.current = false;
+    const selection = selectionContextFromEditor(editor);
     setAiLoading(true);
     try {
       const result = await onRequestAi({
         instruction: trimmed,
         markdown,
-        selection: selectionContext(markdown, from, to),
+        selection,
       });
       if (result) {
         setPendingAi({
@@ -528,6 +377,7 @@ export default function NoteWebEditor({
     setEditorMarkdown(editor, pendingAi.markdown);
     latestMarkdownRef.current = pendingAi.markdown;
     lastSentMarkdownRef.current = pendingAi.markdown;
+    editorDirtyRef.current = false;
     void onChangeMarkdown(pendingAi.markdown);
     void onApplyAiMetadata({
       title: pendingAi.title,
@@ -712,10 +562,17 @@ export default function NoteWebEditor({
       case 'redo':
         editor.chain().focus().redo().run();
         break;
+      case 'flushMarkdown':
+        if (changeTimerRef.current) {
+          clearTimeout(changeTimerRef.current);
+          changeTimerRef.current = null;
+        }
+        emitMarkdown(editor);
+        break;
     }
 
     void onStateChange?.(editorRuntimeState(editor));
-  }, [applyLink, command, editable, editor, insertAttachment, onStateChange, openWikiLink, removeLink]);
+  }, [applyLink, command, editable, editor, emitMarkdown, insertAttachment, onStateChange, openWikiLink, removeLink]);
 
   return (
     <main

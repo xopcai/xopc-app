@@ -123,7 +123,8 @@ export type EditorCommand =
   | { id: number; type: 'setLink'; title: string; url: string }
   | { id: number; type: 'removeLink' }
   | { id: number; type: 'undo' }
-  | { id: number; type: 'redo' };
+  | { id: number; type: 'redo' }
+  | { id: number; type: 'flushMarkdown' };
 
 export type EditorCommandInput = EditorCommand extends infer Command
   ? Command extends { id: number }

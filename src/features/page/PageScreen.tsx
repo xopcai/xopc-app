@@ -165,7 +165,6 @@ export function PageScreen() {
   const openedNoteIdRef = useRef<string | null>(null);
   const handledMissingNoteIdRef = useRef<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const displayAttachmentSrcMapRef = useRef(new Map<string, string>());
 
   markdownRef.current = markdown;
   titleRef.current = title;
@@ -181,7 +180,6 @@ export function PageScreen() {
     nextMarkdown: string,
     nextAttachments: NoteAttachment[] | undefined,
   ): Promise<Record<string, string>> => {
-    displayAttachmentSrcMapRef.current.clear();
     const refPattern = /xopc-attachment:\/\/notes\/([^/\s)]+)\/([^\s)]+)/g;
     const refs = new Map<string, { noteId: string; attachmentId: string }>();
     for (const match of nextMarkdown.matchAll(refPattern)) {
@@ -208,21 +206,12 @@ export function PageScreen() {
         if (!res.ok) continue;
         const contentType = res.headers.get('Content-Type') || 'application/octet-stream';
         const dataUri = `data:${contentType};base64,${arrayBufferToBase64(await res.arrayBuffer())}`;
-        displayAttachmentSrcMapRef.current.set(dataUri, canonical);
         nextMap[canonical] = dataUri;
       } catch {
         continue;
       }
     }
     return nextMap;
-  }, []);
-
-  const canonicalizeEditorMarkdown = useCallback((nextMarkdown: string): string => {
-    let canonical = nextMarkdown;
-    for (const [displaySrc, canonicalSrc] of displayAttachmentSrcMapRef.current.entries()) {
-      canonical = canonical.split(displaySrc).join(canonicalSrc);
-    }
-    return canonical;
   }, []);
 
   const noteQuery = useQuery({
@@ -386,13 +375,12 @@ export function PageScreen() {
   );
 
   const updateMarkdown = useCallback((next: string) => {
-    const canonical = canonicalizeEditorMarkdown(next);
     dirtyRef.current = true;
     setSaveState('dirty');
     setEditorMarkdown(next);
-    setMarkdown(canonical);
+    setMarkdown(next);
     scheduleSave();
-  }, [canonicalizeEditorMarkdown, scheduleSave]);
+  }, [scheduleSave]);
 
   const updateTitle = useCallback((next: string) => {
     dirtyRef.current = true;
@@ -406,11 +394,22 @@ export function PageScreen() {
     setEditorCommand({ id: editorCommandIdRef.current, ...next } as EditorCommand);
   }, []);
 
+  const flushEditorToDraft = useCallback(async () => {
+    editorCommandIdRef.current += 1;
+    setEditorCommand({ id: editorCommandIdRef.current, type: 'flushMarkdown' });
+    await new Promise((resolve) => {
+      setTimeout(resolve, 80);
+    });
+  }, []);
+
   const handleBack = useCallback(() => {
     Keyboard.dismiss();
-    void flushSave();
-    dismissOrHome(router);
-  }, [flushSave, router]);
+    void (async () => {
+      await flushEditorToDraft();
+      await flushSave();
+      dismissOrHome(router);
+    })();
+  }, [flushEditorToDraft, flushSave, router]);
 
   useDismissOnHardwareBack(router, { onBack: handleBack });
 
@@ -436,6 +435,7 @@ export function PageScreen() {
     setActionLoading(kind);
     try {
       Keyboard.dismiss();
+      await flushEditorToDraft();
       await flushSave();
       const instruction = kind === 'catalyst' ? pm.catalystChatPrompt : pm.editorSendToChatPrefix;
       const prefill = buildChatPrefill(instruction);
@@ -452,11 +452,12 @@ export function PageScreen() {
     } finally {
       setActionLoading(null);
     }
-  }, [buildChatPrefill, flushSave, id, note, pm.actionFailed, pm.catalystChatPrompt, pm.editorSendToChatPrefix, router]);
+  }, [buildChatPrefill, flushEditorToDraft, flushSave, id, note, pm.actionFailed, pm.catalystChatPrompt, pm.editorSendToChatPrefix, router]);
 
   const handleShare = useCallback(async () => {
     setMoreVisible(false);
     try {
+      await flushEditorToDraft();
       await flushSave();
       const message = markdownRef.current.trim() || titleRef.current.trim() || pm.untitledNote;
       if (Platform.OS === 'web') {
@@ -472,11 +473,12 @@ export function PageScreen() {
       await setAppClipboardStringAsync(markdownRef.current.trim() || titleRef.current.trim() || pm.untitledNote);
       setSnackMsg(pm.shareNotesCopied);
     }
-  }, [flushSave, pm.shareNotesCopied, pm.shareNotesTitle, pm.untitledNote]);
+  }, [flushEditorToDraft, flushSave, pm.shareNotesCopied, pm.shareNotesTitle, pm.untitledNote]);
 
   const handleSyncNow = useCallback(async () => {
     setMoreVisible(false);
     try {
+      await flushEditorToDraft();
       await flushSave();
       const flushed = await flushPendingNoteOperations();
       if (id) await queryClient.invalidateQueries({ queryKey: queryKeys.note(id) });
@@ -485,7 +487,7 @@ export function PageScreen() {
     } catch (error) {
       setSnackMsg(error instanceof Error ? error.message : pm.actionFailed);
     }
-  }, [flushSave, id, pm.actionFailed, pm.saved, pm.updated, queryClient]);
+  }, [flushEditorToDraft, flushSave, id, pm.actionFailed, pm.saved, pm.updated, queryClient]);
 
   const handleCreateTag = useCallback((raw: string) => addNoteTag(raw), [addNoteTag]);
 
@@ -545,7 +547,6 @@ export function PageScreen() {
           ? `data:${contentType};base64,${arrayBufferToBase64(await res.arrayBuffer())}`
           : canonical;
         dataUri = displaySrc;
-        displayAttachmentSrcMapRef.current.set(dataUri, canonical);
         setAttachmentSrcMap((current) => ({ ...current, [canonical]: displaySrc }));
       }
       setSnackMsg(pm.editorAttachmentAdded);
@@ -575,7 +576,7 @@ export function PageScreen() {
         markdown: request.markdown,
         context: {
           type: request.selection.from === request.selection.to ? 'block' : 'selection',
-          range: { start: request.selection.from, end: request.selection.to },
+          range: { start: 0, end: contextMarkdown.length },
           markdown: contextMarkdown,
           blockType: 'prosemirror',
         },

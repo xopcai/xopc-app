@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
@@ -29,7 +29,6 @@ type ToolbarAction = {
   icon: string;
   active?: boolean;
   disabled?: boolean;
-  featured?: boolean;
   onPress: () => void;
 };
 
@@ -111,7 +110,6 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
   const [command, setCommand] = useState<EditorCommand | null>(null);
   const [editorState, setEditorState] = useState<EditorRuntimeState>(EMPTY_EDITOR_STATE);
   const [linkSheet, setLinkSheet] = useState({ visible: false, title: '', url: '' });
-  const [styleSheetVisible, setStyleSheetVisible] = useState(false);
   const [imageSheetVisible, setImageSheetVisible] = useState(false);
   const editorTheme = useMemo<NoteEditorTheme>(() => ({
     background: colors.surface.base,
@@ -174,10 +172,6 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
     setLinkSheet({ visible: false, title: '', url: '' });
   }, [dispatch]);
 
-  const dispatchStyleCommand = useCallback((next: EditorCommandInput) => {
-    dispatch(next);
-  }, [dispatch]);
-
   const handleInsertImageFromLibrary = useCallback(() => {
     setImageSheetVisible(false);
     dispatch({ type: 'insertAttachment', source: 'photos' });
@@ -194,19 +188,6 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
   }, [dispatch]);
 
   const actions = useMemo<ToolbarAction[]>(() => [
-    {
-      key: 'style',
-      label: labels.style,
-      icon: 'format-size',
-      active: editorState.bold
-        || editorState.italic
-        || editorState.underline
-        || editorState.headingLevel > 0
-        || editorState.textAlign !== 'left'
-        || editorState.quote
-        || editorState.code,
-      onPress: () => setStyleSheetVisible(true),
-    },
     {
       key: 'todo',
       label: labels.todo,
@@ -229,16 +210,9 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
       onPress: openLinkSheet,
     },
     {
-      key: 'wiki',
-      label: labels.wikiLink,
-      icon: 'file-link-outline',
-      onPress: () => dispatch({ type: 'openWikiLink' }),
-    },
-    {
       key: 'ai',
       label: labels.aiPlaceholder,
       icon: 'creation-outline',
-      featured: true,
       onPress: () => dispatch({ type: 'toggleAi' }),
     },
   ], [dispatch, editorState, labels, openLinkSheet]);
@@ -281,125 +255,6 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
           colors={colors}
         />
       </KeyboardStickyView>
-      <BottomSheetModal
-        visible={styleSheetVisible}
-        onDismiss={() => setStyleSheetVisible(false)}
-        title={labels.style}
-        maxHeight="62%"
-        scroll
-      >
-        <View style={styles.sheetBody}>
-          <SheetSection label={labels.heading}>
-            <StyleActionButton
-              label={labels.normalText}
-              icon="format-paragraph"
-              active={editorState.headingLevel === 0}
-              onPress={() => dispatchStyleCommand({ type: 'setParagraph' })}
-            />
-            <StyleActionButton
-              label={labels.headingOne}
-              icon="format-header-1"
-              active={editorState.headingLevel === 1}
-              onPress={() => dispatchStyleCommand({ type: 'toggleHeading', level: 1 })}
-            />
-            <StyleActionButton
-              label={labels.headingTwo}
-              icon="format-header-2"
-              active={editorState.headingLevel === 2}
-              onPress={() => dispatchStyleCommand({ type: 'toggleHeading', level: 2 })}
-            />
-            <StyleActionButton
-              label={labels.headingThree}
-              icon="format-header-3"
-              active={editorState.headingLevel === 3}
-              onPress={() => dispatchStyleCommand({ type: 'toggleHeading', level: 3 })}
-            />
-          </SheetSection>
-
-          <SheetSection label={labels.style}>
-            <StyleActionButton
-              label={labels.bold}
-              icon="format-bold"
-              active={editorState.bold}
-              onPress={() => dispatchStyleCommand({ type: 'toggleBold' })}
-            />
-            <StyleActionButton
-              label={labels.italic}
-              icon="format-italic"
-              active={editorState.italic}
-              onPress={() => dispatchStyleCommand({ type: 'toggleItalic' })}
-            />
-            <StyleActionButton
-              label={labels.underline}
-              icon="format-underline"
-              active={editorState.underline}
-              onPress={() => dispatchStyleCommand({ type: 'toggleUnderline' })}
-            />
-          </SheetSection>
-
-          <SheetSection label={labels.alignment}>
-            <StyleActionButton
-              label={labels.alignLeft}
-              icon="format-align-left"
-              active={editorState.textAlign === 'left'}
-              onPress={() => dispatchStyleCommand({ type: 'setTextAlign', align: 'left' })}
-            />
-            <StyleActionButton
-              label={labels.alignCenter}
-              icon="format-align-center"
-              active={editorState.textAlign === 'center'}
-              onPress={() => dispatchStyleCommand({ type: 'setTextAlign', align: 'center' })}
-            />
-            <StyleActionButton
-              label={labels.alignRight}
-              icon="format-align-right"
-              active={editorState.textAlign === 'right'}
-              onPress={() => dispatchStyleCommand({ type: 'setTextAlign', align: 'right' })}
-            />
-          </SheetSection>
-
-          <SheetSection label={labels.lists}>
-            <StyleActionButton
-              label={labels.bullet}
-              icon="format-list-bulleted"
-              active={editorState.bullet}
-              onPress={() => dispatchStyleCommand({ type: 'toggleBulletList' })}
-            />
-            <StyleActionButton
-              label={labels.ordered}
-              icon="format-list-numbered"
-              active={editorState.ordered}
-              onPress={() => dispatchStyleCommand({ type: 'toggleOrderedList' })}
-            />
-            <StyleActionButton
-              label={labels.indent}
-              icon="format-indent-increase"
-              onPress={() => dispatchStyleCommand({ type: 'indent' })}
-            />
-            <StyleActionButton
-              label={labels.outdent}
-              icon="format-indent-decrease"
-              onPress={() => dispatchStyleCommand({ type: 'outdent' })}
-            />
-          </SheetSection>
-
-          <SheetSection label={labels.quote}>
-            <StyleActionButton
-              label={labels.quote}
-              icon="format-quote-close"
-              active={editorState.quote}
-              onPress={() => dispatchStyleCommand({ type: 'toggleBlockquote' })}
-            />
-            <StyleActionButton
-              label={labels.code}
-              icon="code-tags"
-              active={editorState.code}
-              onPress={() => dispatchStyleCommand({ type: 'toggleCodeBlock' })}
-            />
-          </SheetSection>
-        </View>
-      </BottomSheetModal>
-
       <BottomSheetModal
         visible={imageSheetVisible}
         onDismiss={() => setImageSheetVisible(false)}
@@ -493,7 +348,7 @@ function EditorToolbar({
         contentContainerStyle={styles.toolbarContent}
       >
         {actions.map((action) => {
-          const selected = action.featured || action.active;
+          const selected = action.active;
           return (
             <Pressable
               key={action.key}
@@ -521,57 +376,6 @@ function EditorToolbar({
         })}
       </ScrollView>
     </View>
-  );
-}
-
-function SheetSection({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  const { colors } = useTheme();
-  return (
-    <View style={styles.sheetSection}>
-      <Text style={[styles.sheetLabel, { color: colors.text.secondary }]}>{label}</Text>
-      <View style={styles.sheetGrid}>{children}</View>
-    </View>
-  );
-}
-
-function StyleActionButton({
-  label,
-  icon,
-  active,
-  onPress,
-}: {
-  label: string;
-  icon: string;
-  active?: boolean;
-  onPress: () => void;
-}) {
-  const { colors } = useTheme();
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.styleButton,
-        {
-          backgroundColor: active ? colors.accent.selectionBg : colors.surface.input,
-          borderColor: active ? colors.accent.primary : colors.border.default,
-          opacity: pressed ? 0.68 : 1,
-        },
-      ]}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected: Boolean(active) }}
-    >
-      <Icon source={icon} size={19} color={active ? colors.accent.primary : colors.text.secondary} />
-      <Text numberOfLines={1} style={[styles.styleButtonText, { color: active ? colors.accent.primary : colors.text.secondary }]}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -693,36 +497,10 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     gap: spacing.sm,
   },
-  sheetSection: {
-    gap: spacing.xs,
-  },
-  sheetGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
   sheetLabel: {
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '500',
-  },
-  styleButton: {
-    minHeight: 48,
-    minWidth: 74,
-    maxWidth: 104,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing.sm,
-  },
-  styleButtonText: {
-    flexShrink: 1,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '600',
   },
   imageMenu: {
     paddingHorizontal: spacing.xl,
