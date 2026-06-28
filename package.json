@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "description": "Expo mobile client for the xopc gateway",
-  "main": "expo-router/entry",
+  "main": "index.js",
   "scripts": {
     "start": "expo start",
     "start:offline": "expo start --offline",

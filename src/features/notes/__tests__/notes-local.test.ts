@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Note } from '../../../query/notes';
-import { readCachedLinkIndex, writeCachedLinkIndex } from '../../../query/note-link-index';
 
 const memory = new Map<string, string>();
 const updateNoteMock = vi.hoisted(() => vi.fn());
+const uploadNoteMediaMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../storage/mmkv', () => ({
   storage: {
@@ -20,6 +20,7 @@ vi.mock('../../../storage/mmkv', () => ({
 
 vi.mock('../../../query/notes', () => ({
   updateNote: updateNoteMock,
+  uploadNoteMedia: uploadNoteMediaMock,
 }));
 
 import {
@@ -30,6 +31,11 @@ import {
   scheduleNoteEditSync,
   writeLocalNote,
 } from '../notes-local';
+import {
+  createLocalNoteAttachment,
+  parseLocalNoteAttachmentRef,
+  readLocalNoteAttachment,
+} from '../notes-local-attachments';
 
 function createNote(overrides: Partial<Note> = {}): Note {
   return {
@@ -50,15 +56,10 @@ describe('notes-local', () => {
   beforeEach(() => {
     memory.clear();
     updateNoteMock.mockReset();
+    uploadNoteMediaMock.mockReset();
   });
 
   it('stores markdown edits as pending snapshots and operations', () => {
-    writeCachedLinkIndex({
-      getString: (key) => memory.get(key),
-      set: (key, value) => memory.set(key, String(value)),
-      delete: (key) => memory.delete(key),
-    }, { outgoingByNoteId: {}, backlinksByTitle: {} }, 1);
-
     const snapshot = saveLocalMarkdownNoteEdit(createNote(), { markdown: '本地编辑' });
 
     expect(snapshot).toMatchObject({
@@ -68,11 +69,6 @@ describe('notes-local', () => {
       localVersion: 1,
       syncState: 'pending',
     });
-    expect(readCachedLinkIndex({
-      getString: (key) => memory.get(key),
-      set: (key, value) => memory.set(key, String(value)),
-      delete: (key) => memory.delete(key),
-    })).toBeNull();
   });
 
   it('skips write when markdown is unchanged and synced', () => {
@@ -99,12 +95,6 @@ describe('notes-local', () => {
   });
 
   it('stores markdown edits as pending snapshots and operations', async () => {
-    const testStorage = {
-      getString: (key: string) => memory.get(key),
-      set: (key: string, value: string | number | boolean) => memory.set(key, String(value)),
-      delete: (key: string) => memory.delete(key),
-    };
-    writeCachedLinkIndex(testStorage, { outgoingByNoteId: {}, backlinksByTitle: {} }, 1);
     updateNoteMock.mockResolvedValue(createNote({ markdown: '# Local', title: 'Local' }));
 
     const snapshot = saveLocalMarkdownNoteEdit(createNote({ markdown: '# Old', title: 'Old' }), {
@@ -124,7 +114,6 @@ describe('notes-local', () => {
       localVersion: 1,
       syncState: 'pending',
     });
-    expect(readCachedLinkIndex(testStorage)).toBeNull();
 
     await flushPendingNoteOperations();
     expect(updateNoteMock).toHaveBeenCalledWith('note-1', {
@@ -164,6 +153,86 @@ describe('notes-local', () => {
     }));
   });
 
+  it('uploads local attachments before syncing markdown and replaces local refs', async () => {
+    uploadNoteMediaMock.mockResolvedValue({
+      id: 'remote-img',
+      type: 'image',
+      mimeType: 'image/png',
+      fileName: 'local.png',
+      size: 3,
+      relativePath: 'inbound/n/local.png',
+    });
+    updateNoteMock.mockResolvedValue(createNote({
+      markdown: '![local](xopc-attachment://notes/note-1/remote-img)',
+      attachments: [{
+        id: 'remote-img',
+        type: 'image',
+        mimeType: 'image/png',
+        fileName: 'local.png',
+        size: 3,
+        relativePath: 'inbound/n/local.png',
+      }],
+    }));
+
+    const local = createLocalNoteAttachment('note-1', {
+      type: 'image',
+      name: 'local.png',
+      mimeType: 'image/png',
+      size: 3,
+      content: 'YWJj',
+    });
+    const parsed = parseLocalNoteAttachmentRef(local.src);
+    expect(parsed).not.toBeNull();
+
+    saveLocalMarkdownNoteEdit(createNote(), { markdown: `![local](${local.src})` });
+    await flushPendingNoteOperations();
+
+    expect(uploadNoteMediaMock).toHaveBeenCalledWith('note-1', {
+      localUri: undefined,
+      name: 'local.png',
+      mimeType: 'image/png',
+      content: 'YWJj',
+    });
+    expect(updateNoteMock).toHaveBeenCalledWith('note-1', {
+      markdown: '![local](xopc-attachment://notes/note-1/remote-img)',
+    });
+    expect(readLocalNoteAttachment('note-1', parsed!.attachmentId)).toBeNull();
+  });
+
+  it('keeps local attachments when the gateway update does not commit uploaded media', async () => {
+    uploadNoteMediaMock.mockResolvedValue({
+      id: 'remote-img',
+      type: 'image',
+      mimeType: 'image/png',
+      fileName: 'local.png',
+      size: 3,
+      relativePath: 'inbound/n/local.png',
+    });
+    updateNoteMock.mockResolvedValue(createNote({
+      markdown: '![local](xopc-attachment://notes/note-1/remote-img)',
+      attachments: [],
+    }));
+
+    const local = createLocalNoteAttachment('note-1', {
+      type: 'image',
+      name: 'local.png',
+      mimeType: 'image/png',
+      size: 3,
+      content: 'YWJj',
+    });
+    const parsed = parseLocalNoteAttachmentRef(local.src);
+    expect(parsed).not.toBeNull();
+
+    saveLocalMarkdownNoteEdit(createNote(), { markdown: `![local](${local.src})` });
+    await flushPendingNoteOperations();
+
+    expect(updateNoteMock).toHaveBeenCalledWith('note-1', {
+      markdown: '![local](xopc-attachment://notes/note-1/remote-img)',
+    });
+    expect(readLocalNoteAttachment('note-1', parsed!.attachmentId)).not.toBeNull();
+    expect(getPendingEditCount()).toBe(1);
+  });
+
   it('drops stale pending edits when the server reports the note is missing', async () => {
     const missing = new Error('Note not found') as Error & { status: number; code: string };
     missing.status = 404;
@@ -183,6 +252,15 @@ describe('notes-local', () => {
   });
 
   it('discards local note state and queued edits together', () => {
+    const local = createLocalNoteAttachment('note-1', {
+      type: 'image',
+      name: 'draft.png',
+      mimeType: 'image/png',
+      size: 3,
+      content: 'YWJj',
+    });
+    const parsed = parseLocalNoteAttachmentRef(local.src);
+    expect(parsed).not.toBeNull();
     saveLocalMarkdownNoteEdit(createNote(), { markdown: '# Draft' });
 
     expect(getPendingEditCount()).toBe(1);
@@ -191,5 +269,6 @@ describe('notes-local', () => {
 
     expect(getPendingEditCount()).toBe(0);
     expect(memory.get('notes:local:item:note-1')).toBeUndefined();
+    expect(readLocalNoteAttachment('note-1', parsed!.attachmentId)).toBeNull();
   });
 });

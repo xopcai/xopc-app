@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
@@ -7,18 +7,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheetModal } from '../../../components/BottomSheetModal';
 import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding, radii, spacing, useTheme } from '../../../theme';
-import NoteWebEditor from '../web-editor/NoteWebEditor';
+import NoteEditorDomAdapter, { type NoteEditorAdapterCommand } from '../web-editor/NoteEditorDomAdapter';
+import { DEFAULT_EDITOR_RUNTIME_STATE } from './editor-contract';
 import type {
-  EditorAiRequest,
-  EditorAiResponse,
-  EditorAiMetadata,
   EditorAttachmentPickSource,
   EditorCommand,
   EditorCommandInput,
   EditorAttachmentPickResult,
+  NoteEditorHandle,
   EditorRuntimeState,
   EditorSelectionContext,
-  EditorWikiLinkCandidate,
   NoteEditorLabels,
   NoteEditorTheme,
 } from './editor-protocol';
@@ -32,24 +30,10 @@ type ToolbarAction = {
   onPress: () => void;
 };
 
-const EMPTY_EDITOR_STATE: EditorRuntimeState = {
-  ready: false,
-  focused: false,
-  selection: { from: 0, to: 0 },
-  canUndo: false,
-  canRedo: false,
-  bold: false,
-  italic: false,
-  underline: false,
-  todo: false,
-  bullet: false,
-  ordered: false,
-  quote: false,
-  code: false,
-  headingLevel: 0,
-  textAlign: 'left',
-  link: false,
-  image: false,
+export type NoteEditorBridgeHandle = NoteEditorHandle;
+
+type PendingFlush = {
+  resolve: (markdown: string) => void;
 };
 
 function sameEditorState(a: EditorRuntimeState, b: EditorRuntimeState): boolean {
@@ -59,16 +43,7 @@ function sameEditorState(a: EditorRuntimeState, b: EditorRuntimeState): boolean 
     && a.selection.to === b.selection.to
     && a.canUndo === b.canUndo
     && a.canRedo === b.canRedo
-    && a.bold === b.bold
-    && a.italic === b.italic
-    && a.underline === b.underline
     && a.todo === b.todo
-    && a.bullet === b.bullet
-    && a.ordered === b.ordered
-    && a.quote === b.quote
-    && a.code === b.code
-    && a.headingLevel === b.headingLevel
-    && a.textAlign === b.textAlign
     && a.link === b.link
     && a.image === b.image;
 }
@@ -82,14 +57,11 @@ export interface NoteEditorBridgeProps {
   onChangeMarkdown: (markdown: string) => void;
   onSelectionChange: (context: EditorSelectionContext) => void;
   onRequestAttachment: (source: EditorAttachmentPickSource) => Promise<EditorAttachmentPickResult>;
-  onRequestAi: (request: EditorAiRequest) => Promise<EditorAiResponse | null>;
-  onApplyAiMetadata: (metadata: EditorAiMetadata) => Promise<void>;
-  onRequestWikiLink: (query: string) => Promise<EditorWikiLinkCandidate[]>;
   onFocusChange?: (focused: boolean) => void;
   onRuntimeStateChange?: (state: EditorRuntimeState) => void;
 }
 
-export const NoteEditorBridge = memo(function NoteEditorBridge({
+export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEditorBridgeProps>(function NoteEditorBridge({
   noteId,
   markdown,
   attachmentSrcMap,
@@ -98,17 +70,20 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
   onChangeMarkdown,
   onSelectionChange,
   onRequestAttachment,
-  onRequestAi,
-  onApplyAiMetadata,
-  onRequestWikiLink,
   onFocusChange,
   onRuntimeStateChange,
-}: NoteEditorBridgeProps) {
+}, ref) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const commandIdRef = useRef(0);
-  const [command, setCommand] = useState<EditorCommand | null>(null);
-  const [editorState, setEditorState] = useState<EditorRuntimeState>(EMPTY_EDITOR_STATE);
+  const flushRequestIdRef = useRef(0);
+  const pendingFlushesRef = useRef(new Map<number, PendingFlush>());
+  const latestMarkdownRef = useRef(markdown);
+  const [command, setCommand] = useState<NoteEditorAdapterCommand | null>(null);
+  const [editorState, setEditorState] = useState<EditorRuntimeState>(DEFAULT_EDITOR_RUNTIME_STATE);
+  const editorStateRef = useRef<EditorRuntimeState>(DEFAULT_EDITOR_RUNTIME_STATE);
+  const pendingEditorStateRef = useRef<EditorRuntimeState | null>(null);
+  const editorStateFrameRef = useRef<number | null>(null);
   const [linkSheet, setLinkSheet] = useState({ visible: false, title: '', url: '' });
   const [imageSheetVisible, setImageSheetVisible] = useState(false);
   const editorTheme = useMemo<NoteEditorTheme>(() => ({
@@ -124,12 +99,13 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
     danger: colors.semantic.error,
   }), [colors]);
   const domProps = useMemo(() => ({
-    scrollEnabled: false,
+    scrollEnabled: true,
     containerStyle: styles.domContainer,
     style: styles.dom,
   }), []);
 
   const handleChange = useCallback(async (nextMarkdown: string) => {
+    latestMarkdownRef.current = nextMarkdown;
     onChangeMarkdown(nextMarkdown);
   }, [onChangeMarkdown]);
 
@@ -138,9 +114,39 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
   }, [onSelectionChange]);
 
   const handleStateChange = useCallback((state: EditorRuntimeState) => {
-    setEditorState((current) => (sameEditorState(current, state) ? current : state));
-    onRuntimeStateChange?.(state);
+    if (
+      sameEditorState(editorStateRef.current, state)
+      || (pendingEditorStateRef.current && sameEditorState(pendingEditorStateRef.current, state))
+    ) {
+      return;
+    }
+    pendingEditorStateRef.current = state;
+    if (editorStateFrameRef.current != null) return;
+    editorStateFrameRef.current = requestAnimationFrame(() => {
+      editorStateFrameRef.current = null;
+      const next = pendingEditorStateRef.current;
+      pendingEditorStateRef.current = null;
+      if (!next || sameEditorState(editorStateRef.current, next)) return;
+      editorStateRef.current = next;
+      setEditorState(next);
+      onRuntimeStateChange?.(next);
+    });
   }, [onRuntimeStateChange]);
+
+  useEffect(() => () => {
+    if (editorStateFrameRef.current != null) {
+      cancelAnimationFrame(editorStateFrameRef.current);
+      editorStateFrameRef.current = null;
+    }
+    pendingFlushesRef.current.forEach(({ resolve }) => {
+      resolve(latestMarkdownRef.current);
+    });
+    pendingFlushesRef.current.clear();
+  }, []);
+
+  useEffect(() => {
+    latestMarkdownRef.current = markdown;
+  }, [markdown]);
 
   useEffect(() => {
     onFocusChange?.(editorState.focused);
@@ -150,6 +156,40 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
     commandIdRef.current += 1;
     setCommand({ id: commandIdRef.current, ...next } as EditorCommand);
   }, []);
+
+  useEffect(() => {
+    if (!topCommand) return;
+    commandIdRef.current += 1;
+    setCommand({ ...topCommand, id: commandIdRef.current } as EditorCommand);
+  }, [topCommand]);
+
+  const handleFlushMarkdown = useCallback(async (requestId: number, nextMarkdown: string) => {
+    latestMarkdownRef.current = nextMarkdown;
+    const pending = pendingFlushesRef.current.get(requestId);
+    if (!pending) return;
+    pendingFlushesRef.current.delete(requestId);
+    pending.resolve(nextMarkdown);
+  }, []);
+
+  const flushMarkdown = useCallback(() => new Promise<string>((resolve) => {
+    if (!editorStateRef.current.ready) {
+      resolve(latestMarkdownRef.current);
+      return;
+    }
+    flushRequestIdRef.current += 1;
+    commandIdRef.current += 1;
+    const requestId = flushRequestIdRef.current;
+    pendingFlushesRef.current.set(requestId, { resolve });
+    setCommand({
+      id: commandIdRef.current,
+      type: 'requestMarkdownFlush',
+      requestId,
+    });
+  }), []);
+
+  useImperativeHandle(ref, () => ({
+    flushMarkdown,
+  }), [flushMarkdown]);
 
   const openLinkSheet = useCallback(() => {
     setLinkSheet({ visible: true, title: '', url: '' });
@@ -209,33 +249,23 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
       active: editorState.link,
       onPress: openLinkSheet,
     },
-    {
-      key: 'ai',
-      label: labels.aiPlaceholder,
-      icon: 'creation-outline',
-      onPress: () => dispatch({ type: 'toggleAi' }),
-    },
-  ], [dispatch, editorState, labels, openLinkSheet]);
-
-  const activeCommand = topCommand ?? command;
+  ], [dispatch, editorState.image, editorState.link, editorState.todo, labels.image, labels.link, labels.todo, openLinkSheet]);
 
   return (
     <View style={styles.container}>
-      <NoteWebEditor
+      <NoteEditorDomAdapter
         noteId={noteId}
         initialMarkdown={markdown}
         attachmentSrcMap={attachmentSrcMap}
         editable
         theme={editorTheme}
         labels={labels}
-        command={activeCommand}
+        command={command}
         onChangeMarkdown={handleChange}
         onSelectionChange={handleSelectionChange}
         onStateChange={handleStateChange}
         onRequestAttachment={onRequestAttachment}
-        onRequestAi={onRequestAi}
-        onApplyAiMetadata={onApplyAiMetadata}
-        onRequestWikiLink={onRequestWikiLink}
+        onFlushMarkdown={handleFlushMarkdown}
         dom={domProps}
       />
       <KeyboardStickyView
@@ -268,7 +298,6 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
             onPress={handleInsertImageFromLibrary}
           />
           <ImageSourceRow label={labels.imageCamera} icon="camera-outline" onPress={handleInsertImageFromCamera} />
-          <ImageSourceRow label={labels.imageScan} icon="line-scan" disabled suffix={labels.unavailable} />
           <ImageSourceRow label={labels.imageDocument} icon="file-document-outline" onPress={handleInsertDocument} />
         </View>
       </BottomSheetModal>
@@ -309,17 +338,17 @@ export const NoteEditorBridge = memo(function NoteEditorBridge({
               style={[styles.sheetButton, styles.sheetButtonPrimary, { backgroundColor: colors.accent.primary }]}
               onPress={applyLink}
               accessibilityRole="button"
-              accessibilityLabel={labels.aiApply}
+              accessibilityLabel={labels.apply}
               disabled={!linkSheet.url.trim()}
             >
-              <Text style={[styles.sheetButtonText, { color: colors.accent.onPrimary }]}>{labels.aiApply}</Text>
+              <Text style={[styles.sheetButtonText, { color: colors.accent.onPrimary }]}>{labels.apply}</Text>
             </Pressable>
           </View>
         </View>
       </BottomSheetModal>
     </View>
   );
-});
+}));
 
 function EditorToolbar({
   actions,
@@ -485,8 +514,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   toolButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',

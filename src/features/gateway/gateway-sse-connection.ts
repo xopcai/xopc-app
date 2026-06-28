@@ -129,20 +129,38 @@ export class GatewaySseConnection {
     return url.toString();
   }
 
+  private tryBuildUrl(): string | null {
+    try {
+      return this.buildUrl();
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Gateway base URL is not configured') {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   private openTransport(): void {
     if (this._closed) return;
     this.transport?.close();
+    const url = this.tryBuildUrl();
+    if (!url) {
+      this._shouldReconnect = false;
+      this.transport = undefined;
+      this.callbacks.onDisconnected();
+      return;
+    }
 
     const { token } = useGatewayStore.getState();
     if (!token && typeof EventSource !== 'undefined' && typeof document !== 'undefined') {
-      this.transport = this.openEventSource();
+      this.transport = this.openEventSource(url);
       return;
     }
-    this.transport = this.openXhr();
+    this.transport = this.openXhr(url);
   }
 
-  private openEventSource(): Transport {
-    const es = new EventSource(this.buildUrl());
+  private openEventSource(url: string): Transport {
+    const es = new EventSource(url);
     let sawConnected = false;
 
     const onNamed = (evt: MessageEvent) => {
@@ -176,7 +194,7 @@ export class GatewaySseConnection {
     };
   }
 
-  private openXhr(): Transport {
+  private openXhr(url: string): Transport {
     const xhr = new XMLHttpRequest();
     const { token } = useGatewayStore.getState();
     let sawConnected = false;
@@ -200,7 +218,7 @@ export class GatewaySseConnection {
       }
     };
 
-    xhr.open('GET', this.buildUrl(), true);
+    xhr.open('GET', url, true);
     xhr.setRequestHeader('Accept', 'text/event-stream');
     if (token) {
       xhr.setRequestHeader('Authorization', `Bearer ${token}`);

@@ -10,13 +10,6 @@ export interface MarkdownOutlineItem {
   range: MarkdownRange;
 }
 
-export interface MarkdownWikiLink {
-  target: string;
-  label: string;
-  heading?: string;
-  range: MarkdownRange;
-}
-
 type SourceLine = {
   text: string;
   start: number;
@@ -63,29 +56,6 @@ export function getMarkdownOutline(markdown: string): MarkdownOutlineItem[] {
   return outline;
 }
 
-export function extractMarkdownWikiLinks(markdown: string): MarkdownWikiLink[] {
-  const source = normalizeMarkdown(markdown);
-  const ignoredRanges = ignoredMarkdownRanges(source);
-  const links: MarkdownWikiLink[] = [];
-  const pattern = /\[\[([^\]\n]+)\]\]/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = pattern.exec(source)) != null) {
-    const start = match.index;
-    const end = start + match[0].length;
-    if (isInsideRange(start, ignoredRanges)) continue;
-
-    const parsed = parseWikiLinkTarget(match[1]);
-    if (!parsed.target) continue;
-    links.push({
-      ...parsed,
-      range: { start, end },
-    });
-  }
-
-  return links;
-}
-
 function normalizeMarkdown(markdown: string): string {
   return markdown.replace(/\r\n/g, '\n');
 }
@@ -106,42 +76,12 @@ function splitSourceLines(source: string): SourceLine[] {
   return lines;
 }
 
-function ignoredMarkdownRanges(source: string): MarkdownRange[] {
-  return [
-    findMarkdownFrontmatterRange(source),
-    ...fencedCodeRanges(source),
-  ].filter((range): range is MarkdownRange => range != null);
-}
-
-function fencedCodeRanges(source: string): MarkdownRange[] {
-  const ranges: MarkdownRange[] = [];
-  const lines = splitSourceLines(source);
-  let start: number | null = null;
-
-  for (const line of lines) {
-    if (!/^```/.test(line.text.trim())) continue;
-    if (start == null) {
-      start = line.start;
-    } else {
-      ranges.push({ start, end: line.end });
-      start = null;
-    }
-  }
-
-  if (start != null) ranges.push({ start, end: source.length });
-  return ranges;
-}
-
 function findMarkdownFrontmatterRange(source: string): MarkdownRange | null {
   if (!source.startsWith('---\n')) return null;
   const end = source.indexOf('\n---', 4);
   if (end < 0) return null;
   const closeEnd = source.indexOf('\n', end + 4);
   return { start: 0, end: closeEnd < 0 ? source.length : closeEnd + 1 };
-}
-
-function isInsideRange(offset: number, ranges: MarkdownRange[]): boolean {
-  return ranges.some((range) => offset >= range.start && offset < range.end);
 }
 
 function parseHeadingAnchor(raw: string): { id?: string; title: string } {
@@ -160,21 +100,4 @@ function slugifyHeading(value: string): string {
     .replace(/[`*_~[\]()]/g, '')
     .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
     .replace(/^-+|-+$/g, '');
-}
-
-function parseWikiLinkTarget(raw: string): Pick<MarkdownWikiLink, 'target' | 'label' | 'heading'> {
-  const [targetPart = '', labelPart] = raw.split('|');
-  const [titlePart = '', headingPart] = targetPart.split('#');
-  const target = sanitizeWikiLinkPart(titlePart);
-  const heading = sanitizeWikiLinkPart(headingPart ?? '');
-  const label = sanitizeWikiLinkPart(labelPart ?? (heading || target || raw));
-  return {
-    target,
-    label: label || target,
-    ...(heading ? { heading } : {}),
-  };
-}
-
-function sanitizeWikiLinkPart(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
 }

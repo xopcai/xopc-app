@@ -1,6 +1,7 @@
 import type { ComposerAttachment } from '../chat/composer.types';
 import { capAttachments, MAX_WEBCHAT_ATTACHMENT_FILE_BYTES } from '../chat/chat-limits';
 import type { NoteAttachment } from '../../query/notes';
+import { composerAttachmentFromLocalNoteAttachmentRef } from './notes-local-attachments';
 
 export type NoteEditorAttachment = ComposerAttachment;
 
@@ -17,6 +18,11 @@ export type NoteChatMediaCollection = {
 type MarkdownImageRef = {
   src: string;
   alt?: string;
+};
+
+type MarkdownLinkRef = {
+  src: string;
+  label?: string;
 };
 
 function attachmentDedupeKey(att: ComposerAttachment): string {
@@ -79,6 +85,19 @@ function collectMarkdownImages(markdown: string): MarkdownImageRef[] {
   return refs;
 }
 
+function collectMarkdownAttachmentLinks(markdown: string): MarkdownLinkRef[] {
+  const refs: MarkdownLinkRef[] = [];
+  const linkPattern = /\[([^\]]*)\]\(([^)]+)\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = linkPattern.exec(markdown)) != null) {
+    if (match.index > 0 && markdown[match.index - 1] === '!') continue;
+    const src = match[2]?.trim() ?? '';
+    if (!src.startsWith('xopc-local-attachment://') && !src.startsWith('xopc-attachment://')) continue;
+    refs.push({ label: match[1]?.trim() || undefined, src });
+  }
+  return refs;
+}
+
 function attachmentIdFromMarkdownSrc(src: string): string | null {
   const xopc = /^xopc-attachment:\/\/notes\/[^/\s)]+\/([^\s)]+)$/.exec(src);
   if (xopc) return decodeURIComponent(xopc[1]);
@@ -118,6 +137,9 @@ async function attachmentFromImageRef(
   image: MarkdownImageRef,
   syncedAttachments?: NoteAttachment[],
 ): Promise<ComposerAttachment | null> {
+  const localAttachment = composerAttachmentFromLocalNoteAttachmentRef(image.src, image.alt);
+  if (localAttachment) return localAttachment;
+
   const attachmentId = attachmentIdFromMarkdownSrc(image.src);
   if (!attachmentId) return null;
   const synced = syncedAttachments?.find((item) => item.id === attachmentId);
@@ -133,6 +155,20 @@ async function attachmentFromImageRef(
     size: 0,
     content: '',
   };
+}
+
+function attachmentFromLinkRef(
+  noteId: string,
+  link: MarkdownLinkRef,
+  syncedAttachments?: NoteAttachment[],
+): ComposerAttachment | null {
+  const localAttachment = composerAttachmentFromLocalNoteAttachmentRef(link.src, link.label);
+  if (localAttachment) return localAttachment;
+
+  const attachmentId = attachmentIdFromMarkdownSrc(link.src);
+  if (!attachmentId) return null;
+  const synced = syncedAttachments?.find((item) => item.id === attachmentId);
+  return synced ? noteAttachmentToComposer(noteId, synced) : null;
 }
 
 function mimeTypeFromName(name: string): string {
@@ -175,6 +211,10 @@ export async function collectNoteAttachmentsForChat(
 
   for (const image of collectMarkdownImages(markdown)) {
     pushUnique(raw, seen, await attachmentFromImageRef(noteId, image, syncedAttachments));
+  }
+
+  for (const link of collectMarkdownAttachmentLinks(markdown)) {
+    pushUnique(raw, seen, attachmentFromLinkRef(noteId, link, syncedAttachments));
   }
 
   for (const att of editorAttachments) {

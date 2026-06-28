@@ -261,24 +261,45 @@ export async function uploadNoteMedia(
   noteId: string,
   input: { file?: Blob; localUri?: string; name: string; mimeType: string; content?: string; durationMillis?: number },
 ): Promise<NoteAttachment> {
+  async function formWithContent(): Promise<FormData> {
+    if (!input.content) throw new Error('Upload media: missing file content');
+    const form = new FormData();
+    const blob = await fetch(`data:${input.mimeType};base64,${input.content.replace(/\s/g, '')}`).then((res) => res.blob());
+    form.append('file', blob, input.name);
+    if (input.durationMillis != null) form.append('duration', String(Math.round(input.durationMillis / 1000)));
+    return form;
+  }
+
+  function formWithNativeUri(): FormData {
+    if (!input.localUri) throw new Error('Upload media: missing local URI');
+    const form = new FormData();
+    form.append('file', { uri: input.localUri, name: input.name, type: input.mimeType } as unknown as Blob);
+    if (input.durationMillis != null) form.append('duration', String(Math.round(input.durationMillis / 1000)));
+    return form;
+  }
+
+  async function uploadForm(form: FormData): Promise<NoteAttachment> {
+    const res = await apiFetch(`/api/notes/${encodeURIComponent(noteId)}/media`, { method: 'POST', body: form, timeoutMs: 30_000 });
+    if (!res.ok) throw await readError(res);
+    const result = await res.json() as { attachment?: NoteAttachment };
+    if (!result.attachment?.id) throw new Error('Upload media: invalid response');
+    return result.attachment;
+  }
+
   const form = new FormData();
   if (input.file) {
     form.append('file', input.file, input.name);
+    if (input.durationMillis != null) form.append('duration', String(Math.round(input.durationMillis / 1000)));
+    return uploadForm(form);
   } else if (input.localUri && Platform.OS !== 'web') {
-    form.append('file', { uri: input.localUri, name: input.name, type: input.mimeType } as unknown as Blob);
-  } else if (input.content) {
-    const blob = await fetch(`data:${input.mimeType};base64,${input.content.replace(/\s/g, '')}`).then((res) => res.blob());
-    form.append('file', blob, input.name);
-  } else {
-    throw new Error('Upload media: missing file content');
+    try {
+      return await uploadForm(formWithNativeUri());
+    } catch (error) {
+      if (!input.content) throw error;
+      return uploadForm(await formWithContent());
+    }
   }
-  if (input.durationMillis != null) form.append('duration', String(Math.round(input.durationMillis / 1000)));
-
-  const res = await apiFetch(`/api/notes/${encodeURIComponent(noteId)}/media`, { method: 'POST', body: form, timeoutMs: 30_000 });
-  if (!res.ok) throw await readError(res);
-  const result = await res.json() as { attachment?: NoteAttachment };
-  if (!result.attachment?.id) throw new Error('Upload media: invalid response');
-  return result.attachment;
+  return uploadForm(await formWithContent());
 }
 
 export async function fetchNote(id: string): Promise<Note> {

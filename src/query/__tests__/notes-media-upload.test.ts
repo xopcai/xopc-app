@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiFetch } from '../../api/client';
 import { captureNote, uploadNoteMedia } from '../notes';
 
+const platform = vi.hoisted(() => ({ OS: 'web' }));
+
 vi.mock('react-native', () => ({
-  Platform: { OS: 'web' },
+  Platform: platform,
 }));
 
 vi.mock('../../api/client', () => ({
@@ -18,6 +20,7 @@ const mockedApiFetch = vi.mocked(apiFetch);
 
 describe('uploadNoteMedia', () => {
   beforeEach(() => {
+    platform.OS = 'web';
     mockedApiFetch.mockReset();
     mockedApiFetch.mockResolvedValue({
       ok: true,
@@ -51,6 +54,38 @@ describe('uploadNoteMedia', () => {
     expect(appended.name).toBe('photo.png');
     expect(appended.type).toBe('image/png');
     expect(appended.size).toBe(4);
+  });
+
+  it('falls back to base64 content when native localUri upload fails', async () => {
+    platform.OS = 'ios';
+    mockedApiFetch
+      .mockRejectedValueOnce(new Error('local file unavailable'))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          attachment: {
+            id: 'att-1',
+            type: 'image',
+            mimeType: 'image/png',
+            fileName: 'photo.png',
+            size: 4,
+            relativePath: 'notes/note-1/att-1.png',
+          },
+        }),
+      } as Response);
+
+    await expect(uploadNoteMedia('note-1', {
+      localUri: 'file:///tmp/missing-photo.png',
+      name: 'photo.png',
+      mimeType: 'image/png',
+      content: btoa('data'),
+    })).resolves.toEqual(expect.objectContaining({ id: 'att-1' }));
+
+    expect(mockedApiFetch).toHaveBeenCalledTimes(2);
+    expect(mockedApiFetch.mock.calls[0][1]?.body).toBeInstanceOf(FormData);
+    const fallbackFile = (mockedApiFetch.mock.calls[1][1]?.body as FormData).get('file') as File;
+    expect(fallbackFile.name).toBe('photo.png');
+    expect(await fallbackFile.text()).toBe('data');
   });
 });
 

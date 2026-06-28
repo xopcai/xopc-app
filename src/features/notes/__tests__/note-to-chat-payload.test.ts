@@ -1,4 +1,22 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const memory = new Map<string, string>();
+
+vi.mock('../../../storage/mmkv', () => ({
+  storage: {
+    getString: (key: string) => memory.get(key),
+    set: (key: string, value: string) => {
+      memory.set(key, String(value));
+    },
+    delete: (key: string) => {
+      memory.delete(key);
+    },
+  },
+}));
+
+vi.mock('../../../query/notes', () => ({
+  uploadNoteMedia: vi.fn(),
+}));
 
 import { composerAttachmentsToWire } from '../../chat/composer.types';
 import { MAX_CHAT_ATTACHMENTS } from '../../chat/chat-limits';
@@ -7,6 +25,10 @@ import {
   collectNoteAttachmentsForChat,
   extractVoiceTranscripts,
 } from '../note-to-chat-payload';
+import {
+  createLocalNoteAttachment,
+  resetLocalNoteAttachmentsForTests,
+} from '../notes-local-attachments';
 import type { NoteEditorAttachment } from '../note-to-chat-payload';
 import type { NoteAttachment } from '../../../query/notes';
 
@@ -14,6 +36,11 @@ const labels = {
   imagePlaceholder: (alt: string) => `[Image: ${alt}]`,
   voiceTranscript: (text: string) => `[Voice transcript: ${text}]`,
 };
+
+afterEach(() => {
+  resetLocalNoteAttachmentsForTests('note-1');
+  memory.clear();
+});
 
 describe('buildNoteChatContextText', () => {
   it('keeps markdown structure without embedding image attachment ids as raw data', () => {
@@ -76,6 +103,44 @@ describe('collectNoteAttachmentsForChat', () => {
     }];
     const result = await collectNoteAttachmentsForChat('note-1', '', editor, []);
     expect(result.attachments).toHaveLength(1);
+  });
+
+  it('collects markdown local images inserted while offline', async () => {
+    const local = createLocalNoteAttachment('note-1', {
+      type: 'image',
+      name: 'offline.png',
+      mimeType: 'image/png',
+      size: 3,
+      content: 'YWJj',
+    });
+
+    const result = await collectNoteAttachmentsForChat('note-1', `![offline](${local.src})`, [], []);
+    expect(result.attachments).toHaveLength(1);
+    expect(result.attachments[0]).toMatchObject({
+      type: 'image',
+      name: 'offline',
+      mimeType: 'image/png',
+      content: 'YWJj',
+    });
+  });
+
+  it('collects markdown local documents inserted while offline', async () => {
+    const local = createLocalNoteAttachment('note-1', {
+      type: 'document',
+      name: 'brief.pdf',
+      mimeType: 'application/pdf',
+      size: 3,
+      content: 'YWJj',
+    });
+
+    const result = await collectNoteAttachmentsForChat('note-1', `[brief](${local.src})`, [], []);
+    expect(result.attachments).toHaveLength(1);
+    expect(result.attachments[0]).toMatchObject({
+      type: 'document',
+      name: 'brief',
+      mimeType: 'application/pdf',
+      content: 'YWJj',
+    });
   });
 
   it('uses canonical note attachment URI for synced attachments without local base64', async () => {

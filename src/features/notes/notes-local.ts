@@ -1,8 +1,13 @@
 /** Notes local-first editing — Markdown is canonical. */
 import { createOfflineQueue, type OfflineQueue, type QueuedOperation } from '../../sync';
 import { storage } from '../../storage/mmkv';
-import { deleteCachedLinkIndex } from '../../query/note-link-index';
 import { updateNote, type Note, type NoteStatus } from '../../query/notes';
+import {
+  commitLocalNoteAttachmentUploads,
+  deleteLocalNoteAttachments,
+  prepareLocalNoteAttachmentUploadsForMarkdown,
+  type PreparedLocalNoteAttachmentUpload,
+} from './notes-local-attachments';
 
 const LOCAL_NOTE_PREFIX = 'notes:local:item:';
 const EDIT_SYNC_DEBOUNCE_MS = 400;
@@ -83,9 +88,12 @@ const editQueue: OfflineQueue<EditSyncPayload> = createOfflineQueue<EditSyncPayl
   processor: async (operation: QueuedOperation<EditSyncPayload>) => {
     const { noteId, markdown, localVersion, title, clearTitle, tags, status } = operation.payload;
     const metadataPatch = noteMetadataPatch({ title, clearTitle, tags, status });
+    const preparedAttachments = await prepareLocalNoteAttachmentUploadsForMarkdown(noteId, markdown);
+    const syncMarkdown = preparedAttachments.markdown;
     let updatedNote: Note;
     try {
-      updatedNote = await updateNote(noteId, { markdown, ...metadataPatch });
+      updatedNote = await updateNote(noteId, { markdown: syncMarkdown, ...metadataPatch });
+      assertUploadedAttachmentsCommitted(updatedNote, preparedAttachments.uploads);
     } catch (error) {
       if (isNoteNotFoundError(error)) {
         discardLocalNoteState(noteId);
@@ -93,6 +101,7 @@ const editQueue: OfflineQueue<EditSyncPayload> = createOfflineQueue<EditSyncPayl
       }
       throw error;
     }
+    commitLocalNoteAttachmentUploads(preparedAttachments.uploads);
     const snapshot = readLocalNote(noteId);
     if (snapshot && snapshot.localVersion === localVersion) {
       writeLocalNote({
@@ -101,8 +110,8 @@ const editQueue: OfflineQueue<EditSyncPayload> = createOfflineQueue<EditSyncPayl
         title: clearTitle ? undefined : title ?? updatedNote.title ?? snapshot.title,
         tags: tags ?? updatedNote.tags ?? snapshot.tags,
         status: status ?? updatedNote.status ?? snapshot.status,
-        markdown,
-        text: markdown,
+        markdown: syncMarkdown,
+        text: syncMarkdown,
         syncState: 'synced',
       });
     }
@@ -125,8 +134,8 @@ export function discardPendingNoteEdits(noteId: string): void {
 
 export function discardLocalNoteState(noteId: string): void {
   deleteLocalNoteSnapshot(noteId);
+  deleteLocalNoteAttachments(noteId);
   discardPendingNoteEdits(noteId);
-  deleteCachedLinkIndex(storage);
 }
 
 export const deleteLocalNote = discardLocalNoteState;
@@ -169,7 +178,6 @@ export function saveLocalMarkdownNoteEdit(
     syncState: 'pending',
   };
   writeLocalNote(snapshot);
-  deleteCachedLinkIndex(storage);
 
   enqueueNoteEdit({
     noteId: note.id,
@@ -224,4 +232,19 @@ function isNoteNotFoundError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const candidate = error as Error & { status?: number; code?: string };
   return candidate.status === 404 || candidate.code === 'note_not_found';
+}
+
+function assertUploadedAttachmentsCommitted(
+  updatedNote: Note,
+  uploads: PreparedLocalNoteAttachmentUpload[],
+): void {
+  if (!uploads.length) return;
+  const remoteMarkdown = updatedNote.markdown ?? updatedNote.text ?? '';
+  const attachmentIds = new Set((updatedNote.attachments ?? []).map((attachment) => attachment.id));
+  const missing = uploads.filter((upload) => (
+    !attachmentIds.has(upload.attachment.id) || !remoteMarkdown.includes(upload.canonicalRef)
+  ));
+  if (missing.length) {
+    throw new Error('Note attachment sync incomplete');
+  }
 }
