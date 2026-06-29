@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { BottomSheetModal } from '../../../components/BottomSheetModal';
+import { useKeyboardListPadding } from '../../../hooks/use-keyboard-list-padding';
 import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding, radii, spacing, useTheme } from '../../../theme';
 import NoteEditorDomAdapter, { type NoteEditorAdapterCommand } from '../web-editor/NoteEditorDomAdapter';
 import { DEFAULT_EDITOR_RUNTIME_STATE } from './editor-contract';
@@ -117,6 +118,7 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
 }, ref) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const keyboardBottomInset = useKeyboardListPadding();
   const richEditorRef = useRef<NativeRichEditorHandle | null>(null);
   const commandIdRef = useRef(0);
   const flushRequestIdRef = useRef(0);
@@ -378,6 +380,7 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
     voicePanHandlers,
   ]);
   const showEditorToolbar = (editorState.focused && !sheetVisible) || Boolean(voiceActive);
+  const toolbarBottomPadding = keyboardBottomInset > 0 ? floatingBottomPadding(0) : floatingBottomPadding(insets.bottom);
 
   return (
     <View style={styles.container}>
@@ -416,8 +419,8 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
             styles.toolbarDock,
             {
               backgroundColor: colors.surface.base,
-              bottom: FLOATING_BOTTOM_OFFSET,
-              paddingBottom: floatingBottomPadding(insets.bottom),
+              bottom: keyboardBottomInset + FLOATING_BOTTOM_OFFSET,
+              paddingBottom: toolbarBottomPadding,
             },
           ]}
         >
