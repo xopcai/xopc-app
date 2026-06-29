@@ -42,8 +42,15 @@ export function BottomSheetModal({
 }: BottomSheetModalProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+
+  if (!visible) return null;
+
   const content = (
-    <Pressable style={[styles.overlay, { backgroundColor: colors.overlay.scrim }]} onPress={onDismiss}>
+    <View style={styles.overlay}>
+      <Pressable
+        style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay.scrim }]}
+        onPress={onDismiss}
+      />
       <Pressable
         testID={testID}
         style={[
@@ -83,11 +90,11 @@ export function BottomSheetModal({
         )}
         {footer ? <View style={[styles.footer, { borderTopColor: colors.border.subtle }]}>{footer}</View> : null}
       </Pressable>
-    </Pressable>
+    </View>
   );
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onDismiss}>
+    <Modal visible transparent animationType="slide" onRequestClose={onDismiss}>
       {keyboardAvoiding ? (
         <KeyboardAvoidingView
           style={styles.flex}

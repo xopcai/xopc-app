@@ -1,12 +1,11 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import type { GestureResponderHandlers } from 'react-native';
-import { NativeModules, Platform, Pressable, ScrollView, StyleSheet, TextInput, UIManager, View } from 'react-native';
+import { Keyboard, NativeModules, Platform, Pressable, ScrollView, StyleSheet, UIManager, View, useWindowDimensions } from 'react-native';
 import type { ReactNode } from 'react';
-import * as Clipboard from 'expo-clipboard';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
-import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { BottomSheetModal } from '../../../components/BottomSheetModal';
 import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding, radii, spacing, useTheme } from '../../../theme';
@@ -36,9 +35,25 @@ type ToolbarAction = {
 
 export type NoteEditorBridgeHandle = NoteEditorHandle;
 
+const TOOL_BUTTON_SIZE = 44;
+
 type PendingFlush = {
   resolve: (markdown: string) => void;
 };
+
+type NativeRichEditorHandle = {
+  getMarkdown: () => string;
+  focus: () => void;
+  blur: () => void;
+  insertTodo: () => void;
+  insertAttachment: (attachment: NonNullable<EditorAttachmentPickResult>) => void;
+  setLink: (title: string, url: string) => void;
+  removeLink: () => void;
+  undo: () => void;
+  redo: () => void;
+};
+
+type EditorSheet = 'image';
 
 function sameEditorState(a: EditorRuntimeState, b: EditorRuntimeState): boolean {
   return a.ready === b.ready
@@ -65,15 +80,6 @@ function isExpoDomWebViewAvailable(): boolean {
   } catch {
     return false;
   }
-}
-
-function attachmentMarkdown(attachment: NonNullable<EditorAttachmentPickResult>): string {
-  const label = attachment.alt?.trim() || (attachment.kind === 'image' ? 'image' : 'attachment');
-  if (attachment.kind === 'image') return `![${label}](${attachment.src})`;
-  if (attachment.kind === 'audio' && attachment.transcript?.trim()) {
-    return `[${label}](${attachment.src})\n\n${attachment.transcript.trim()}`;
-  }
-  return `[${label}](${attachment.src})`;
 }
 
 export interface NoteEditorBridgeProps {
@@ -111,6 +117,7 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
 }, ref) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const richEditorRef = useRef<NativeRichEditorHandle | null>(null);
   const commandIdRef = useRef(0);
   const flushRequestIdRef = useRef(0);
   const pendingFlushesRef = useRef(new Map<number, PendingFlush>());
@@ -120,8 +127,8 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
   const editorStateRef = useRef<EditorRuntimeState>(DEFAULT_EDITOR_RUNTIME_STATE);
   const pendingEditorStateRef = useRef<EditorRuntimeState | null>(null);
   const editorStateFrameRef = useRef<number | null>(null);
-  const [linkSheet, setLinkSheet] = useState({ visible: false, title: '', url: '' });
-  const [imageSheetVisible, setImageSheetVisible] = useState(false);
+  const [activeSheet, setActiveSheet] = useState<EditorSheet | null>(null);
+  const sheetVisible = activeSheet !== null;
   const canUseDomEditor = useMemo(() => isExpoDomWebViewAvailable(), []);
   const editorTheme = useMemo<NoteEditorTheme>(() => ({
     background: colors.surface.base,
@@ -186,8 +193,8 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
   }, [markdown]);
 
   useEffect(() => {
-    onFocusChange?.(editorState.focused);
-  }, [editorState.focused, onFocusChange]);
+    onFocusChange?.(editorState.focused || sheetVisible);
+  }, [editorState.focused, onFocusChange, sheetVisible]);
 
   useEffect(() => {
     if (canUseDomEditor) return;
@@ -206,11 +213,45 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
     setCommand({ id: commandIdRef.current, ...next } as EditorCommand);
   }, []);
 
+  const runNativeEditorCommand = useCallback((next: EditorCommand) => {
+    const native = richEditorRef.current;
+    if (!native) return;
+    switch (next.type) {
+      case 'focus':
+        native.focus();
+        return;
+      case 'toggleTaskList':
+        native.insertTodo();
+        return;
+      case 'insertPreparedAttachment':
+        native.insertAttachment(next.attachment);
+        return;
+      case 'setLink':
+        native.setLink(next.title, next.url);
+        return;
+      case 'removeLink':
+        native.removeLink();
+        return;
+      case 'undo':
+        native.undo();
+        return;
+      case 'redo':
+        native.redo();
+        return;
+      default:
+        return;
+    }
+  }, []);
+
   useEffect(() => {
     if (!topCommand) return;
+    if (!canUseDomEditor) {
+      runNativeEditorCommand(topCommand);
+      return;
+    }
     commandIdRef.current += 1;
     setCommand({ ...topCommand, id: commandIdRef.current } as EditorCommand);
-  }, [topCommand]);
+  }, [canUseDomEditor, runNativeEditorCommand, topCommand]);
 
   const handleFlushMarkdown = useCallback(async (requestId: number, nextMarkdown: string) => {
     latestMarkdownRef.current = nextMarkdown;
@@ -221,7 +262,11 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
   }, []);
 
   const flushMarkdown = useCallback(() => new Promise<string>((resolve) => {
-    if (!canUseDomEditor || !editorStateRef.current.ready) {
+    if (!canUseDomEditor) {
+      resolve(richEditorRef.current?.getMarkdown() ?? latestMarkdownRef.current);
+      return;
+    }
+    if (!editorStateRef.current.ready) {
       resolve(latestMarkdownRef.current);
       return;
     }
@@ -240,88 +285,49 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
     flushMarkdown,
   }), [flushMarkdown]);
 
-  const openLinkSheet = useCallback(() => {
-    setLinkSheet({ visible: true, title: '', url: '' });
-    void Clipboard.getStringAsync().then((value) => {
-      const clipboardUrl = value.trim();
-      if (!isLikelyUrl(clipboardUrl)) return;
-      setLinkSheet((current) => (
-        current.visible && !current.url ? { ...current, url: clipboardUrl } : current
-      ));
-    }).catch(() => undefined);
-  }, []);
+  const openEditorSheet = useCallback((sheet: EditorSheet) => {
+    onFocusChange?.(true);
+    Keyboard.dismiss();
+    richEditorRef.current?.blur();
+    setActiveSheet(sheet);
+  }, [onFocusChange]);
 
-  const insertFallbackMarkdown = useCallback((inserted: string) => {
-    const source = latestMarkdownRef.current;
-    const selection = editorStateRef.current.selection;
-    const from = Math.max(0, Math.min(selection.from, source.length));
-    const to = Math.max(from, Math.min(selection.to, source.length));
-    const needsLeadingBreak = from > 0 && source[from - 1] !== '\n';
-    const needsTrailingBreak = to < source.length && source[to] !== '\n';
-    const chunk = `${needsLeadingBreak ? '\n' : ''}${inserted}${needsTrailingBreak ? '\n' : ''}`;
-    const nextMarkdown = `${source.slice(0, from)}${chunk}${source.slice(to)}`;
-    latestMarkdownRef.current = nextMarkdown;
-    onChangeMarkdown(nextMarkdown);
-    const cursor = from + chunk.length;
-    const nextState = {
-      ...editorStateRef.current,
-      selection: { from: cursor, to: cursor },
-    };
-    editorStateRef.current = nextState;
-    setEditorState(nextState);
-    onRuntimeStateChange?.(nextState);
-  }, [onChangeMarkdown, onRuntimeStateChange]);
-
-  const applyLink = useCallback(() => {
-    if (!canUseDomEditor) {
-      const source = latestMarkdownRef.current;
-      const selection = editorStateRef.current.selection;
-      const selected = source.slice(selection.from, selection.to).trim();
-      const title = linkSheet.title.trim() || selected || linkSheet.url.trim();
-      insertFallbackMarkdown(`[${title}](${linkSheet.url.trim()})`);
-      setLinkSheet({ visible: false, title: '', url: '' });
-      return;
-    }
-    dispatch({ type: 'setLink', title: linkSheet.title, url: linkSheet.url });
-    setLinkSheet({ visible: false, title: '', url: '' });
-  }, [canUseDomEditor, dispatch, insertFallbackMarkdown, linkSheet.title, linkSheet.url]);
-
-  const removeLink = useCallback(() => {
-    dispatch({ type: 'removeLink' });
-    setLinkSheet({ visible: false, title: '', url: '' });
-  }, [dispatch]);
+  const closeEditorSheet = useCallback(() => {
+    setActiveSheet(null);
+    onFocusChange?.(editorStateRef.current.focused);
+  }, [onFocusChange]);
 
   const handleInsertImageFromLibrary = useCallback(() => {
-    setImageSheetVisible(false);
+    closeEditorSheet();
     if (!canUseDomEditor) {
       void onRequestAttachment('photos').then((attachment) => {
-        if (attachment) insertFallbackMarkdown(attachmentMarkdown(attachment));
+        if (attachment) richEditorRef.current?.insertAttachment(attachment);
       });
       return;
     }
     dispatch({ type: 'insertAttachment', source: 'photos' });
-  }, [canUseDomEditor, dispatch, insertFallbackMarkdown, onRequestAttachment]);
+  }, [canUseDomEditor, closeEditorSheet, dispatch, onRequestAttachment]);
 
   const handleInsertImageFromCamera = useCallback(() => {
-    setImageSheetVisible(false);
+    closeEditorSheet();
     if (!canUseDomEditor) {
       void onRequestAttachment('camera').then((attachment) => {
-        if (attachment) insertFallbackMarkdown(attachmentMarkdown(attachment));
+        if (attachment) richEditorRef.current?.insertAttachment(attachment);
       });
       return;
     }
     dispatch({ type: 'insertAttachment', source: 'camera' });
-  }, [canUseDomEditor, dispatch, insertFallbackMarkdown, onRequestAttachment]);
+  }, [canUseDomEditor, closeEditorSheet, dispatch, onRequestAttachment]);
 
   const handleInsertDocument = useCallback(() => {
     if (!canUseDomEditor) {
       void onRequestAttachment('document').then((attachment) => {
-        if (attachment) insertFallbackMarkdown(attachmentMarkdown(attachment));
+        if (attachment) richEditorRef.current?.insertAttachment(attachment);
       });
       return;
     }
     dispatch({ type: 'insertAttachment', source: 'document' });
-  }, [canUseDomEditor, dispatch, insertFallbackMarkdown, onRequestAttachment]);
+  }, [canUseDomEditor, dispatch, onRequestAttachment]);
 
   const actions = useMemo<ToolbarAction[]>(() => [
     {
@@ -331,7 +337,7 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
       active: editorState.todo,
       onPress: () => {
         if (canUseDomEditor) dispatch({ type: 'toggleTaskList' });
-        else insertFallbackMarkdown('- [ ] ');
+        else richEditorRef.current?.insertTodo();
       },
     },
     {
@@ -339,7 +345,7 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
       label: labels.image,
       icon: 'image-outline',
       active: editorState.image,
-      onPress: () => setImageSheetVisible(true),
+      onPress: () => openEditorSheet('image'),
     },
     {
       key: 'file',
@@ -356,32 +362,22 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
       panHandlers: voicePanHandlers,
       onPress: () => undefined,
     },
-    {
-      key: 'link',
-      label: labels.link,
-      icon: 'link-variant',
-      active: editorState.link,
-      onPress: openLinkSheet,
-    },
   ], [
     canUseDomEditor,
     dispatch,
     editorState.image,
-    editorState.link,
     editorState.todo,
     handleInsertDocument,
-    insertFallbackMarkdown,
     labels.audio,
     labels.image,
     labels.imageDocument,
-    labels.link,
     labels.todo,
-    openLinkSheet,
+    openEditorSheet,
     voiceActive,
     voiceDisabled,
     voicePanHandlers,
   ]);
-  const showEditorToolbar = editorState.focused || imageSheetVisible || linkSheet.visible || Boolean(voiceActive);
+  const showEditorToolbar = (editorState.focused && !sheetVisible) || Boolean(voiceActive);
 
   return (
     <View style={styles.container}>
@@ -402,63 +398,25 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
           dom={domProps}
         />
       ) : (
-        <TextInput
-          value={markdown}
-          onChangeText={(next) => {
-            latestMarkdownRef.current = next;
-            onChangeMarkdown(next);
-          }}
-          onFocus={() => {
-            const focusedState = { ...editorStateRef.current, focused: true };
-            editorStateRef.current = focusedState;
-            setEditorState(focusedState);
-            onRuntimeStateChange?.(focusedState);
-          }}
-          onBlur={() => {
-            const blurredState = { ...editorStateRef.current, focused: false };
-            editorStateRef.current = blurredState;
-            setEditorState(blurredState);
-            onRuntimeStateChange?.(blurredState);
-          }}
-          onSelectionChange={(event) => {
-            const selection = event.nativeEvent.selection;
-            const nextState = {
-              ...editorStateRef.current,
-              selection: { from: selection.start, to: selection.end },
-            };
-            editorStateRef.current = nextState;
-            setEditorState(nextState);
-            onRuntimeStateChange?.(nextState);
-            onSelectionChange({
-              from: selection.start,
-              to: selection.end,
-              markdown: latestMarkdownRef.current,
-              currentBlockMarkdown: latestMarkdownRef.current,
-              beforeMarkdown: latestMarkdownRef.current.slice(0, selection.start),
-              afterMarkdown: latestMarkdownRef.current.slice(selection.end),
-            });
-          }}
-          multiline
-          placeholder={labels.placeholder}
-          placeholderTextColor={colors.text.tertiary}
-          textAlignVertical="top"
-          style={[
-            styles.fallbackInput,
-            {
-              backgroundColor: colors.surface.base,
-              color: colors.text.primary,
-            },
-          ]}
+        <NativeRichTextEditor
+          ref={richEditorRef}
+          noteId={noteId}
+          markdown={markdown}
+          attachmentSrcMap={attachmentSrcMap}
+          theme={editorTheme}
+          labels={labels}
+          onChangeMarkdown={handleChange}
+          onSelectionChange={handleSelectionChange}
+          onStateChange={handleStateChange}
         />
       )}
       {showEditorToolbar ? (
-        <KeyboardStickyView
-          offset={{ closed: 0, opened: 0 }}
+        <View
           style={[
-            styles.sticky,
+            styles.toolbarDock,
             {
               backgroundColor: colors.surface.base,
-              marginBottom: FLOATING_BOTTOM_OFFSET,
+              bottom: FLOATING_BOTTOM_OFFSET,
               paddingBottom: floatingBottomPadding(insets.bottom),
             },
           ]}
@@ -468,11 +426,11 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
             isDark={isDark}
             colors={colors}
           />
-        </KeyboardStickyView>
+        </View>
       ) : null}
       <BottomSheetModal
-        visible={imageSheetVisible}
-        onDismiss={() => setImageSheetVisible(false)}
+        visible={activeSheet === 'image'}
+        onDismiss={closeEditorSheet}
         title={labels.image}
         maxHeight="44%"
       >
@@ -486,52 +444,399 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
         </View>
       </BottomSheetModal>
       {voiceFeedback}
-
-      <BottomSheetModal
-        visible={linkSheet.visible}
-        onDismiss={() => setLinkSheet({ visible: false, title: '', url: '' })}
-        title={labels.link}
-        maxHeight="46%"
-        keyboardAvoiding
-      >
-        <View style={styles.sheetBody}>
-          <Text style={[styles.sheetLabel, { color: colors.text.secondary }]}>{labels.link}</Text>
-          <TextInputShim
-            value={linkSheet.title}
-            onChangeText={(title) => setLinkSheet((current) => ({ ...current, title }))}
-            placeholder={labels.link}
-          />
-          <Text style={[styles.sheetLabel, { color: colors.text.secondary }]}>{labels.linkUrlPlaceholder}</Text>
-          <TextInputShim
-            value={linkSheet.url}
-            onChangeText={(url) => setLinkSheet((current) => ({ ...current, url }))}
-            placeholder={labels.linkUrlPlaceholder}
-            autoCapitalize="none"
-          />
-          <View style={styles.sheetActions}>
-            {editorState.link ? (
-              <Pressable
-                style={[styles.sheetButton, { backgroundColor: colors.surface.input }]}
-                onPress={removeLink}
-                accessibilityRole="button"
-                accessibilityLabel={labels.removeLink}
-              >
-                <Text style={[styles.sheetButtonText, { color: colors.semantic.error }]}>{labels.removeLink}</Text>
-              </Pressable>
-            ) : null}
-            <Pressable
-              style={[styles.sheetButton, styles.sheetButtonPrimary, { backgroundColor: colors.accent.primary }]}
-              onPress={applyLink}
-              accessibilityRole="button"
-              accessibilityLabel={labels.apply}
-              disabled={!linkSheet.url.trim()}
-            >
-              <Text style={[styles.sheetButtonText, { color: colors.accent.onPrimary }]}>{labels.apply}</Text>
-            </Pressable>
-          </View>
-        </View>
-      </BottomSheetModal>
     </View>
+  );
+}));
+
+type NativeRichTextEditorProps = {
+  noteId: string;
+  markdown: string;
+  attachmentSrcMap?: Record<string, string>;
+  theme: NoteEditorTheme;
+  labels: NoteEditorLabels;
+  onChangeMarkdown: (markdown: string) => Promise<void>;
+  onSelectionChange: (context: EditorSelectionContext) => Promise<void>;
+  onStateChange?: (state: EditorRuntimeState) => Promise<void> | void;
+};
+
+type NativeRichEditorMessage =
+  | { type: 'ready'; markdown?: string; state?: EditorRuntimeState }
+  | { type: 'change'; markdown: string; state?: EditorRuntimeState }
+  | { type: 'selection'; context: EditorSelectionContext; state?: EditorRuntimeState }
+  | { type: 'state'; state: EditorRuntimeState };
+
+function nativeEditorHtml({
+  markdown,
+  attachmentSrcMap,
+  theme,
+  labels,
+}: {
+  markdown: string;
+  attachmentSrcMap: Record<string, string>;
+  theme: NoteEditorTheme;
+  labels: NoteEditorLabels;
+}): string {
+  return `<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <style>
+    html, body { margin: 0; padding: 0; min-height: 100%; background: ${theme.background}; color: ${theme.text}; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    #editor { box-sizing: border-box; min-height: 100vh; padding: 16px 20px 96px; outline: none; font-size: 16px; line-height: 1.55; word-break: break-word; -webkit-user-select: text; user-select: text; }
+    #editor:empty:before { content: ${JSON.stringify(labels.placeholder)}; color: ${theme.textTertiary}; }
+    h1, h2, h3, p, ul, ol, blockquote { margin: 0 0 12px; }
+    h1 { font-size: 28px; line-height: 34px; font-weight: 700; }
+    h2 { font-size: 23px; line-height: 29px; font-weight: 700; }
+    h3 { font-size: 19px; line-height: 25px; font-weight: 650; }
+    ul, ol { padding-left: 24px; }
+    li { margin: 4px 0; }
+    blockquote { border-left: 3px solid ${theme.border}; padding-left: 12px; color: ${theme.textSecondary}; }
+    a { color: ${theme.accent}; text-decoration: underline; }
+    code { background: ${theme.input}; border-radius: 5px; padding: 1px 4px; }
+    pre { background: ${theme.input}; border-radius: 8px; padding: 12px; overflow-x: auto; }
+    img { display: block; max-width: 100%; height: auto; border-radius: 8px; margin: 8px 0 12px; background: ${theme.input}; }
+    input[type="checkbox"] { transform: translateY(1px); margin-right: 8px; }
+  </style>
+</head>
+<body>
+  <div id="editor" contenteditable="true" spellcheck="true"></div>
+  <script>
+    (function () {
+      var editor = document.getElementById('editor');
+      var attachmentMap = ${JSON.stringify(attachmentSrcMap)};
+      var savedRange = null;
+      var emitTimer = null;
+      var tick = String.fromCharCode(96);
+
+      function post(payload) {
+        window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+      }
+      function escapeHtml(value) {
+        return String(value || '').replace(/[&<>"]/g, function (ch) {
+          return ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : '&quot;';
+        });
+      }
+      function escapeAttr(value) {
+        return escapeHtml(value).replace(/'/g, '&#39;');
+      }
+      function inlineToHtml(value) {
+        var html = escapeHtml(value);
+        html = html.replace(/!\\[([^\\]]*)\\]\\(([^)]+)\\)/g, function (_, alt, src) {
+          var canonical = src.trim();
+          var display = attachmentMap[canonical] || canonical;
+          return '<img alt="' + escapeAttr(alt) + '" data-src="' + escapeAttr(canonical) + '" src="' + escapeAttr(display) + '" />';
+        });
+        html = html.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2">$1</a>');
+        html = html.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+        html = html.replace(/\\*([^*]+)\\*/g, '<em>$1</em>');
+        html = html.replace(new RegExp(tick + '([^' + tick + ']+)' + tick, 'g'), '<code>$1</code>');
+        return html;
+      }
+      function closeList(out, state) {
+        if (state.list) {
+          out.push('</' + state.list + '>');
+          state.list = '';
+        }
+      }
+      function markdownToHtml(markdown) {
+        if (!String(markdown || '').trim()) return '';
+        var lines = String(markdown || '').split(/\\r?\\n/);
+        var out = [];
+        var state = { list: '' };
+        lines.forEach(function (line) {
+          var m;
+          if (!line.trim()) {
+            closeList(out, state);
+            out.push('<p><br /></p>');
+          } else if ((m = /^(#{1,3})\\s+(.+)$/.exec(line))) {
+            closeList(out, state);
+            out.push('<h' + m[1].length + '>' + inlineToHtml(m[2]) + '</h' + m[1].length + '>');
+          } else if ((m = /^>\\s?(.+)$/.exec(line))) {
+            closeList(out, state);
+            out.push('<blockquote>' + inlineToHtml(m[1]) + '</blockquote>');
+          } else if ((m = /^- \\[([ xX])\\]\\s*(.*)$/.exec(line))) {
+            if (state.list !== 'ul') {
+              closeList(out, state);
+              out.push('<ul data-task-list="true">');
+              state.list = 'ul';
+            }
+            out.push('<li data-task-item="true"><input type="checkbox" ' + (m[1].toLowerCase() === 'x' ? 'checked ' : '') + '/>' + inlineToHtml(m[2]) + '</li>');
+          } else if ((m = /^[-*]\\s+(.+)$/.exec(line))) {
+            if (state.list !== 'ul') {
+              closeList(out, state);
+              out.push('<ul>');
+              state.list = 'ul';
+            }
+            out.push('<li>' + inlineToHtml(m[1]) + '</li>');
+          } else if ((m = /^\\d+\\.\\s+(.+)$/.exec(line))) {
+            if (state.list !== 'ol') {
+              closeList(out, state);
+              out.push('<ol>');
+              state.list = 'ol';
+            }
+            out.push('<li>' + inlineToHtml(m[1]) + '</li>');
+          } else {
+            closeList(out, state);
+            out.push('<p>' + inlineToHtml(line) + '</p>');
+          }
+        });
+        closeList(out, state);
+        return out.join('');
+      }
+      function inlineToMarkdown(node) {
+        if (node.nodeType === Node.TEXT_NODE) return node.nodeValue || '';
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+        var tag = node.tagName.toLowerCase();
+        if (tag === 'br') return '\\n';
+        if (tag === 'strong' || tag === 'b') return '**' + childrenToMarkdown(node) + '**';
+        if (tag === 'em' || tag === 'i') return '*' + childrenToMarkdown(node) + '*';
+        if (tag === 'code') return tick + (node.textContent || '') + tick;
+        if (tag === 'a') return '[' + childrenToMarkdown(node) + '](' + (node.getAttribute('href') || '') + ')';
+        if (tag === 'img') return '![' + (node.getAttribute('alt') || 'image') + '](' + (node.getAttribute('data-src') || node.getAttribute('src') || '') + ')';
+        if (tag === 'input') return '';
+        return childrenToMarkdown(node);
+      }
+      function childrenToMarkdown(node) {
+        return Array.prototype.map.call(node.childNodes, inlineToMarkdown).join('');
+      }
+      function blockToMarkdown(node) {
+        if (node.nodeType === Node.TEXT_NODE) return (node.nodeValue || '').trim();
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+        var tag = node.tagName.toLowerCase();
+        var text = childrenToMarkdown(node).trim();
+        if (tag === 'h1') return '# ' + text;
+        if (tag === 'h2') return '## ' + text;
+        if (tag === 'h3') return '### ' + text;
+        if (tag === 'blockquote') return '> ' + text;
+        if (tag === 'ul') {
+          return Array.prototype.map.call(node.children, function (li) {
+            var checked = li.querySelector('input[type="checkbox"]') && li.querySelector('input[type="checkbox"]').checked;
+            var task = li.getAttribute('data-task-item') === 'true' || node.getAttribute('data-task-list') === 'true';
+            return (task ? '- [' + (checked ? 'x' : ' ') + '] ' : '- ') + childrenToMarkdown(li).trim();
+          }).join('\\n');
+        }
+        if (tag === 'ol') {
+          return Array.prototype.map.call(node.children, function (li, index) {
+            return (index + 1) + '. ' + childrenToMarkdown(li).trim();
+          }).join('\\n');
+        }
+        return text;
+      }
+      function htmlToMarkdown() {
+        return Array.prototype.map.call(editor.childNodes, blockToMarkdown).filter(function (part) {
+          return part.trim().length > 0;
+        }).join('\\n\\n');
+      }
+      function state() {
+        var selection = window.getSelection();
+        var from = 0;
+        var to = 0;
+        if (selection && selection.rangeCount) {
+          from = selection.getRangeAt(0).startOffset || 0;
+          to = selection.getRangeAt(0).endOffset || from;
+        }
+        return {
+          ready: true,
+          focused: document.activeElement === editor,
+          selection: { from: from, to: to },
+          canUndo: document.queryCommandEnabled('undo'),
+          canRedo: document.queryCommandEnabled('redo'),
+          todo: false,
+          link: false,
+          image: false
+        };
+      }
+      function postState() {
+        post({ type: 'state', state: state() });
+      }
+      function postSelection() {
+        var markdown = htmlToMarkdown();
+        post({
+          type: 'selection',
+          context: {
+            from: state().selection.from,
+            to: state().selection.to,
+            markdown: markdown,
+            currentBlockMarkdown: markdown,
+            beforeMarkdown: markdown.slice(0, 1200),
+            afterMarkdown: markdown.slice(Math.max(0, markdown.length - 1200))
+          },
+          state: state()
+        });
+      }
+      function emitChange() {
+        var markdown = htmlToMarkdown();
+        post({ type: 'change', markdown: markdown, state: state() });
+      }
+      function scheduleEmit() {
+        if (emitTimer) clearTimeout(emitTimer);
+        emitTimer = setTimeout(function () {
+          emitTimer = null;
+          emitChange();
+        }, 150);
+      }
+      function saveSelection() {
+        var selection = window.getSelection();
+        if (selection && selection.rangeCount) savedRange = selection.getRangeAt(0).cloneRange();
+      }
+      function restoreSelection() {
+        if (!savedRange) return;
+        var selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(savedRange);
+      }
+      function insertHtml(html) {
+        editor.focus();
+        restoreSelection();
+        document.execCommand('insertHTML', false, html);
+        saveSelection();
+        emitChange();
+      }
+      function command(name, payload) {
+        if (name === 'insertTodo') insertHtml('<ul data-task-list="true"><li data-task-item="true"><input type="checkbox" /> </li></ul>');
+        else if (name === 'insertAttachment') {
+          var label = (payload && payload.alt) || (payload && payload.kind === 'image' ? 'image' : 'attachment');
+          if (payload && payload.kind === 'image') {
+            insertHtml('<img alt="' + escapeAttr(label) + '" data-src="' + escapeAttr(payload.src) + '" src="' + escapeAttr(payload.displaySrc || attachmentMap[payload.src] || payload.src) + '" />');
+          } else {
+            insertHtml('<a href="' + escapeAttr(payload.src) + '">' + escapeHtml(label) + '</a>');
+          }
+        } else if (name === 'setLink') {
+          var title = (payload && payload.title) || (payload && payload.url) || '';
+          var url = (payload && payload.url) || '';
+          insertHtml('<a href="' + escapeAttr(url) + '">' + escapeHtml(title) + '</a>');
+        } else if (name === 'removeLink') {
+          editor.focus();
+          restoreSelection();
+          document.execCommand('unlink', false);
+          emitChange();
+        } else if (name === 'undo' || name === 'redo') {
+          editor.focus();
+          document.execCommand(name, false);
+          emitChange();
+        }
+      }
+      window.xopcEditor = {
+        focus: function () { editor.focus(); },
+        blur: function () { editor.blur(); },
+        command: command,
+        setAttachmentMap: function (nextMap) {
+          attachmentMap = nextMap || {};
+          Array.prototype.forEach.call(editor.querySelectorAll('img[data-src]'), function (img) {
+            var src = img.getAttribute('data-src');
+            img.setAttribute('src', attachmentMap[src] || src);
+          });
+        },
+        setMarkdown: function (nextMarkdown) {
+          editor.innerHTML = markdownToHtml(nextMarkdown || '');
+          emitChange();
+        }
+      };
+      editor.addEventListener('input', scheduleEmit);
+      editor.addEventListener('change', scheduleEmit);
+      editor.addEventListener('focus', postState);
+      editor.addEventListener('blur', function () { emitChange(); postState(); });
+      document.addEventListener('selectionchange', function () {
+        if (document.activeElement !== editor) return;
+        saveSelection();
+        postSelection();
+      });
+      editor.innerHTML = markdownToHtml(${JSON.stringify(markdown)});
+      post({ type: 'ready', markdown: htmlToMarkdown(), state: state() });
+    })();
+  </script>
+</body>
+</html>`;
+}
+
+const NativeRichTextEditor = memo(forwardRef<NativeRichEditorHandle, NativeRichTextEditorProps>(function NativeRichTextEditor({
+  noteId,
+  markdown,
+  attachmentSrcMap,
+  theme,
+  labels,
+  onChangeMarkdown,
+  onSelectionChange,
+  onStateChange,
+}, ref) {
+  const webViewRef = useRef<WebView | null>(null);
+  const latestMarkdownRef = useRef(markdown);
+  const lastWebMarkdownRef = useRef(markdown);
+  const readyRef = useRef(false);
+  const html = useMemo(
+    () => nativeEditorHtml({ markdown, attachmentSrcMap: attachmentSrcMap ?? {}, theme, labels }),
+    // The WebView is keyed by noteId. Later markdown changes are pushed with injected JS.
+    [noteId, theme, labels],
+  );
+
+  const inject = useCallback((script: string) => {
+    webViewRef.current?.injectJavaScript(`${script}\ntrue;`);
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    getMarkdown: () => latestMarkdownRef.current,
+    focus: () => inject('window.xopcEditor && window.xopcEditor.focus();'),
+    blur: () => inject('window.xopcEditor && window.xopcEditor.blur();'),
+    insertTodo: () => inject('window.xopcEditor && window.xopcEditor.command("insertTodo");'),
+    insertAttachment: (attachment) => {
+      inject(`window.xopcEditor && window.xopcEditor.command("insertAttachment", ${JSON.stringify(attachment)});`);
+    },
+    setLink: (title, url) => {
+      inject(`window.xopcEditor && window.xopcEditor.command("setLink", ${JSON.stringify({ title, url })});`);
+    },
+    removeLink: () => inject('window.xopcEditor && window.xopcEditor.command("removeLink");'),
+    undo: () => inject('window.xopcEditor && window.xopcEditor.command("undo");'),
+    redo: () => inject('window.xopcEditor && window.xopcEditor.command("redo");'),
+  }), [inject]);
+
+  useEffect(() => {
+    latestMarkdownRef.current = markdown;
+    if (!readyRef.current || markdown === lastWebMarkdownRef.current) return;
+    inject(`window.xopcEditor && window.xopcEditor.setMarkdown(${JSON.stringify(markdown)});`);
+  }, [inject, markdown]);
+
+  useEffect(() => {
+    if (!readyRef.current) return;
+    inject(`window.xopcEditor && window.xopcEditor.setAttachmentMap(${JSON.stringify(attachmentSrcMap ?? {})});`);
+  }, [attachmentSrcMap, inject]);
+
+  const handleMessage = useCallback((event: WebViewMessageEvent) => {
+    let message: NativeRichEditorMessage;
+    try {
+      message = JSON.parse(event.nativeEvent.data) as NativeRichEditorMessage;
+    } catch {
+      return;
+    }
+    if (message.type === 'ready') {
+      readyRef.current = true;
+    }
+    if ('markdown' in message && typeof message.markdown === 'string') {
+      latestMarkdownRef.current = message.markdown;
+      lastWebMarkdownRef.current = message.markdown;
+      void onChangeMarkdown(message.markdown);
+    }
+    if (message.type === 'selection') {
+      void onSelectionChange(message.context);
+    }
+    if (message.state) {
+      void onStateChange?.(message.state);
+    }
+  }, [onChangeMarkdown, onSelectionChange, onStateChange]);
+
+  return (
+    <WebView
+      key={noteId}
+      ref={webViewRef}
+      source={{ html }}
+      originWhitelist={['*']}
+      javaScriptEnabled
+      scrollEnabled
+      hideKeyboardAccessoryView
+      keyboardDisplayRequiresUserAction={false}
+      onMessage={handleMessage}
+      style={styles.richWebView}
+      containerStyle={styles.richWebViewContainer}
+    />
   );
 }));
 
@@ -544,11 +849,19 @@ function EditorToolbar({
   isDark: boolean;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
+  const { width: windowWidth } = useWindowDimensions();
+  const contentWidth = (actions.length * TOOL_BUTTON_SIZE)
+    + (Math.max(actions.length - 1, 0) * spacing.sm)
+    + (spacing.sm * 2);
+  const maxWidth = Math.max(TOOL_BUTTON_SIZE + (spacing.sm * 2), windowWidth - (spacing.md * 2));
+  const toolbarWidth = Math.min(contentWidth, maxWidth);
+
   return (
     <View
       style={[
         styles.toolbar,
         {
+          width: toolbarWidth,
           backgroundColor: isDark ? colors.surface.panel : colors.surface.base,
           borderColor: colors.border.default,
           shadowColor: colors.text.primary,
@@ -557,6 +870,7 @@ function EditorToolbar({
     >
       <ScrollView
         horizontal
+        style={styles.toolbarScroll}
         keyboardShouldPersistTaps="handled"
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.toolbarContent}
@@ -630,43 +944,6 @@ function ImageSourceRow({
   );
 }
 
-function TextInputShim({
-  value,
-  onChangeText,
-  placeholder,
-  autoCapitalize = 'sentences',
-}: {
-  value: string;
-  onChangeText: (value: string) => void;
-  placeholder: string;
-  autoCapitalize?: 'none' | 'sentences';
-}) {
-  const { colors } = useTheme();
-  return (
-    <TextInput
-      value={value}
-      onChangeText={onChangeText}
-      placeholder={placeholder}
-      placeholderTextColor={colors.text.tertiary}
-      autoCapitalize={autoCapitalize}
-      autoCorrect={autoCapitalize !== 'none'}
-      keyboardType={autoCapitalize === 'none' ? 'url' : 'default'}
-      style={[
-        styles.sheetInput,
-        {
-          backgroundColor: colors.surface.input,
-          borderColor: colors.border.default,
-          color: colors.text.primary,
-        },
-      ]}
-    />
-  );
-}
-
-function isLikelyUrl(value: string): boolean {
-  return /^(https?:\/\/|www\.)\S+\.\S+$/i.test(value) || /^[a-z0-9-]+(\.[a-z0-9-]+)+\/?\S*$/i.test(value);
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -679,19 +956,22 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
   },
-  fallbackInput: {
+  richWebViewContainer: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
-    fontSize: 16,
-    lineHeight: 24,
+    minHeight: 0,
   },
-  sticky: {
+  richWebView: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  toolbarDock: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     paddingTop: spacing.xs,
   },
   toolbar: {
-    marginHorizontal: spacing.md,
+    alignSelf: 'center',
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radii.xl,
     shadowOpacity: 0.06,
@@ -699,6 +979,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
     overflow: 'hidden',
+  },
+  toolbarScroll: {
+    width: '100%',
   },
   toolbarContent: {
     minHeight: 48,
@@ -708,22 +991,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   toolButton: {
-    width: 44,
-    height: 44,
+    width: TOOL_BUTTON_SIZE,
+    height: TOOL_BUTTON_SIZE,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  sheetBody: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
-  },
-  sheetLabel: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '500',
   },
   imageMenu: {
     paddingHorizontal: spacing.xl,
@@ -748,36 +1021,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     fontWeight: '500',
-  },
-  sheetInput: {
-    minHeight: 44,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  sheetActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    paddingTop: spacing.sm,
-  },
-  sheetButton: {
-    minHeight: 44,
-    minWidth: 92,
-    borderRadius: radii.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  sheetButtonPrimary: {
-    minWidth: 116,
-  },
-  sheetButtonText: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '600',
   },
 });
