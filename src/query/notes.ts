@@ -211,6 +211,16 @@ async function createNoteJson(input: CaptureNoteInput): Promise<CaptureNoteResul
   return readCreatedNote(res);
 }
 
+export async function createBlankNote(): Promise<CaptureNoteResult> {
+  const platform = Platform.OS === 'ios' ? 'ios' : 'android';
+  const res = await apiFetch('/api/notes', {
+    method: 'POST',
+    body: JSON.stringify({ kind: 'thought', channel: 'app', platform }),
+  });
+  if (!res.ok) throw await readError(res);
+  return readCreatedNote(res);
+}
+
 export async function captureNote(input: CaptureNoteInput): Promise<CaptureNoteResult> {
   const trimmedMarkdown = (input.markdown ?? input.text)?.trim() ?? '';
   if (!input.attachments?.length) {

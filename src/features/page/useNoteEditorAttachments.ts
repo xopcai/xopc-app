@@ -4,11 +4,13 @@ import { apiFetch } from '../../api/client';
 import type { NoteAttachment } from '../../query/notes';
 import { AttachmentFileError, pickAttachmentFromSource, type AttachmentPickSource } from '../chat/attachment-file-io';
 import type { EditorAttachmentPickResult } from '../notes/editor/editor-protocol';
+import { prepareVoiceCapturePayload } from '../notes/capture-note-media';
 import {
   createLocalNoteAttachment,
   displaySrcForLocalNoteAttachmentRef,
   parseLocalNoteAttachmentRef,
 } from '../notes/notes-local-attachments';
+import type { VoiceCapturePayload } from '../notes/use-voice-capture-interaction';
 import type { AttachmentDisplaySeed } from './useNoteEditSession';
 
 function noteAttachmentRef(noteId: string, attachmentId: string): string {
@@ -141,8 +143,36 @@ export function useNoteEditorAttachments({
     }
   }, [id, messages, setSnackMsg]);
 
+  const handleCreateVoiceAttachment = useCallback(async (payload: VoiceCapturePayload): Promise<EditorAttachmentPickResult> => {
+    if (!id) return null;
+    try {
+      const queued = await prepareVoiceCapturePayload(payload);
+      const local = createLocalNoteAttachment(id, {
+        type: 'audio',
+        name: queued.name,
+        mimeType: queued.mimeType,
+        size: queued.size,
+        content: queued.content,
+        localUri: queued.localUri,
+        durationSeconds: Math.max(1, Math.round(queued.durationMillis / 1000)),
+        transcript: queued.transcript,
+      });
+      setSnackMsg(messages.added);
+      return {
+        src: local.src,
+        alt: queued.name,
+        kind: 'audio',
+        transcript: queued.transcript,
+      };
+    } catch (error) {
+      setSnackMsg(error instanceof Error ? error.message : messages.actionFailed);
+      return null;
+    }
+  }, [id, messages.actionFailed, messages.added, setSnackMsg]);
+
   return {
     attachmentSrcMap,
+    handleCreateVoiceAttachment,
     handleRequestAttachment,
   };
 }

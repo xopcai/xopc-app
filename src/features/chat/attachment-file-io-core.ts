@@ -7,7 +7,8 @@ export function shouldOpenNativeImageEditor(source: AttachmentPickSource): boole
   return source === 'camera' || source === 'photos';
 }
 
-export function attachmentTypeFromMime(mimeType: string): 'image' | 'document' {
+export function attachmentTypeFromMime(mimeType: string): 'image' | 'document' | 'audio' {
+  if (mimeType.startsWith('audio/')) return 'audio';
   return mimeType.startsWith('image/') ? 'image' : 'document';
 }
 

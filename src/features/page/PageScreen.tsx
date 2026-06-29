@@ -7,7 +7,7 @@ import { ActivityIndicator, Button, Icon, Snackbar, Text } from 'react-native-pa
 import { BottomSheetModal } from '../../components/BottomSheetModal';
 import { TOAST_DURATION_SHORT } from '../../constants/toast';
 import { t, useMessages } from '../../i18n/messages';
-import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
+import { dismissOrHome, noteDetailRoute, useDismissOnHardwareBack } from '../../lib/navigation';
 import { useTheme } from '../../theme';
 
 import { NoteDetailHeader } from '../notes/NoteDetailHeader';
@@ -16,6 +16,7 @@ import { NoteTagPickerSheet } from '../notes/NoteTagPickerSheet';
 import { NoteEditorBridge, type NoteEditorBridgeHandle } from '../notes/editor/NoteEditorBridge';
 import { countNoteCharacters } from '../notes/note-title';
 import { getNotePrimaryTag, getTagColors } from '../notes/note-tag-utils';
+import { useVoiceCaptureInteraction } from '../notes/use-voice-capture-interaction';
 import { DEFAULT_EDITOR_RUNTIME_STATE } from '../notes/editor/editor-contract';
 import type {
   EditorCommand,
@@ -62,6 +63,14 @@ export function PageScreen() {
     hydrateNoteTags();
   }, [hydrateNoteTags]);
 
+  const handleMissingNote = useCallback(() => {
+    router.replace('/notes');
+  }, [router]);
+
+  const handleDraftPromoted = useCallback((remoteId: string) => {
+    router.replace(noteDetailRoute(remoteId));
+  }, [router]);
+
   const {
     note,
     noteQuery,
@@ -87,13 +96,13 @@ export function PageScreen() {
       savedOffline: pm.savedOffline,
       untitledNote: pm.untitledNote,
     },
-    onMissingNote: () => {
-      router.replace('/notes');
-    },
+    onMissingNote: handleMissingNote,
+    onDraftPromoted: handleDraftPromoted,
   });
 
   const {
     attachmentSrcMap,
+    handleCreateVoiceAttachment,
     handleRequestAttachment,
   } = useNoteEditorAttachments({
     id,
@@ -130,6 +139,20 @@ export function PageScreen() {
     editorCommandIdRef.current += 1;
     setEditorCommand({ id: editorCommandIdRef.current, ...next } as EditorCommand);
   }, []);
+
+  const voice = useVoiceCaptureInteraction({
+    value: markdownRef.current,
+    onChangeText: updateMarkdown,
+    onVoiceCapture: (payload) => {
+      void (async () => {
+        const attachment = await handleCreateVoiceAttachment(payload);
+        if (!attachment) return;
+        sendEditorCommand({ type: 'insertPreparedAttachment', attachment });
+      })();
+    },
+    disabled: !id || !note,
+    enabled: Boolean(id && note),
+  });
 
   const flushEditorToDraft = useCallback(async () => {
     await editorRef.current?.flushMarkdown();
@@ -199,6 +222,7 @@ export function PageScreen() {
     imageFromLibrary: pm.editorImageLibrary,
     imageCamera: pm.editorImageCamera,
     imageDocument: pm.editorImageDocument,
+    audio: pm.editorInsertAudio,
   }), [m.common.apply, pm]);
 
   const showLoading = noteQuery.isLoading && !note;
@@ -325,6 +349,10 @@ export function PageScreen() {
             onRequestAttachment={handleRequestAttachment}
             onFocusChange={setEditorFocused}
             onRuntimeStateChange={setEditorRuntimeState}
+            voiceFeedback={voice.feedback}
+            voicePanHandlers={voice.panHandlers}
+            voiceActive={voice.active}
+            voiceDisabled={!id || !note || voice.transcribing}
           />
         </View>
       ) : null}

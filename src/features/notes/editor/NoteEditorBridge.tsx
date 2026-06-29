@@ -1,6 +1,9 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import type { GestureResponderHandlers } from 'react-native';
+import { NativeModules, Platform, Pressable, ScrollView, StyleSheet, TextInput, UIManager, View } from 'react-native';
+import type { ReactNode } from 'react';
 import * as Clipboard from 'expo-clipboard';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +30,7 @@ type ToolbarAction = {
   icon: string;
   active?: boolean;
   disabled?: boolean;
+  panHandlers?: GestureResponderHandlers;
   onPress: () => void;
 };
 
@@ -48,6 +52,30 @@ function sameEditorState(a: EditorRuntimeState, b: EditorRuntimeState): boolean 
     && a.image === b.image;
 }
 
+function isExpoDomWebViewAvailable(): boolean {
+  if (Platform.OS === 'web') return true;
+  if (Platform.OS === 'android') return false;
+  if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) return false;
+  if (NativeModules.ExpoDomWebViewModule) return true;
+  try {
+    return Boolean(
+      UIManager.getViewManagerConfig?.('ViewManagerAdapter_ExpoDomWebViewModule')
+        || UIManager.getViewManagerConfig?.('RCTViewManagerAdapter_ExpoDomWebViewModule'),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function attachmentMarkdown(attachment: NonNullable<EditorAttachmentPickResult>): string {
+  const label = attachment.alt?.trim() || (attachment.kind === 'image' ? 'image' : 'attachment');
+  if (attachment.kind === 'image') return `![${label}](${attachment.src})`;
+  if (attachment.kind === 'audio' && attachment.transcript?.trim()) {
+    return `[${label}](${attachment.src})\n\n${attachment.transcript.trim()}`;
+  }
+  return `[${label}](${attachment.src})`;
+}
+
 export interface NoteEditorBridgeProps {
   noteId: string;
   markdown: string;
@@ -59,6 +87,10 @@ export interface NoteEditorBridgeProps {
   onRequestAttachment: (source: EditorAttachmentPickSource) => Promise<EditorAttachmentPickResult>;
   onFocusChange?: (focused: boolean) => void;
   onRuntimeStateChange?: (state: EditorRuntimeState) => void;
+  voiceFeedback?: ReactNode;
+  voicePanHandlers?: GestureResponderHandlers;
+  voiceActive?: boolean;
+  voiceDisabled?: boolean;
 }
 
 export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEditorBridgeProps>(function NoteEditorBridge({
@@ -72,6 +104,10 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
   onRequestAttachment,
   onFocusChange,
   onRuntimeStateChange,
+  voiceFeedback,
+  voicePanHandlers,
+  voiceActive,
+  voiceDisabled,
 }, ref) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -86,6 +122,7 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
   const editorStateFrameRef = useRef<number | null>(null);
   const [linkSheet, setLinkSheet] = useState({ visible: false, title: '', url: '' });
   const [imageSheetVisible, setImageSheetVisible] = useState(false);
+  const canUseDomEditor = useMemo(() => isExpoDomWebViewAvailable(), []);
   const editorTheme = useMemo<NoteEditorTheme>(() => ({
     background: colors.surface.base,
     panel: colors.surface.panel,
@@ -152,6 +189,18 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
     onFocusChange?.(editorState.focused);
   }, [editorState.focused, onFocusChange]);
 
+  useEffect(() => {
+    if (canUseDomEditor) return;
+    const fallbackState: EditorRuntimeState = {
+      ...DEFAULT_EDITOR_RUNTIME_STATE,
+      ready: true,
+      focused: editorStateRef.current.focused,
+    };
+    editorStateRef.current = fallbackState;
+    setEditorState(fallbackState);
+    onRuntimeStateChange?.(fallbackState);
+  }, [canUseDomEditor, onRuntimeStateChange]);
+
   const dispatch = useCallback((next: EditorCommandInput) => {
     commandIdRef.current += 1;
     setCommand({ id: commandIdRef.current, ...next } as EditorCommand);
@@ -172,7 +221,7 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
   }, []);
 
   const flushMarkdown = useCallback(() => new Promise<string>((resolve) => {
-    if (!editorStateRef.current.ready) {
+    if (!canUseDomEditor || !editorStateRef.current.ready) {
       resolve(latestMarkdownRef.current);
       return;
     }
@@ -185,7 +234,7 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
       type: 'requestMarkdownFlush',
       requestId,
     });
-  }), []);
+  }), [canUseDomEditor]);
 
   useImperativeHandle(ref, () => ({
     flushMarkdown,
@@ -202,10 +251,40 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
     }).catch(() => undefined);
   }, []);
 
+  const insertFallbackMarkdown = useCallback((inserted: string) => {
+    const source = latestMarkdownRef.current;
+    const selection = editorStateRef.current.selection;
+    const from = Math.max(0, Math.min(selection.from, source.length));
+    const to = Math.max(from, Math.min(selection.to, source.length));
+    const needsLeadingBreak = from > 0 && source[from - 1] !== '\n';
+    const needsTrailingBreak = to < source.length && source[to] !== '\n';
+    const chunk = `${needsLeadingBreak ? '\n' : ''}${inserted}${needsTrailingBreak ? '\n' : ''}`;
+    const nextMarkdown = `${source.slice(0, from)}${chunk}${source.slice(to)}`;
+    latestMarkdownRef.current = nextMarkdown;
+    onChangeMarkdown(nextMarkdown);
+    const cursor = from + chunk.length;
+    const nextState = {
+      ...editorStateRef.current,
+      selection: { from: cursor, to: cursor },
+    };
+    editorStateRef.current = nextState;
+    setEditorState(nextState);
+    onRuntimeStateChange?.(nextState);
+  }, [onChangeMarkdown, onRuntimeStateChange]);
+
   const applyLink = useCallback(() => {
+    if (!canUseDomEditor) {
+      const source = latestMarkdownRef.current;
+      const selection = editorStateRef.current.selection;
+      const selected = source.slice(selection.from, selection.to).trim();
+      const title = linkSheet.title.trim() || selected || linkSheet.url.trim();
+      insertFallbackMarkdown(`[${title}](${linkSheet.url.trim()})`);
+      setLinkSheet({ visible: false, title: '', url: '' });
+      return;
+    }
     dispatch({ type: 'setLink', title: linkSheet.title, url: linkSheet.url });
     setLinkSheet({ visible: false, title: '', url: '' });
-  }, [dispatch, linkSheet.title, linkSheet.url]);
+  }, [canUseDomEditor, dispatch, insertFallbackMarkdown, linkSheet.title, linkSheet.url]);
 
   const removeLink = useCallback(() => {
     dispatch({ type: 'removeLink' });
@@ -214,18 +293,35 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
 
   const handleInsertImageFromLibrary = useCallback(() => {
     setImageSheetVisible(false);
+    if (!canUseDomEditor) {
+      void onRequestAttachment('photos').then((attachment) => {
+        if (attachment) insertFallbackMarkdown(attachmentMarkdown(attachment));
+      });
+      return;
+    }
     dispatch({ type: 'insertAttachment', source: 'photos' });
-  }, [dispatch]);
+  }, [canUseDomEditor, dispatch, insertFallbackMarkdown, onRequestAttachment]);
 
   const handleInsertImageFromCamera = useCallback(() => {
     setImageSheetVisible(false);
+    if (!canUseDomEditor) {
+      void onRequestAttachment('camera').then((attachment) => {
+        if (attachment) insertFallbackMarkdown(attachmentMarkdown(attachment));
+      });
+      return;
+    }
     dispatch({ type: 'insertAttachment', source: 'camera' });
-  }, [dispatch]);
+  }, [canUseDomEditor, dispatch, insertFallbackMarkdown, onRequestAttachment]);
 
   const handleInsertDocument = useCallback(() => {
-    setImageSheetVisible(false);
+    if (!canUseDomEditor) {
+      void onRequestAttachment('document').then((attachment) => {
+        if (attachment) insertFallbackMarkdown(attachmentMarkdown(attachment));
+      });
+      return;
+    }
     dispatch({ type: 'insertAttachment', source: 'document' });
-  }, [dispatch]);
+  }, [canUseDomEditor, dispatch, insertFallbackMarkdown, onRequestAttachment]);
 
   const actions = useMemo<ToolbarAction[]>(() => [
     {
@@ -233,7 +329,10 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
       label: labels.todo,
       icon: 'checkbox-marked-outline',
       active: editorState.todo,
-      onPress: () => dispatch({ type: 'toggleTaskList' }),
+      onPress: () => {
+        if (canUseDomEditor) dispatch({ type: 'toggleTaskList' });
+        else insertFallbackMarkdown('- [ ] ');
+      },
     },
     {
       key: 'image',
@@ -243,48 +342,134 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
       onPress: () => setImageSheetVisible(true),
     },
     {
+      key: 'file',
+      label: labels.imageDocument,
+      icon: 'file-document-outline',
+      onPress: handleInsertDocument,
+    },
+    {
+      key: 'audio',
+      label: labels.audio,
+      icon: 'microphone-outline',
+      active: voiceActive,
+      disabled: voiceDisabled,
+      panHandlers: voicePanHandlers,
+      onPress: () => undefined,
+    },
+    {
       key: 'link',
       label: labels.link,
       icon: 'link-variant',
       active: editorState.link,
       onPress: openLinkSheet,
     },
-  ], [dispatch, editorState.image, editorState.link, editorState.todo, labels.image, labels.link, labels.todo, openLinkSheet]);
+  ], [
+    canUseDomEditor,
+    dispatch,
+    editorState.image,
+    editorState.link,
+    editorState.todo,
+    handleInsertDocument,
+    insertFallbackMarkdown,
+    labels.audio,
+    labels.image,
+    labels.imageDocument,
+    labels.link,
+    labels.todo,
+    openLinkSheet,
+    voiceActive,
+    voiceDisabled,
+    voicePanHandlers,
+  ]);
+  const showEditorToolbar = editorState.focused || imageSheetVisible || linkSheet.visible || Boolean(voiceActive);
 
   return (
     <View style={styles.container}>
-      <NoteEditorDomAdapter
-        noteId={noteId}
-        initialMarkdown={markdown}
-        attachmentSrcMap={attachmentSrcMap}
-        editable
-        theme={editorTheme}
-        labels={labels}
-        command={command}
-        onChangeMarkdown={handleChange}
-        onSelectionChange={handleSelectionChange}
-        onStateChange={handleStateChange}
-        onRequestAttachment={onRequestAttachment}
-        onFlushMarkdown={handleFlushMarkdown}
-        dom={domProps}
-      />
-      <KeyboardStickyView
-        offset={{ closed: 0, opened: 0 }}
-        style={[
-          styles.sticky,
-          {
-            backgroundColor: colors.surface.base,
-            marginBottom: FLOATING_BOTTOM_OFFSET,
-            paddingBottom: floatingBottomPadding(insets.bottom),
-          },
-        ]}
-      >
-        <EditorToolbar
-          actions={actions}
-          isDark={isDark}
-          colors={colors}
+      {canUseDomEditor ? (
+        <NoteEditorDomAdapter
+          noteId={noteId}
+          initialMarkdown={markdown}
+          attachmentSrcMap={attachmentSrcMap}
+          editable
+          theme={editorTheme}
+          labels={labels}
+          command={command}
+          onChangeMarkdown={handleChange}
+          onSelectionChange={handleSelectionChange}
+          onStateChange={handleStateChange}
+          onRequestAttachment={onRequestAttachment}
+          onFlushMarkdown={handleFlushMarkdown}
+          dom={domProps}
         />
-      </KeyboardStickyView>
+      ) : (
+        <TextInput
+          value={markdown}
+          onChangeText={(next) => {
+            latestMarkdownRef.current = next;
+            onChangeMarkdown(next);
+          }}
+          onFocus={() => {
+            const focusedState = { ...editorStateRef.current, focused: true };
+            editorStateRef.current = focusedState;
+            setEditorState(focusedState);
+            onRuntimeStateChange?.(focusedState);
+          }}
+          onBlur={() => {
+            const blurredState = { ...editorStateRef.current, focused: false };
+            editorStateRef.current = blurredState;
+            setEditorState(blurredState);
+            onRuntimeStateChange?.(blurredState);
+          }}
+          onSelectionChange={(event) => {
+            const selection = event.nativeEvent.selection;
+            const nextState = {
+              ...editorStateRef.current,
+              selection: { from: selection.start, to: selection.end },
+            };
+            editorStateRef.current = nextState;
+            setEditorState(nextState);
+            onRuntimeStateChange?.(nextState);
+            onSelectionChange({
+              from: selection.start,
+              to: selection.end,
+              markdown: latestMarkdownRef.current,
+              currentBlockMarkdown: latestMarkdownRef.current,
+              beforeMarkdown: latestMarkdownRef.current.slice(0, selection.start),
+              afterMarkdown: latestMarkdownRef.current.slice(selection.end),
+            });
+          }}
+          multiline
+          placeholder={labels.placeholder}
+          placeholderTextColor={colors.text.tertiary}
+          textAlignVertical="top"
+          style={[
+            styles.fallbackInput,
+            {
+              backgroundColor: colors.surface.base,
+              color: colors.text.primary,
+            },
+          ]}
+        />
+      )}
+      {showEditorToolbar ? (
+        <KeyboardStickyView
+          offset={{ closed: 0, opened: 0 }}
+          style={[
+            styles.sticky,
+            {
+              backgroundColor: colors.surface.base,
+              marginBottom: FLOATING_BOTTOM_OFFSET,
+              paddingBottom: floatingBottomPadding(insets.bottom),
+            },
+          ]}
+        >
+          <EditorToolbar
+            actions={actions}
+            isDark={isDark}
+            colors={colors}
+          />
+        </KeyboardStickyView>
+      ) : null}
       <BottomSheetModal
         visible={imageSheetVisible}
         onDismiss={() => setImageSheetVisible(false)}
@@ -298,9 +483,9 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
             onPress={handleInsertImageFromLibrary}
           />
           <ImageSourceRow label={labels.imageCamera} icon="camera-outline" onPress={handleInsertImageFromCamera} />
-          <ImageSourceRow label={labels.imageDocument} icon="file-document-outline" onPress={handleInsertDocument} />
         </View>
       </BottomSheetModal>
+      {voiceFeedback}
 
       <BottomSheetModal
         visible={linkSheet.visible}
@@ -394,6 +579,7 @@ function EditorToolbar({
               accessibilityRole="button"
               accessibilityLabel={action.label}
               hitSlop={4}
+              {...action.panHandlers}
             >
               <Icon
                 source={action.icon}
@@ -492,6 +678,14 @@ const styles = StyleSheet.create({
   dom: {
     flex: 1,
     backgroundColor: 'transparent',
+  },
+  fallbackInput: {
+    flex: 1,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
+    fontSize: 16,
+    lineHeight: 24,
   },
   sticky: {
     paddingTop: spacing.xs,

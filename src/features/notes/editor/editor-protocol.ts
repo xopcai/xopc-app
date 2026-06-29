@@ -24,6 +24,7 @@ export type NoteEditorLabels = {
   imageFromLibrary: string;
   imageCamera: string;
   imageDocument: string;
+  audio: string;
 };
 
 export type EditorSelectionContext = {
@@ -43,13 +44,15 @@ export type EditorAttachmentPickResult = {
   /** Display-only browser src used by the DOM editor. */
   displaySrc?: string;
   alt?: string;
-  kind: 'image' | 'document';
+  kind: 'image' | 'document' | 'audio';
+  transcript?: string;
 } | null;
 
 export type EditorCommand =
   | { id: number; type: 'focus'; position?: 'start' | 'end' | number }
   | { id: number; type: 'toggleTaskList' }
   | { id: number; type: 'insertAttachment'; source: EditorAttachmentPickSource }
+  | { id: number; type: 'insertPreparedAttachment'; attachment: NonNullable<EditorAttachmentPickResult> }
   | { id: number; type: 'setLink'; title: string; url: string }
   | { id: number; type: 'removeLink' }
   | { id: number; type: 'undo' }

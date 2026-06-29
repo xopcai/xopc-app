@@ -5,14 +5,12 @@ import type { ReactNode } from 'react';
 import {
   Animated,
   Easing,
-  PanResponder,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
-import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -29,10 +27,10 @@ import {
   type HomeGateway,
   type HomeWorkflowRun,
 } from '../../query/home';
-import { captureNote, fetchNotes, type NoteIndexEntry } from '../../query/notes';
-import { invalidateHomeFeed, invalidateSessionLists } from '../../query/workspace-sync';
+import { fetchNotes, type NoteIndexEntry } from '../../query/notes';
+import { invalidateSessionLists } from '../../query/workspace-sync';
 import { resolveNoteListTitle } from '../notes/note-title';
-import { readLocalNote } from '../notes/notes-local';
+import { createLocalDraftNote, readLocalNote } from '../notes/notes-local';
 import { noteKindLabel } from '../notes/note-list-display';
 import { createSession, useGatewayConfigured } from '../../query/sessions';
 import { fetchChatAgents, type ChatAgentOption, useEffectiveDefaultAgentId } from '../../query/agents';
@@ -47,17 +45,6 @@ import {
 } from '../../theme';
 import { sessionDisplayName } from '../../lib/session-helpers';
 
-import { AttachmentFileError, pickAttachmentFromSource, type AttachmentPickSource } from '../chat/attachment-file-io';
-import type { ComposerAttachment } from '../chat/composer.types';
-import {
-  captureNoteWithComposerAttachment,
-  captureNoteWithVoice,
-  prepareVoiceCapturePayload,
-} from '../notes/capture-note-media';
-import { parseCaptureIntent } from '../notes/capture-parser';
-import { flushPendingNotes, queueMediaCapture, queueNote } from '../notes/notes-sync';
-import { QuickCaptureComposer } from '../notes/QuickCaptureComposer';
-import { useVoiceCaptureInteraction } from '../notes/use-voice-capture-interaction';
 import { WorkspaceSearchOverlay } from '../search/WorkspaceSearchOverlay';
 import { AgentAvatar } from '../ai/AgentAvatar';
 import { readAgentUsage, sortHomeAgents, touchAgentUsage } from '../ai/agent-usage-cache';
@@ -68,11 +55,6 @@ type ContinueItem =
   | { id: string; kind: 'session'; title: string; meta: string; icon: string; onPress: () => void }
   | { id: string; kind: 'note'; title: string; meta: string; icon: string; onPress: () => void }
   | { id: string; kind: 'workflow'; title: string; meta: string; icon: string; onPress: () => void };
-
-type CapturePayload =
-  | { type: 'text'; text: string }
-  | { type: 'attachment'; attachment: ComposerAttachment }
-  | { type: 'voice'; uri: string; durationMillis: number; mimeType: string };
 
 const HOME_INBOX_PREVIEW_LIMIT = 50;
 const HOME_INBOX_VISIBLE_PREVIEW_LIMIT = 1;
@@ -164,11 +146,8 @@ export function WorkspaceHomeScreen() {
   const defaultAgentId = useEffectiveDefaultAgentId();
   const { prefetchAskAiSession } = useWorkspaceNavigation();
   const [searchOpen, setSearchOpen] = useState(false);
-  const [captureOpen, setCaptureOpen] = useState(false);
-  const [captureText, setCaptureText] = useState('');
   const [toastMessage, setToastMessage] = useState('');
   const [agentUsage, setAgentUsage] = useState(() => readAgentUsage(activeGatewayId));
-  const backgroundCaptureFlushRef = useRef({ gatewayId: '', running: false });
 
   useHomeChatPrefetch(configured);
 
@@ -226,9 +205,6 @@ export function WorkspaceHomeScreen() {
 
   const m = useMessages();
   const hm = m.homePage;
-  const pm = m.notesPage;
-  const im = m.inboxPage;
-  const cm = m.chat;
   const homeDefaults = useMemo(() => fallbackHomeData(defaultAgentId), [defaultAgentId]);
   const inboxCount = home?.inboxCount ?? 0;
 
@@ -275,79 +251,8 @@ export function WorkspaceHomeScreen() {
   }, [prefetchAskAiSession, refetchHome, refetchRecentNotesFallback]);
 
   const handleRefresh = useCallback(() => {
-    void (async () => {
-      try {
-        await flushPendingNotes();
-      } catch {
-        /* Keep manual refresh quiet; capture retry remains pending. */
-      }
-      await refreshHomeContent();
-    })();
+    void refreshHomeContent();
   }, [refreshHomeContent]);
-
-  useEffect(() => {
-    if (!configured) return;
-    const gatewayKey = activeGatewayId || 'configured';
-    const state = backgroundCaptureFlushRef.current;
-    if (state.running || state.gatewayId === gatewayKey) return;
-    state.gatewayId = gatewayKey;
-    state.running = true;
-    void flushPendingNotes()
-      .then((flushed) => {
-        if (flushed <= 0) return;
-        void queryClient.invalidateQueries({ queryKey: queryKeys.notesAll });
-        void refreshHomeContent();
-      })
-      .catch(() => {
-        /* Silent by design; the user already saw the local-save toast. */
-      })
-      .finally(() => {
-        backgroundCaptureFlushRef.current.running = false;
-      });
-  }, [activeGatewayId, configured, queryClient, refreshHomeContent]);
-
-  const invalidateCaptureTargets = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.notesAll });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.notes('inbox') });
-    invalidateHomeFeed(queryClient);
-  }, [queryClient]);
-
-  const captureMutation = useMutation({
-    mutationFn: async (payload: CapturePayload) => {
-      if (payload.type === 'text') {
-        const intent = parseCaptureIntent(payload.text);
-        return captureNote({ text: payload.text, kind: intent.kind });
-      }
-      if (payload.type === 'attachment') {
-        return captureNoteWithComposerAttachment(payload.attachment, captureText);
-      }
-      return captureNoteWithVoice(payload);
-    },
-    onSuccess: () => {
-      setCaptureText('');
-      setCaptureOpen(false);
-      setToastMessage(hm.captureSaved);
-      invalidateCaptureTargets();
-    },
-    onError: async (err, payload) => {
-      try {
-        if (payload.type === 'text') {
-          queueNote(payload.text);
-        } else if (payload.type === 'attachment') {
-          queueMediaCapture({ type: 'attachment', attachment: payload.attachment, text: captureText });
-        } else {
-          const queued = await prepareVoiceCapturePayload(payload);
-          queueMediaCapture({ type: 'voice', ...queued });
-        }
-        setCaptureText('');
-        setCaptureOpen(false);
-        setToastMessage(pm.savedOffline);
-        invalidateCaptureTargets();
-      } catch {
-        setToastMessage(err instanceof Error ? err.message : pm.actionFailed);
-      }
-    },
-  });
 
   const createAgentSessionMutation = useMutation({
     mutationFn: (agentId: string) => createSession(agentId),
@@ -361,49 +266,10 @@ export function WorkspaceHomeScreen() {
     },
   });
 
-  const openCapture = useCallback(() => {
-    setCaptureOpen(true);
-  }, []);
-
-  const closeCapture = useCallback(() => {
-    if (captureMutation.isPending) return;
-    setCaptureOpen(false);
-  }, [captureMutation.isPending]);
-
-  const handleCaptureSubmit = useCallback(() => {
-    const text = captureText.trim();
-    if (!text) return;
-    captureMutation.mutate({ type: 'text', text });
-  }, [captureMutation, captureText]);
-
-  const handleAttachmentSource = useCallback(async (source: AttachmentPickSource) => {
-    try {
-      const attachment = await pickAttachmentFromSource(source);
-      if (!attachment) return;
-      captureMutation.mutate({ type: 'attachment', attachment });
-    } catch (error) {
-      if (error instanceof AttachmentFileError && error.code === 'permission_denied') {
-        setToastMessage(source === 'camera' ? cm.attachmentCameraPermissionDenied : cm.attachmentPermissionDenied);
-        return;
-      }
-      setToastMessage(pm.actionFailed);
-    }
-  }, [captureMutation, cm.attachmentCameraPermissionDenied, cm.attachmentPermissionDenied, pm.actionFailed]);
-
-  const handleVoiceCapture = useCallback((payload: { uri: string; durationMillis: number; mimeType: string }) => {
-    captureMutation.mutate({ type: 'voice', ...payload });
-  }, [captureMutation]);
-
-  const centerCaptureVoice = useVoiceCaptureInteraction({
-    value: captureText,
-    onChangeText: setCaptureText,
-    onVoiceCapture: handleVoiceCapture,
-    onTap: openCapture,
-    onTextReady: () => setCaptureOpen(true),
-    disabled: captureMutation.isPending,
-    submitting: captureMutation.isPending,
-    longPressDelayMs: 280,
-  });
+  const handleCreateNote = useCallback(() => {
+    const draft = createLocalDraftNote();
+    openNoteDetail(router, draft.id);
+  }, [router]);
 
   const continueItems = useMemo<ContinueItem[]>(() => {
     const activeWorkflows = (home?.workflowRuns.active ?? []).slice(0, 2).map((run) => ({
@@ -452,25 +318,11 @@ export function WorkspaceHomeScreen() {
           <Text style={[styles.emptyTitle, { color: colors.text.primary }]}>{hm.connectGatewayTitle}</Text>
           <Text style={[styles.emptyText, { color: colors.text.tertiary }]}>{hm.connectGatewayHint}</Text>
         </View>
-        <CenterCaptureButton
-          active={captureOpen || centerCaptureVoice.active || captureMutation.isPending}
-          accessibilityLabel={hm.commandCapture}
-          disabled={captureMutation.isPending}
-          panHandlers={centerCaptureVoice.panHandlers}
-        />
-        {centerCaptureVoice.feedback}
-        <HomeCaptureSheet
-          visible={captureOpen}
-          title={hm.captureTitle}
-          closeLabel={hm.captureClose}
-          value={captureText}
-          onChangeText={setCaptureText}
-          onSubmit={handleCaptureSubmit}
-          onVoiceCapture={handleVoiceCapture}
-          onAttachmentSource={(source) => void handleAttachmentSource(source)}
-          onDismiss={closeCapture}
-          placeholder={im.capturePlaceholder}
-          submitting={captureMutation.isPending}
+        <CenterNewNoteButton
+          active={false}
+          accessibilityLabel={hm.quickNewNote}
+          disabled={false}
+          onPress={handleCreateNote}
         />
         <WorkspaceSearchOverlay visible={searchOpen} onClose={() => setSearchOpen(false)} />
         <AppToast
@@ -558,25 +410,11 @@ export function WorkspaceHomeScreen() {
         )}
       </ScrollView>
 
-      <CenterCaptureButton
-        active={captureOpen || centerCaptureVoice.active || captureMutation.isPending}
-        accessibilityLabel={hm.commandCapture}
-        disabled={captureMutation.isPending}
-        panHandlers={centerCaptureVoice.panHandlers}
-      />
-      {centerCaptureVoice.feedback}
-      <HomeCaptureSheet
-        visible={captureOpen}
-        title={hm.captureTitle}
-        closeLabel={hm.captureClose}
-        value={captureText}
-        onChangeText={setCaptureText}
-        onSubmit={handleCaptureSubmit}
-        onVoiceCapture={handleVoiceCapture}
-        onAttachmentSource={(source) => void handleAttachmentSource(source)}
-        onDismiss={closeCapture}
-        placeholder={im.capturePlaceholder}
-        submitting={captureMutation.isPending}
+      <CenterNewNoteButton
+        active={false}
+        accessibilityLabel={hm.quickNewNote}
+        disabled={false}
+        onPress={handleCreateNote}
       />
       <WorkspaceSearchOverlay visible={searchOpen} onClose={() => setSearchOpen(false)} />
       <AppToast
@@ -989,16 +827,16 @@ function LibraryButton({ icon, label, onPress }: { icon: string; label: string; 
   );
 }
 
-function CenterCaptureButton({
+function CenterNewNoteButton({
   active,
   accessibilityLabel,
   disabled,
-  panHandlers,
+  onPress,
 }: {
   active: boolean;
   accessibilityLabel: string;
   disabled: boolean;
-  panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
+  onPress: () => void;
 }) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -1031,15 +869,15 @@ function CenterCaptureButton({
     <View
       pointerEvents="box-none"
       style={[
-        styles.centerCaptureWrap,
+        styles.centerNewNoteWrap,
         { paddingBottom: floatingBottomPadding(insets.bottom) + FLOATING_BOTTOM_OFFSET },
       ]}
     >
-      <View style={styles.centerCaptureCluster}>
+      <View style={styles.centerNewNoteCluster}>
         <Animated.View
           pointerEvents="none"
           style={[
-            styles.centerCaptureRing,
+            styles.centerNewNoteRing,
             {
               backgroundColor: colors.accent.primary,
               opacity: ringOpacity,
@@ -1048,12 +886,8 @@ function CenterCaptureButton({
           ]}
         />
         <Animated.View
-          {...panHandlers}
-          accessibilityRole="button"
-          accessibilityLabel={accessibilityLabel}
-          accessibilityState={{ disabled }}
           style={[
-            styles.centerCaptureButton,
+            styles.centerNewNoteButton,
             {
               backgroundColor: active ? colors.accent.primary : colors.surface.panel,
               borderColor: active ? colors.accent.primary : colors.border.default,
@@ -1063,87 +897,22 @@ function CenterCaptureButton({
             disabled && styles.disabled,
           ]}
         >
-          {disabled ? (
-            <ActivityIndicator size={22} color={colors.accent.primary} />
-          ) : (
-            <Icon source="tray-plus" size={26} color={active ? colors.accent.onPrimary : colors.text.secondary} />
-          )}
+          <Pressable
+            style={styles.centerNewNotePressable}
+            onPress={onPress}
+            disabled={disabled}
+            accessibilityRole="button"
+            accessibilityLabel={accessibilityLabel}
+            accessibilityState={{ disabled }}
+          >
+            {disabled ? (
+              <ActivityIndicator size={22} color={colors.accent.onPrimary} />
+            ) : (
+              <Icon source="note-plus-outline" size={26} color={active ? colors.accent.onPrimary : colors.text.secondary} />
+            )}
+          </Pressable>
         </Animated.View>
       </View>
-    </View>
-  );
-}
-
-function HomeCaptureSheet({
-  visible,
-  title,
-  closeLabel,
-  value,
-  onChangeText,
-  onSubmit,
-  onVoiceCapture,
-  onAttachmentSource,
-  onDismiss,
-  placeholder,
-  submitting,
-}: {
-  visible: boolean;
-  title: string;
-  closeLabel: string;
-  value: string;
-  onChangeText: (text: string) => void;
-  onSubmit: () => void;
-  onVoiceCapture: (payload: { uri: string; durationMillis: number; mimeType: string }) => void;
-  onAttachmentSource: (source: AttachmentPickSource) => void;
-  onDismiss: () => void;
-  placeholder: string;
-  submitting: boolean;
-}) {
-  const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  if (!visible) return null;
-
-  return (
-    <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-      <Pressable
-        style={[styles.captureScrim, { backgroundColor: colors.overlay.scrim }]}
-        onPress={onDismiss}
-        disabled={submitting}
-      />
-      <KeyboardStickyView offset={{ closed: 0, opened: 0 }} style={styles.captureSticky}>
-        <View
-          style={[
-            styles.capturePanel,
-            {
-              backgroundColor: colors.surface.panel,
-              borderColor: colors.border.default,
-              paddingBottom: floatingBottomPadding(insets.bottom),
-            },
-          ]}
-        >
-          <View style={[styles.captureHandle, { backgroundColor: colors.border.default }]} />
-          <View style={styles.captureHeader}>
-            <Text style={[styles.captureTitle, { color: colors.text.primary }]}>{title}</Text>
-            <Pressable
-              style={styles.captureClose}
-              onPress={onDismiss}
-              disabled={submitting}
-              accessibilityLabel={closeLabel}
-            >
-              <Icon source="close" size={20} color={colors.text.secondary} />
-            </Pressable>
-          </View>
-          <QuickCaptureComposer
-            value={value}
-            onChangeText={onChangeText}
-            onSubmit={onSubmit}
-            onVoiceCapture={onVoiceCapture}
-            onAttachmentSource={onAttachmentSource}
-            placeholder={placeholder}
-            submitting={submitting}
-          />
-        </View>
-      </KeyboardStickyView>
     </View>
   );
 }
@@ -1340,7 +1109,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   libraryLabel: { ...typography.label, fontWeight: '600' },
-  centerCaptureWrap: {
+  centerNewNoteWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
@@ -1348,13 +1117,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  centerCaptureCluster: {
+  centerNewNoteCluster: {
     width: 60,
     height: 60,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  centerCaptureRing: {
+  centerNewNoteRing: {
     position: 'absolute',
     top: 0,
     left: 0,
@@ -1362,7 +1131,7 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
   },
-  centerCaptureButton: {
+  centerNewNoteButton: {
     width: 60,
     height: 60,
     borderRadius: 30,
@@ -1374,45 +1143,14 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
-  captureScrim: {
+  centerNewNotePressable: {
     position: 'absolute',
+    left: 0,
     top: 0,
     right: 0,
     bottom: 0,
-    left: 0,
-  },
-  captureSticky: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  capturePanel: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
-  },
-  captureHandle: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-  },
-  captureHeader: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  captureTitle: { ...typography.heading, fontWeight: '600' },
-  captureClose: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 30,
   },
 });

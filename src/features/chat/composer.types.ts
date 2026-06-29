@@ -13,7 +13,7 @@ export type WireAttachment = {
 /** Pending attachment in the mobile composer before send. */
 export type ComposerAttachment = {
   id: string;
-  type: 'image' | 'document';
+  type: 'image' | 'document' | 'audio';
   name: string;
   mimeType: string;
   size: number;
@@ -26,6 +26,7 @@ export type ComposerAttachment = {
   /** Gateway workspace path when the file is already on the server. */
   workspaceRelativePath?: string;
   durationSeconds?: number;
+  transcript?: string;
 };
 
 function resolveWireAttachmentType(att: ComposerAttachment): string {

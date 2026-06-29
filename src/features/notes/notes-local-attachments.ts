@@ -9,12 +9,14 @@ const LOCAL_ATTACHMENT_SCHEME = 'xopc-local-attachment://';
 export interface LocalNoteAttachment {
   id: string;
   noteId: string;
-  type: 'image' | 'document';
+  type: 'image' | 'document' | 'audio';
   name: string;
   mimeType: string;
   size: number;
   content: string;
   localUri?: string;
+  durationMillis?: number;
+  transcript?: string;
   createdAt: number;
 }
 
@@ -31,7 +33,10 @@ export type PreparedLocalNoteAttachmentMarkdown = {
   uploads: PreparedLocalNoteAttachmentUpload[];
 };
 
-type LocalNoteAttachmentInput = Pick<ComposerAttachment, 'type' | 'name' | 'mimeType' | 'size' | 'content' | 'localUri'>;
+type LocalNoteAttachmentInput = Pick<
+  ComposerAttachment,
+  'type' | 'name' | 'mimeType' | 'size' | 'content' | 'localUri' | 'durationSeconds' | 'transcript'
+>;
 
 function parseJson<T>(raw: string | undefined): T | null {
   if (!raw) return null;
@@ -119,6 +124,8 @@ export function createLocalNoteAttachment(
     size: input.size,
     content: input.content.replace(/\s/g, ''),
     localUri: input.localUri,
+    durationMillis: input.durationSeconds != null ? Math.round(input.durationSeconds * 1000) : undefined,
+    transcript: input.transcript,
     createdAt: Date.now(),
   };
   writeLocalNoteAttachment(attachment);
@@ -154,6 +161,8 @@ export function composerAttachmentFromLocalNoteAttachmentRef(
     size: attachment.size,
     content: attachment.content,
     localUri: attachment.localUri,
+    durationSeconds: attachment.durationMillis != null ? Math.max(1, Math.round(attachment.durationMillis / 1000)) : undefined,
+    transcript: attachment.transcript,
   };
 }
 
@@ -169,13 +178,15 @@ function collectLocalAttachmentRefs(markdown: string): string[] {
 export async function prepareLocalNoteAttachmentUploadsForMarkdown(
   noteId: string,
   markdown: string,
+  options?: { localNoteId?: string },
 ): Promise<PreparedLocalNoteAttachmentMarkdown> {
   let nextMarkdown = markdown;
   const uploads: PreparedLocalNoteAttachmentUpload[] = [];
+  const localNoteId = options?.localNoteId ?? noteId;
 
   for (const localRef of collectLocalAttachmentRefs(markdown)) {
     const parsed = parseLocalNoteAttachmentRef(localRef);
-    if (!parsed || parsed.noteId !== noteId) continue;
+    if (!parsed || parsed.noteId !== localNoteId) continue;
     const local = readLocalNoteAttachment(parsed.noteId, parsed.attachmentId);
     if (!local) continue;
 
@@ -184,12 +195,13 @@ export async function prepareLocalNoteAttachmentUploadsForMarkdown(
       name: local.name,
       mimeType: local.mimeType,
       content: local.content,
+      durationMillis: local.durationMillis,
     });
 
     const canonicalRef = canonicalNoteAttachmentRef(noteId, attachment.id);
     nextMarkdown = nextMarkdown.split(localRef).join(canonicalRef);
     uploads.push({
-      noteId,
+      noteId: localNoteId,
       localAttachmentId: local.id,
       localRef,
       canonicalRef,

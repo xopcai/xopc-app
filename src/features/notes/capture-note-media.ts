@@ -13,6 +13,7 @@ import {
 
 export type QueuedVoiceCapture = {
   content: string;
+  size: number;
   name: string;
   mimeType: string;
   localUri?: string;
@@ -131,7 +132,7 @@ export async function prepareVoiceCapturePayload(payload: {
 }): Promise<QueuedVoiceCapture> {
   const mimeType = payload.mimeType || inferRecordingMimeType(payload.uri);
   const name = mimeType.includes('mpeg') ? 'voice.mp3' : 'voice.m4a';
-  const { content } = await readUriAsBase64(payload.uri, name);
+  const { content, size } = await readUriAsBase64(payload.uri, name);
 
   let transcript: string | undefined;
   try {
@@ -143,6 +144,7 @@ export async function prepareVoiceCapturePayload(payload: {
 
   return {
     content,
+    size,
     name,
     mimeType,
     localUri: payload.uri,

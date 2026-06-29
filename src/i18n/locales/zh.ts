@@ -885,6 +885,7 @@ export const zh: MessageBundle = {
     tagEmptyFilteredHint: '在笔记详情页为笔记选择此标签。',
     editorSendToChatPrefix: '帮我拆解这个任务：',
     editorInsertImage: '插入图片',
+    editorInsertAudio: '录制语音',
     editorImageLibrary: '选择图片',
     editorImageCamera: '拍照',
     editorImageDocument: '文档',

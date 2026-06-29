@@ -133,6 +133,26 @@ function normalizedUrl(value: string): string {
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed.replace(/^www\./i, 'www.')}`;
 }
 
+function linkNode(label: string, href: string) {
+  return {
+    type: 'text',
+    text: sanitizeLinkText(label),
+    marks: [{ type: 'link', attrs: { href } }],
+  };
+}
+
+function audioTranscriptNode(text: string) {
+  return {
+    type: 'blockquote',
+    content: [
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: `Voice memo: ${sanitizeLinkText(text)}` }],
+      },
+    ],
+  };
+}
+
 export default function NoteEditorDomAdapter({
   noteId,
   initialMarkdown,
@@ -296,21 +316,27 @@ export default function NoteEditorDomAdapter({
     if (editor && editorDirtyRef.current) void emitMarkdown(editor);
   }, [editor, emitMarkdown]);
 
-  const insertAttachment = useCallback(async (source: EditorAttachmentPickSource) => {
+  const insertPreparedAttachment = useCallback((picked: NonNullable<EditorAttachmentPickResult>) => {
     if (!editor || !editable) return;
-    const picked = await onRequestAttachment(source);
-    if (!picked) return;
     const label = sanitizeLinkText(picked.alt?.trim() || 'attachment');
     if (picked.kind === 'document') {
       editor
         .chain()
         .focus()
-        .insertContent({
-          type: 'text',
-          text: label,
-          marks: [{ type: 'link', attrs: { href: picked.src } }],
-        })
+        .insertContent(linkNode(label, picked.src))
         .run();
+      void emitMarkdown(editor);
+      return;
+    }
+    if (picked.kind === 'audio') {
+      const content = [
+        ...(picked.transcript?.trim() ? [audioTranscriptNode(picked.transcript.trim())] : []),
+        {
+          type: 'paragraph',
+          content: [linkNode(label, picked.src)],
+        },
+      ];
+      editor.chain().focus().insertContent(content).run();
       void emitMarkdown(editor);
       return;
     }
@@ -322,7 +348,14 @@ export default function NoteEditorDomAdapter({
     }
     editor.chain().focus().setImage({ src: picked.src, alt: picked.alt }).run();
     void emitMarkdown(editor);
-  }, [editable, editor, emitMarkdown, onRequestAttachment]);
+  }, [editable, editor, emitMarkdown]);
+
+  const insertAttachment = useCallback(async (source: EditorAttachmentPickSource) => {
+    if (!editor || !editable) return;
+    const picked = await onRequestAttachment(source);
+    if (!picked) return;
+    insertPreparedAttachment(picked);
+  }, [editable, editor, insertPreparedAttachment, onRequestAttachment]);
 
   const applyLink = useCallback((title: string, url: string) => {
     if (!editor || !editable) return;
@@ -388,6 +421,9 @@ export default function NoteEditorDomAdapter({
       case 'insertAttachment':
         void insertAttachment(command.source);
         break;
+      case 'insertPreparedAttachment':
+        insertPreparedAttachment(command.attachment);
+        break;
       case 'setLink':
         applyLink(command.title, command.url);
         break;
@@ -406,7 +442,7 @@ export default function NoteEditorDomAdapter({
     }
 
     void onStateChangeRef.current?.(editorRuntimeState(editor));
-  }, [applyLink, command, editable, editor, emitMarkdown, insertAttachment, removeLink]);
+  }, [applyLink, command, editable, editor, emitMarkdown, insertAttachment, insertPreparedAttachment, removeLink]);
 
   return (
     <main

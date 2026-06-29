@@ -76,6 +76,7 @@ function createMarkdownStyle(themeColors: ColorScheme, isDark: boolean) {
       ...typography.ui,
       color: themeColors.text.primary,
       borderColor: themeColors.border.default,
+      borderWidth: 0,
       borderRadius: 6,
       headerBackgroundColor: themeColors.surface.input,
       rowEvenBackgroundColor: isDark ? themeColors.surface.panel : undefined,
@@ -181,6 +182,29 @@ function createJsMarkdownStyles(themeColors: ColorScheme, isDark: boolean) {
     },
     ordered_list_icon: {
       color: themeColors.text.secondary,
+    },
+    table: {
+      borderWidth: 0,
+      borderRadius: 6,
+      marginBottom: 8,
+    },
+    thead: {
+      backgroundColor: themeColors.surface.input,
+    },
+    tr: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderColor: themeColors.border.default,
+      flexDirection: 'row',
+    },
+    th: {
+      flex: 1,
+      paddingHorizontal: 8,
+      paddingVertical: 8,
+    },
+    td: {
+      flex: 1,
+      paddingHorizontal: 8,
+      paddingVertical: 8,
     },
   });
 }

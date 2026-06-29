@@ -3,6 +3,9 @@ import { useCallback } from 'react';
 import { BackHandler, Platform } from 'react-native';
 
 import { buildIntakeRoute, type IntakeRouteParams } from '../features/content-intake/route-intake';
+import { noteDetailRoute, type NoteDetailOptions } from './navigation-routes';
+
+export { noteDetailRoute } from './navigation-routes';
 
 type ChatRouteParams = { k: string; msg?: string };
 
@@ -36,27 +39,9 @@ export function openIntake(
   else router.push(href);
 }
 
-type NoteDetailOptions = {
-  heading?: string;
-  range?: { start: number; end: number };
-};
-
 /** Canonical note detail route — always `/items/:id`. */
 export function openNoteDetail(router: ImperativeRouter, noteId: string, options?: NoteDetailOptions): void {
-  if (options?.heading?.trim() || options?.range) {
-    const params: { id: string; heading?: string; start?: string; end?: string } = { id: noteId };
-    if (options.heading?.trim()) params.heading = options.heading.trim();
-    if (options.range) {
-      params.start = String(options.range.start);
-      params.end = String(options.range.end);
-    }
-    router.push({
-      pathname: '/items/[id]',
-      params,
-    });
-    return;
-  }
-  router.push(`/items/${noteId}`);
+  router.push(noteDetailRoute(noteId, options));
 }
 
 /**

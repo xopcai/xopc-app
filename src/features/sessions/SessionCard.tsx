@@ -13,6 +13,7 @@ import { t, useMessages } from '../../i18n/messages';
 import { sessionDisplayName } from '../../lib/session-helpers';
 import type { SessionListItem } from '../../query/sessions';
 import { useTheme } from '../../theme';
+import { AgentAvatar } from '../ai/AgentAvatar';
 
 function relativeTime(dateStr: string): string {
   const now = Date.now();
@@ -28,6 +29,31 @@ function relativeTime(dateStr: string): string {
   const weeks = Math.floor(days / 7);
   if (weeks < 5) return `${weeks}w ago`;
   return new Date(dateStr).toLocaleDateString();
+}
+
+function resolveSessionAgentId(session: SessionListItem): string {
+  const routedAgentId = session.routing?.agentId?.trim().toLowerCase();
+  if (routedAgentId) return routedAgentId;
+
+  const parts = session.key.trim().toLowerCase().split(':').filter(Boolean);
+  if (parts[0] === 'agent' && parts[1]) return parts[1];
+  return 'main';
+}
+
+function resolveSessionAgentAvatar(session: SessionListItem): string | undefined {
+  const maybeSessionWithAvatar = session as SessionListItem & {
+    avatar?: unknown;
+    agentAvatar?: unknown;
+    routing?: SessionListItem['routing'] & {
+      avatar?: unknown;
+      agentAvatar?: unknown;
+    };
+  };
+  const value = maybeSessionWithAvatar.routing?.agentAvatar
+    ?? maybeSessionWithAvatar.routing?.avatar
+    ?? maybeSessionWithAvatar.agentAvatar
+    ?? maybeSessionWithAvatar.avatar;
+  return typeof value === 'string' && value.trim() ? value : undefined;
 }
 
 type SessionCardProps = {
@@ -55,6 +81,8 @@ export const SessionCard = memo(function SessionCard({
   const isArchived = session.status === 'archived';
   const title = useMemo(() => sessionDisplayName(session, m.sessions.untitled), [m.sessions.untitled, session]);
   const time = useMemo(() => relativeTime(session.updatedAt), [session.updatedAt]);
+  const agentId = useMemo(() => resolveSessionAgentId(session), [session]);
+  const agentAvatar = useMemo(() => resolveSessionAgentAvatar(session), [session]);
 
   const handlePress = useCallback(() => onPress(), [onPress]);
 
@@ -93,6 +121,9 @@ export const SessionCard = memo(function SessionCard({
         {selectionMode ? (
           <ListSelectionCheckbox selected={selected} size={28} />
         ) : null}
+        <View style={styles.avatar}>
+          <AgentAvatar agentId={agentId} avatar={agentAvatar} size={40} />
+        </View>
         <View style={styles.content}>
           <View style={styles.titleRow}>
             {isPinned ? (
@@ -152,6 +183,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     flex: 1,

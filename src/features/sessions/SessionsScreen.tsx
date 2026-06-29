@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -11,13 +11,13 @@ import { BatchDeleteConfirmDialog } from '../../components/BatchDeleteConfirmDia
 import { FloatingHeader } from '../../components/FloatingHeader';
 import { ListSkeleton } from '../../components/ListSkeleton';
 import { LIST_DELETE_UNDO_MS } from '../../constants/list-interaction';
-import { TOAST_DURATION_SHORT } from '../../constants/toast';
+import { TOAST_BOTTOM_LIFT_ABOVE_BAR, TOAST_DURATION_SHORT } from '../../constants/toast';
 import { useDelayedDelete } from '../../hooks/use-delayed-delete';
 import { useListSelection } from '../../hooks/use-list-selection';
 import { useMessages, t } from '../../i18n/messages';
 import { sessionDisplayName } from '../../lib/session-helpers';
 import { useFlatListEndReached } from '../../lib/use-flat-list-end-reached';
-import { dismissOrHome, useDismissOnHardwareBack } from '../../lib/navigation';
+import { dismissOrHome, openNoteDetail, useDismissOnHardwareBack } from '../../lib/navigation';
 import { refreshSessionsList } from '../../query/infinite-list-sync';
 import { queryKeys } from '../../query/keys';
 import {
@@ -31,7 +31,8 @@ import {
   unarchiveSession,
   useGatewayConfigured,
 } from '../../query/sessions';
-import { spacing, useTheme } from '../../theme';
+import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding, spacing, useTheme } from '../../theme';
+import { createLocalDraftNote } from '../notes/notes-local';
 
 import { RenameDialog } from './RenameDialog';
 import { SessionCard } from './SessionCard';
@@ -88,6 +89,11 @@ export function SessionsScreen() {
   const refreshList = useCallback(async () => {
     await refreshSessionsList(queryClient);
   }, [queryClient]);
+
+  const handleCreateNote = useCallback(() => {
+    const draft = createLocalDraftNote();
+    openNoteDetail(router, draft.id);
+  }, [router]);
 
   const runBatchArchive = useCallback(async () => {
     const keys = [...selectedIds];
@@ -282,7 +288,9 @@ export function SessionsScreen() {
     return null;
   }, [sessionsQuery.isFetchingNextPage]);
 
-  const listBottomPadding = selectionMode ? insets.bottom + 120 : insets.bottom + 24;
+  const listBottomPadding = selectionMode
+    ? insets.bottom + 120
+    : floatingBottomPadding(insets.bottom) + FLOATING_BOTTOM_OFFSET + 88;
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.surface.base }]}>
@@ -327,6 +335,32 @@ export function SessionsScreen() {
       )}
 
       {selectionMode ? <BatchActionBar items={batchActions} /> : null}
+      {!selectionMode ? (
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.newNoteWrap,
+            { paddingBottom: floatingBottomPadding(insets.bottom) + FLOATING_BOTTOM_OFFSET },
+          ]}
+        >
+          <Pressable
+            style={[
+              styles.newNoteButton,
+              {
+                backgroundColor: colors.surface.panel,
+                borderColor: colors.border.default,
+              },
+            ]}
+            onPress={handleCreateNote}
+            disabled={false}
+            accessibilityRole="button"
+            accessibilityLabel={m.homePage.quickNewNote}
+            accessibilityState={{ disabled: false }}
+          >
+            <Icon source="note-plus-outline" size={26} color={colors.text.secondary} />
+          </Pressable>
+        </View>
+      ) : null}
 
       <RenameDialog
         visible={Boolean(renameTarget)}
@@ -352,6 +386,7 @@ export function SessionsScreen() {
         onDismiss={() => setSnackMsg('')}
         duration={pendingUndoId && snackMsg === sa.sessionDeleted ? LIST_DELETE_UNDO_MS : TOAST_DURATION_SHORT}
         action={pendingUndoId && snackMsg === sa.sessionDeleted ? { label: li.undo, onPress: () => undoDelete() } : undefined}
+        bottomLift={!selectionMode ? TOAST_BOTTOM_LIFT_ABOVE_BAR : undefined}
       >
         {snackMsg}
       </AppToast>
@@ -366,4 +401,25 @@ const styles = StyleSheet.create({
   footerLoader: { paddingVertical: 16, alignItems: 'center' },
   emptyTitle: { fontSize: 18, fontWeight: '600' },
   emptyText: { fontSize: 13, textAlign: 'center' },
+  newNoteWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  newNoteButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
 });

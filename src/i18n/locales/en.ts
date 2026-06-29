@@ -885,6 +885,7 @@ export const en = {
     tagEmptyFilteredHint: 'Assign notes to this tag from the note detail page.',
     editorSendToChatPrefix: 'Help me break down this task: ',
     editorInsertImage: 'Insert image',
+    editorInsertAudio: 'Record voice',
     editorImageLibrary: 'Choose image',
     editorImageCamera: 'Camera',
     editorImageDocument: 'Document',

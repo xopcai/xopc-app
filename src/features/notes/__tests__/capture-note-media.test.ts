@@ -18,17 +18,41 @@ vi.mock('../../chat/voiceRecording', () => ({
 }));
 
 import { captureNote, updateNote } from '../../../query/notes';
+import { readUriAsBase64 } from '../../chat/attachment-file-io';
+import { transcribeVoice } from '../../../api/agent-client';
 import {
   captureNoteWithComposerAttachment,
   captureNoteWithQueuedVoice,
+  prepareVoiceCapturePayload,
 } from '../capture-note-media';
 
 const mockedCaptureNote = vi.mocked(captureNote);
 const mockedUpdateNote = vi.mocked(updateNote);
+const mockedReadUriAsBase64 = vi.mocked(readUriAsBase64);
+const mockedTranscribeVoice = vi.mocked(transcribeVoice);
 
 describe('capture note media', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('prepares queued voice payloads with base64 size and optional transcript', async () => {
+    mockedReadUriAsBase64.mockResolvedValue({ content: 'YXVkaW8=', size: 6 });
+    mockedTranscribeVoice.mockResolvedValue({ raw: ' raw note ', refined: ' refined note ' });
+
+    await expect(prepareVoiceCapturePayload({
+      uri: 'file:///tmp/voice.m4a',
+      durationMillis: 2400,
+      mimeType: 'audio/mp4',
+    })).resolves.toEqual({
+      content: 'YXVkaW8=',
+      size: 6,
+      name: 'voice.m4a',
+      mimeType: 'audio/mp4',
+      localUri: 'file:///tmp/voice.m4a',
+      durationMillis: 2400,
+      transcript: 'refined note',
+    });
   });
 
   it('patches an image capture with a markdown attachment reference', async () => {
@@ -108,6 +132,7 @@ describe('capture note media', () => {
 
     await captureNoteWithQueuedVoice({
       content: 'YXVkaW8=',
+      size: 8,
       name: 'voice.m4a',
       mimeType: 'audio/mp4',
       durationMillis: 3200,
