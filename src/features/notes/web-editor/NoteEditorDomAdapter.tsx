@@ -41,6 +41,7 @@ export interface NoteEditorDomAdapterProps {
   theme: NoteEditorTheme;
   labels: NoteEditorLabels;
   command?: NoteEditorAdapterCommand | null;
+  bottomInset?: number;
   dom?: DomProps;
   onChangeMarkdown: (markdown: string) => Promise<void>;
   onSelectionChange: (context: EditorSelectionContext) => Promise<void>;
@@ -161,6 +162,7 @@ export default function NoteEditorDomAdapter({
   theme,
   labels,
   command,
+  bottomInset = 120,
   onChangeMarkdown,
   onSelectionChange,
   onStateChange,
@@ -458,6 +460,7 @@ export default function NoteEditorDomAdapter({
         '--xopc-accent': theme.accent,
         '--xopc-accent-soft': theme.accentSoft,
         '--xopc-danger': theme.danger,
+        '--xopc-editor-bottom-inset': `${Math.max(96, Math.round(bottomInset))}px`,
       } as React.CSSProperties}
     >
       <style>{EDITOR_CSS}</style>
@@ -505,7 +508,7 @@ button, input {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
-  padding: 14px 20px 120px;
+  padding: 14px 20px var(--xopc-editor-bottom-inset);
 }
 .xopc-editor-content {
   display: block;
@@ -515,7 +518,7 @@ button, input {
   line-height: 1.58;
   letter-spacing: 0;
   color: var(--xopc-text);
-  padding-bottom: 80px;
+  padding-bottom: 24px;
 }
 .xopc-editor-scroll[data-editable="false"] .xopc-editor-content {
   cursor: default;

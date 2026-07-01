@@ -1,6 +1,6 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import type { GestureResponderHandlers } from 'react-native';
-import { Keyboard, NativeModules, Platform, Pressable, ScrollView, StyleSheet, UIManager, View, useWindowDimensions } from 'react-native';
+import { Keyboard, NativeModules, Platform, Pressable, ScrollView, StyleSheet, TextInput, UIManager, View, useWindowDimensions } from 'react-native';
 import type { ReactNode } from 'react';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Icon, Text } from 'react-native-paper';
@@ -12,6 +12,7 @@ import { useKeyboardListPadding } from '../../../hooks/use-keyboard-list-padding
 import { FLOATING_BOTTOM_OFFSET, floatingBottomPadding, radii, spacing, useTheme } from '../../../theme';
 import NoteEditorDomAdapter, { type NoteEditorAdapterCommand } from '../web-editor/NoteEditorDomAdapter';
 import { DEFAULT_EDITOR_RUNTIME_STATE } from './editor-contract';
+import { canUseDomEditor } from './editor-platform';
 import type {
   EditorAttachmentPickSource,
   EditorCommand,
@@ -37,9 +38,11 @@ type ToolbarAction = {
 export type NoteEditorBridgeHandle = NoteEditorHandle;
 
 const TOOL_BUTTON_SIZE = 44;
+const EDITOR_FLUSH_TIMEOUT_MS = 1500;
 
 type PendingFlush = {
   resolve: (markdown: string) => void;
+  timeout: ReturnType<typeof setTimeout>;
 };
 
 type NativeRichEditorHandle = {
@@ -54,7 +57,7 @@ type NativeRichEditorHandle = {
   redo: () => void;
 };
 
-type EditorSheet = 'image';
+type EditorSheet = 'image' | 'link';
 
 function sameEditorState(a: EditorRuntimeState, b: EditorRuntimeState): boolean {
   return a.ready === b.ready
@@ -69,18 +72,12 @@ function sameEditorState(a: EditorRuntimeState, b: EditorRuntimeState): boolean 
 }
 
 function isExpoDomWebViewAvailable(): boolean {
-  if (Platform.OS === 'web') return true;
-  if (Platform.OS === 'android') return false;
-  if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) return false;
-  if (NativeModules.ExpoDomWebViewModule) return true;
-  try {
-    return Boolean(
-      UIManager.getViewManagerConfig?.('ViewManagerAdapter_ExpoDomWebViewModule')
-        || UIManager.getViewManagerConfig?.('RCTViewManagerAdapter_ExpoDomWebViewModule'),
-    );
-  } catch {
-    return false;
-  }
+  return canUseDomEditor({
+    platform: Platform.OS,
+    isStoreClient: Constants.executionEnvironment === ExecutionEnvironment.StoreClient,
+    hasExpoDomWebViewModule: Boolean(NativeModules.ExpoDomWebViewModule),
+    getViewManagerConfig: UIManager.getViewManagerConfig,
+  });
 }
 
 export interface NoteEditorBridgeProps {
@@ -130,8 +127,18 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
   const pendingEditorStateRef = useRef<EditorRuntimeState | null>(null);
   const editorStateFrameRef = useRef<number | null>(null);
   const [activeSheet, setActiveSheet] = useState<EditorSheet | null>(null);
+  const [linkTitle, setLinkTitle] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
   const sheetVisible = activeSheet !== null;
   const canUseDomEditor = useMemo(() => isExpoDomWebViewAvailable(), []);
+  const keyboardOverlayInset = Platform.OS === 'android' ? 0 : keyboardBottomInset;
+  const toolbarBottomPadding = keyboardBottomInset > 0 ? floatingBottomPadding(0) : floatingBottomPadding(insets.bottom);
+  const editorBottomInset = keyboardOverlayInset
+    + FLOATING_BOTTOM_OFFSET
+    + toolbarBottomPadding
+    + TOOL_BUTTON_SIZE
+    + (spacing.xs * 2)
+    + spacing.lg;
   const editorTheme = useMemo<NoteEditorTheme>(() => ({
     background: colors.surface.base,
     panel: colors.surface.panel,
@@ -184,7 +191,8 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
       cancelAnimationFrame(editorStateFrameRef.current);
       editorStateFrameRef.current = null;
     }
-    pendingFlushesRef.current.forEach(({ resolve }) => {
+    pendingFlushesRef.current.forEach(({ resolve, timeout }) => {
+      clearTimeout(timeout);
       resolve(latestMarkdownRef.current);
     });
     pendingFlushesRef.current.clear();
@@ -260,6 +268,7 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
     const pending = pendingFlushesRef.current.get(requestId);
     if (!pending) return;
     pendingFlushesRef.current.delete(requestId);
+    clearTimeout(pending.timeout);
     pending.resolve(nextMarkdown);
   }, []);
 
@@ -275,7 +284,13 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
     flushRequestIdRef.current += 1;
     commandIdRef.current += 1;
     const requestId = flushRequestIdRef.current;
-    pendingFlushesRef.current.set(requestId, { resolve });
+    const timeout = setTimeout(() => {
+      const pending = pendingFlushesRef.current.get(requestId);
+      if (!pending) return;
+      pendingFlushesRef.current.delete(requestId);
+      pending.resolve(latestMarkdownRef.current);
+    }, EDITOR_FLUSH_TIMEOUT_MS);
+    pendingFlushesRef.current.set(requestId, { resolve, timeout });
     setCommand({
       id: commandIdRef.current,
       type: 'requestMarkdownFlush',
@@ -298,6 +313,32 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
     setActiveSheet(null);
     onFocusChange?.(editorStateRef.current.focused);
   }, [onFocusChange]);
+
+  const openLinkSheet = useCallback(() => {
+    setLinkTitle('');
+    setLinkUrl('');
+    openEditorSheet('link');
+  }, [openEditorSheet]);
+
+  const handleApplyLink = useCallback(() => {
+    const url = linkUrl.trim();
+    if (!url) return;
+    closeEditorSheet();
+    if (!canUseDomEditor) {
+      richEditorRef.current?.setLink(linkTitle, url);
+      return;
+    }
+    dispatch({ type: 'setLink', title: linkTitle, url });
+  }, [canUseDomEditor, closeEditorSheet, dispatch, linkTitle, linkUrl]);
+
+  const handleRemoveLink = useCallback(() => {
+    closeEditorSheet();
+    if (!canUseDomEditor) {
+      richEditorRef.current?.removeLink();
+      return;
+    }
+    dispatch({ type: 'removeLink' });
+  }, [canUseDomEditor, closeEditorSheet, dispatch]);
 
   const handleInsertImageFromLibrary = useCallback(() => {
     closeEditorSheet();
@@ -356,6 +397,33 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
       onPress: handleInsertDocument,
     },
     {
+      key: 'link',
+      label: labels.link,
+      icon: 'link-variant',
+      active: editorState.link,
+      onPress: openLinkSheet,
+    },
+    {
+      key: 'undo',
+      label: labels.undo,
+      icon: 'undo',
+      disabled: !editorState.canUndo,
+      onPress: () => {
+        if (canUseDomEditor) dispatch({ type: 'undo' });
+        else richEditorRef.current?.undo();
+      },
+    },
+    {
+      key: 'redo',
+      label: labels.redo,
+      icon: 'redo',
+      disabled: !editorState.canRedo,
+      onPress: () => {
+        if (canUseDomEditor) dispatch({ type: 'redo' });
+        else richEditorRef.current?.redo();
+      },
+    },
+    {
       key: 'audio',
       label: labels.audio,
       icon: 'microphone-outline',
@@ -367,20 +435,26 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
   ], [
     canUseDomEditor,
     dispatch,
+    editorState.canRedo,
+    editorState.canUndo,
     editorState.image,
+    editorState.link,
     editorState.todo,
     handleInsertDocument,
     labels.audio,
     labels.image,
     labels.imageDocument,
+    labels.link,
+    labels.redo,
     labels.todo,
+    labels.undo,
+    openLinkSheet,
     openEditorSheet,
     voiceActive,
     voiceDisabled,
     voicePanHandlers,
   ]);
   const showEditorToolbar = (editorState.focused && !sheetVisible) || Boolean(voiceActive);
-  const toolbarBottomPadding = keyboardBottomInset > 0 ? floatingBottomPadding(0) : floatingBottomPadding(insets.bottom);
 
   return (
     <View style={styles.container}>
@@ -393,6 +467,7 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
           theme={editorTheme}
           labels={labels}
           command={command}
+          bottomInset={editorBottomInset}
           onChangeMarkdown={handleChange}
           onSelectionChange={handleSelectionChange}
           onStateChange={handleStateChange}
@@ -408,6 +483,7 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
           attachmentSrcMap={attachmentSrcMap}
           theme={editorTheme}
           labels={labels}
+          bottomInset={editorBottomInset}
           onChangeMarkdown={handleChange}
           onSelectionChange={handleSelectionChange}
           onStateChange={handleStateChange}
@@ -419,7 +495,7 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
             styles.toolbarDock,
             {
               backgroundColor: colors.surface.base,
-              bottom: keyboardBottomInset + FLOATING_BOTTOM_OFFSET,
+              bottom: keyboardOverlayInset + FLOATING_BOTTOM_OFFSET,
               paddingBottom: toolbarBottomPadding,
             },
           ]}
@@ -446,6 +522,82 @@ export const NoteEditorBridge = memo(forwardRef<NoteEditorBridgeHandle, NoteEdit
           <ImageSourceRow label={labels.imageCamera} icon="camera-outline" onPress={handleInsertImageFromCamera} />
         </View>
       </BottomSheetModal>
+      <BottomSheetModal
+        visible={activeSheet === 'link'}
+        onDismiss={closeEditorSheet}
+        title={labels.link}
+        maxHeight="52%"
+        keyboardAvoiding
+      >
+        <View style={styles.linkSheet}>
+          <TextInput
+            style={[
+              styles.linkInput,
+              {
+                backgroundColor: colors.surface.input,
+                borderColor: colors.border.default,
+                color: colors.text.primary,
+              },
+            ]}
+            placeholder={labels.link}
+            placeholderTextColor={colors.text.tertiary}
+            value={linkTitle}
+            onChangeText={setLinkTitle}
+            autoCapitalize="sentences"
+            autoCorrect
+          />
+          <TextInput
+            style={[
+              styles.linkInput,
+              {
+                backgroundColor: colors.surface.input,
+                borderColor: colors.border.default,
+                color: colors.text.primary,
+              },
+            ]}
+            placeholder={labels.linkUrlPlaceholder}
+            placeholderTextColor={colors.text.tertiary}
+            value={linkUrl}
+            onChangeText={setLinkUrl}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+          />
+          <View style={styles.linkActions}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.linkAction,
+                {
+                  backgroundColor: colors.surface.input,
+                  borderColor: colors.border.default,
+                  opacity: pressed ? 0.72 : 1,
+                },
+              ]}
+              onPress={handleRemoveLink}
+              accessibilityRole="button"
+              accessibilityLabel={labels.removeLink}
+            >
+              <Text style={[styles.linkActionText, { color: colors.text.secondary }]}>{labels.removeLink}</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.linkAction,
+                {
+                  backgroundColor: colors.accent.primary,
+                  borderColor: colors.accent.primary,
+                  opacity: !linkUrl.trim() ? 0.42 : pressed ? 0.72 : 1,
+                },
+              ]}
+              onPress={handleApplyLink}
+              disabled={!linkUrl.trim()}
+              accessibilityRole="button"
+              accessibilityLabel={labels.apply}
+            >
+              <Text style={[styles.linkActionText, { color: colors.accent.onPrimary }]}>{labels.apply}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </BottomSheetModal>
       {voiceFeedback}
     </View>
   );
@@ -457,6 +609,7 @@ type NativeRichTextEditorProps = {
   attachmentSrcMap?: Record<string, string>;
   theme: NoteEditorTheme;
   labels: NoteEditorLabels;
+  bottomInset: number;
   onChangeMarkdown: (markdown: string) => Promise<void>;
   onSelectionChange: (context: EditorSelectionContext) => Promise<void>;
   onStateChange?: (state: EditorRuntimeState) => Promise<void> | void;
@@ -473,19 +626,23 @@ function nativeEditorHtml({
   attachmentSrcMap,
   theme,
   labels,
+  bottomInset,
 }: {
   markdown: string;
   attachmentSrcMap: Record<string, string>;
   theme: NoteEditorTheme;
   labels: NoteEditorLabels;
+  bottomInset: number;
 }): string {
+  const resolvedBottomInset = Math.max(96, Math.round(bottomInset));
   return `<!doctype html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <style>
     html, body { margin: 0; padding: 0; min-height: 100%; background: ${theme.background}; color: ${theme.text}; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    #editor { box-sizing: border-box; min-height: 100vh; padding: 16px 20px 96px; outline: none; font-size: 16px; line-height: 1.55; word-break: break-word; -webkit-user-select: text; user-select: text; }
+    :root { --xopc-editor-bottom-inset: ${resolvedBottomInset}px; }
+    #editor { box-sizing: border-box; min-height: 100vh; padding: 16px 20px var(--xopc-editor-bottom-inset); outline: none; font-size: 16px; line-height: 1.55; word-break: break-word; -webkit-user-select: text; user-select: text; }
     #editor:empty:before { content: ${JSON.stringify(labels.placeholder)}; color: ${theme.textTertiary}; }
     h1, h2, h3, p, ul, ol, blockquote { margin: 0 0 12px; }
     h1 { font-size: 28px; line-height: 34px; font-weight: 700; }
@@ -733,6 +890,10 @@ function nativeEditorHtml({
         setMarkdown: function (nextMarkdown) {
           editor.innerHTML = markdownToHtml(nextMarkdown || '');
           emitChange();
+        },
+        setBottomInset: function (nextBottomInset) {
+          var inset = Math.max(96, Math.round(Number(nextBottomInset) || 0));
+          document.documentElement.style.setProperty('--xopc-editor-bottom-inset', inset + 'px');
         }
       };
       editor.addEventListener('input', scheduleEmit);
@@ -758,6 +919,7 @@ const NativeRichTextEditor = memo(forwardRef<NativeRichEditorHandle, NativeRichT
   attachmentSrcMap,
   theme,
   labels,
+  bottomInset,
   onChangeMarkdown,
   onSelectionChange,
   onStateChange,
@@ -767,7 +929,13 @@ const NativeRichTextEditor = memo(forwardRef<NativeRichEditorHandle, NativeRichT
   const lastWebMarkdownRef = useRef(markdown);
   const readyRef = useRef(false);
   const html = useMemo(
-    () => nativeEditorHtml({ markdown, attachmentSrcMap: attachmentSrcMap ?? {}, theme, labels }),
+    () => nativeEditorHtml({
+      markdown,
+      attachmentSrcMap: attachmentSrcMap ?? {},
+      theme,
+      labels,
+      bottomInset,
+    }),
     // The WebView is keyed by noteId. Later markdown changes are pushed with injected JS.
     [noteId, theme, labels],
   );
@@ -802,6 +970,11 @@ const NativeRichTextEditor = memo(forwardRef<NativeRichEditorHandle, NativeRichT
     if (!readyRef.current) return;
     inject(`window.xopcEditor && window.xopcEditor.setAttachmentMap(${JSON.stringify(attachmentSrcMap ?? {})});`);
   }, [attachmentSrcMap, inject]);
+
+  useEffect(() => {
+    if (!readyRef.current) return;
+    inject(`window.xopcEditor && window.xopcEditor.setBottomInset(${Math.max(96, Math.round(bottomInset))});`);
+  }, [bottomInset, inject]);
 
   const handleMessage = useCallback((event: WebViewMessageEvent) => {
     let message: NativeRichEditorMessage;
@@ -1005,6 +1178,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.xs,
     gap: spacing.xs,
+  },
+  linkSheet: {
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    gap: spacing.md,
+  },
+  linkInput: {
+    minHeight: 48,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  linkActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  linkAction: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  linkActionText: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '600',
   },
   imageMenuRow: {
     minHeight: 52,
